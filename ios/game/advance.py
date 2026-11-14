@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 from guard_ir import instrument
 from service_build import compile_services, inputs as service_inputs, link_options
 
@@ -72,6 +73,24 @@ def run(name, command, timeout=60, env=None):
             raise RuntimeError(f"{name} timed out; see {root / (name + '.log')}") from None
         if result.returncode:
             raise RuntimeError(f"{name} failed ({result.returncode}); see {root / (name + '.log')}")
+
+
+def atomic_json(path, value):
+    # A stopped discovery process must not truncate the last usable checkpoint.
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=path.name + ".", suffix=".tmp", delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(value, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def decode_size(code, window=False):
@@ -189,9 +208,9 @@ for round in range(a.rounds):
     report["trace_count"] = len(entries)
     state["reference"] = report
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in ("image_sha256", "trace_inputs", "ir", "headers", "sources")}, sort_keys=True).encode()).hexdigest()
-    (root / "build-state.json").write_text(json.dumps(state, indent=2) + "\n")
-    (root / (name + ".json")).write_text(json.dumps(report, indent=2) + "\n")
-    (root / "latest.json").write_text(json.dumps(report, indent=2) + "\n")
+    atomic_json(root / "build-state.json", state)
+    atomic_json(root / (name + ".json"), report)
+    atomic_json(root / "latest.json", report)
     print(json.dumps(report), flush=True)
     pc = report.get("missing_pc", 0)
     if report.get("error") != "missing translated block":
