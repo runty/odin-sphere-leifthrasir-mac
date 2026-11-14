@@ -10,6 +10,9 @@ ROSETTA_ADVERTISE_AVX=1 "$work/isa-test"
 xcrun clang -arch x86_64 -O2 -Wall -Wextra -Werror -I"$src/src" \
     "$src/macos/probe-memory.c" "$src/src/runtime_memory.c" "$src/src/runtime_fiber.c" -o "$work/probe-memory"
 "$work/probe-memory"
+xcrun clang -arch x86_64 -O2 -Wall -Wextra -Werror -Wl,-dead_strip -I"$src/src" \
+    "$src/macos/probe-tls.c" "$src/src/runtime_memory.c" -o "$work/probe-tls"
+"$work/probe-tls"
 if [[ $# -ge 2 ]]; then
     vk=$2
     xcrun clang -arch x86_64 -Wall -Wextra -Werror -I"$vk/include" "$src/macos/probe-vulkan.c" \

@@ -9,6 +9,9 @@
 #include <stdatomic.h>
 #include <sched.h>
 #include <pthread.h>
+#ifdef __APPLE__
+#include <sys/mman.h>
+#endif
 
 typedef struct {
     union { GuestCallback plain; void (ABI *with_arg)(void *); } callback;
@@ -45,7 +48,12 @@ static ABI void *guest_tls_get_addr(const uint64_t *index) {
     }
     unsigned char **block=&tls_blocks[index[0]];
     if (!*block) {
+#ifdef __APPLE__
+        /* Returned to guest code, which can pack addresses into 40 bits. */
+        *block=runtime_low_map(tls_modules[index[0]].memsz,PROT_READ|PROT_WRITE);
+#else
         *block=calloc(1,tls_modules[index[0]].memsz);
+#endif
         if (!*block) { fputs("Cannot allocate module TLS\n",stderr); exit(1); }
         memcpy(*block,tls_modules[index[0]].data,tls_modules[index[0]].filesz);
     }
