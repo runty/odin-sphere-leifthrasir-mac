@@ -1,0 +1,28 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2481,3 +2481,24 @@
+ IF_AVX(DEF_ISEL(VSHUFPS_XMMdq_XMMdq_MEMdq_IMMb) = SHUFFLEPS<VV128W, V128, MV128>;)
+ IF_AVX(DEF_ISEL(VSHUFPS_YMMqq_YMMqq_YMMqq_IMMb) = SHUFFLEPS<VV256W, V256, V256>;)
+ IF_AVX(DEF_ISEL(VSHUFPS_YMMqq_YMMqq_MEMqq_IMMb) = SHUFFLEPS<VV256W, V256, MV256>;)
++
++// VPERMILPD immediate chooses raw 64-bit values within each 128-bit lane.
++// Unlike VPERMILPS, each output uses one distinct bit of the immediate.
++namespace {
++template <typename D, typename S>
++DEF_SEM(PERMILPD_IMM, D dst, S src, I8 immediate) {
++  const auto input = UReadV64(src);
++  auto result = UClearV64(UReadV64(dst));
++  const auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i) {
++    const auto index = (i / 2) * 2 + ((mask >> i) & 1);
++    result = UInsertV64(result, i, UExtractV64(input, index));
++  }
++  UWriteV64(dst, result);
++  return memory;
++}
++}
++IF_AVX(DEF_ISEL(VPERMILPD_XMMdq_XMMdq_IMMb) = PERMILPD_IMM<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VPERMILPD_XMMdq_MEMdq_IMMb) = PERMILPD_IMM<VV128W, MV128>;)
++IF_AVX(DEF_ISEL(VPERMILPD_YMMqq_YMMqq_IMMb) = PERMILPD_IMM<VV256W, V256>;)
++IF_AVX(DEF_ISEL(VPERMILPD_YMMqq_MEMqq_IMMb) = PERMILPD_IMM<VV256W, MV256>;)

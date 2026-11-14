@@ -186,3 +186,23 @@ New backend semantics SHA:
 `8bcacf9eed0816c35af34788513b6b4ecb11ddd565b6364a4d894cf1bd710331`.
 Use a NEW backend/corpus and re-lift PC seeds; do not reuse old IR across this
 change. Unit checks do not establish a game frame or mobile execution.
+
+### Immediate packed-double permutation
+
+The next executed gap, `VPERMILPD` at `0x106aad24`, has four immediate
+register/memory XMM/YMM forms in `remill-vpermilpd.patch`. Each output selects
+one of the two raw 64-bit values in its own 128-bit lane, using a separate
+immediate bit. The helper does no FP arithmetic and VEX128 clears upper YMM
+bits. [Intel instruction reference](https://cdrdv2-public.intel.com/671110/325383-sdm-vol-2abcd.pdf).
+
+`ios/cpu/test-vpermilpd.py` checks all 256 control bytes, four encodings plus
+two destructive register-source aliases, 6,144 exact 64-bit output lanes,
+quiet/signaling NaN bits, signed zeros, flags/MXCSR/source preservation and
+upper lanes. Native x86 under Rosetta and arm64 AOT match exactly. Shuffle
+regression (24,576 lanes), all 414 real-routine checks and both mobile fixture
+archives pass. Whole-patch audit rejects unexpected tracked/untracked sources.
+This covers the executed immediate family; register-controlled VPERMILPD forms
+remain explicit backend gaps. New semantics SHA:
+`34c958493fd1e1ae4a4043d033efb08e6e33d6ad034d21386711a3ad903c9c0a`.
+Re-lift all PC seeds in a NEW corpus/backend; never reuse old IR across this
+change. These unit tests do not establish mobile game execution or frames.
