@@ -2,6 +2,27 @@
 
 The reference target is a local offline Mac app running the CUSA05083 US base build under Rosetta. Fork baseline `d2a9d8a253dd17680c5349cae0e1735c67fe2455` is upstream v0.2.3. Keep `main` at the upstream baseline and develop on `codex/macos-port`. The initial host is an M5 Max running macOS 27.2.1. Other upstream profiles need their own verification.
 
+## Current delivery status — 2026-11-13
+
+| Area | Established | Remaining acceptance |
+| --- | --- | --- |
+| Mac loader/runtime | Real 307-import check, module startup, title and battle gameplay | Other profiles/hosts are unqualified |
+| Mac graphics/performance | Vulkan-on-Metal scenes; player-confirmed corrected combat; selected native-1080p busy windows reach median 60 fps | Whole-game pacing and sustained 30-minute session |
+| Mac audio/progress | Player heard clear audio and confirmed progress survived quit/relaunch | Longer interruption/failure and device-change coverage |
+| Mac app | Signed local alpha installed, relative graphics dependencies, protected local state, verified local runtime library; normal app launch logs Metal launcher shown | Automated native UI capture is unavailable; fresh-account/visible click-through remain unclaimed |
+| Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
+| Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
+| Mobile baseline | Clean CPU-only build ran on iPhone; clean 371-trace startup probe installs on both devices | Both currently deny background launch while locked; latest returned iPhone JSON is stale and excluded |
+| Mobile startup/graphics | Explicit checked image/dispatch/host services, native GPU-visible address experiment; Metal device bridge compiles for iPhoneOS | Full eboot startup, complete iOS driver, captured game draw, title/battle frames and offline lifecycle |
+
+The first module-startup hardware result is explicitly a development build:
+244 traces, two zero-return initializers, 397 dispatches, missing logical PC
+274339111, no memory fault and 256 KiB flexible memory. The isolated-backend
+371-trace corpus reaches 513 dispatches on Mac and has a signed device build,
+but its locked-device launch failures are not counted as execution. See
+[iOS runtime instructions](../ios/game/README.md). Continue independent work;
+no unlock or player assistance is required for host engineering.
+
 ## Unattended completion order
 
 The player requested an ongoing goal to finish the Mac port, then the iPhone

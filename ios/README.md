@@ -95,3 +95,11 @@ core. Their lifted symbol namespaces are separate. The build checks matching
 runtime hashes; startup reports identify the exact corpus. Generated code and
 private images stay outside the source tree. Continue in an isolated backend
 cache so another project's rebuild cannot change semantics under discovery.
+
+
+The isolated backend's 371-trace corpus subsequently reaches 513 dispatches
+with both initializers complete and no fault. Signed clean `d5a25db` installs on
+both devices, but both deny even background launch as `Locked`; the older JSON
+retrieved from the iPhone is explicitly marked stale. This does not replace the
+earlier actual hardware result. Its startup corpus is
+`9b905bfe1f6b3d756c955e18e129c22a732dec689f9261ae7f463e0779e1bbb4`.
