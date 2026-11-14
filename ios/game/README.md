@@ -740,3 +740,28 @@ SDK platform. Separately compiled boundary objects pass their SDK platform audit
 at `ios-guest-session-event-stop/`. Compilation is not device execution.
 Physical iPad remains on the earlier 1,059-entry startup app. No later iPhone,
 iPad or mobile gameplay/frame result is inferred from these host checks.
+
+### Shader packet integration and continued CPU discovery
+
+`20b971a` adds the five checked PS/VS/CS packet adapters in the shared native
+frontend. [Native comparisons and limits](../graphics/README.md#checked-shader-packet-writers--2026-11-14).
+Qualified checkpoint `7a226984eb64f244a5428f0a512aac587adebb8aa0936eaa2848f7e980477dae`
+has 1,197 entries, two successful initializers, 17 joined workers, three buffers,
+zero shader-packet calls and no frame; next explicit CPU gap is `0x107d4d50`.
+Strict native replay takes 240.373 ms. The separate boundary ASan normal mode
+again takes a different executable path before child threads start. Mobile SDK
+archives compile; the physical apps are unchanged.
+
+The previous batch was deliberately interrupted at a verified 1,196-entry
+checkpoint to connect the independently tested adapters. All generated header
+hashes and the native binary matched before interruption; the extra completed
+raw lift passed LLVM parsing and was preserved. No cache was deleted.
+
+`66d70af` adds `--stop-file <path>`: creating that file asks discovery to finish
+its current real startup attempt and publish a complete checkpoint, then exit
+before lifting the next target. It does not interrupt a compiler/guest or pause
+the overall porting goal. A three-round request with an existing stop file
+completes exactly one attempt, exits normally, matches every generated header
+and leaves no raw IR outside its checkpoint. Evidence:
+`gnm-shader-packet-qualified/checkpoint-stop-verification.json` (1,198 entries,
+17 joined workers, missing CPU block `0x10688120`, no frame).

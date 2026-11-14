@@ -495,3 +495,36 @@ ungated scene attempt completed too quickly, and an initial file-based observer
 timed out; neither is counted as background acceptance. Both SDK boundary
 archives compile, and the default non-renderer Simulator app still builds. No
 fresh physical iPhone execution or Simulator Metal 4 driver run is claimed.
+
+### Checked shader packet writers — 2026-11-14
+
+`20b971a` connects typed native SetPsShader, UpdatePsShader, SetVsShader,
+UpdateVsShader and SetCsShader adapters in the shared `NativeGpu` path. They
+use aligned local storage and copy only the fixed output footprint (PS 40,
+VS 29, CS 25 dwords), preserving unwritten trailing NOP bytes even when the
+caller advertises a much larger capacity. Register inputs are 12/7/7 dwords.
+Native null/size/register/modifier validation order is preserved without reading
+invalid guest ranges. Null PS registers disable the pixel shader as upstream.
+Read-only register mappings and unaligned separate guest pointers work. Aliases
+with equal relative alignment use one shared scratch canvas, preserving the
+backend's sequential read/write behavior; aliases with incompatible byte
+alignment stop explicitly before changing guest bytes.
+
+The standalone `test-gnm-shader-packets.py` runs 305 checks through the actual
+shared adapter against direct backend exports under ASan and UBSan. It covers
+packet bytes and padding, canaries, size/null/error priority, input/output bounds,
+read-only registers, modifiers and overlapping layouts. It snapshots supporting
+archives before linking, so immutable packet tests can run independently of CPU
+discovery. Only the checked adapter/fixture is instrumented; the supporting HLE
+archive, CPU runtime, renderer, driver and system libraries are uninstrumented.
+Private evidence: `gnm-shader-packet-qualified/{address,undefined}-integrated/`.
+
+At the 1,197-entry checkpoint, the existing 109-check bridge, strict native
+startup/cleanup and ASan boundary lifecycle/input-negative suite pass. Both
+mobile SDK game archives and separately audited boundary archives compile.
+Evidence: `gnm-shader-packet-qualified/{native-gpu,guest-session-address}/` and
+`ios-guest-session-shader-packets/`. The actual guest still has zero calls to
+the shader adapters (`gnm_shader_calls=0`); this qualifies their marshalling,
+not their eventual use by the game. No command is submitted or frame presented.
+Remaining submissions/flip, queue waits and asynchronous mapping lifetimes need
+their own typed checked adapters and lifecycle verification.
