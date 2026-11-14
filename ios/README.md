@@ -103,3 +103,13 @@ both devices, but both deny even background launch as `Locked`; the older JSON
 retrieved from the iPhone is explicitly marked stale. This does not replace the
 earlier actual hardware result. Its startup corpus is
 `9b905bfe1f6b3d756c955e18e129c22a732dec689f9261ae7f463e0779e1bbb4`.
+
+
+The [graphics adapter experiment](graphics/README.md) now builds the full arm64
+iPhoneOS driver and a signed framework probe. Its native arm64 Mac submit/fence/
+readback check passes; no physical-device graphics result is claimed. Simulator
+can test CPU startup with `OSL_PROBE_SDK=iphonesimulator` and a startup library
+built with `ios/game/build-ios.py --sdk iphonesimulator`. Its guest addresses
+are explicitly virtual because ordinary Simulator malloc can exceed the native
+GPU frontend's range. Metal 4 encoder APIs are absent from the Simulator SDK,
+so the actual graphics driver does not have a Simulator result.

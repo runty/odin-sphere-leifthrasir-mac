@@ -23,6 +23,16 @@ but its locked-device launch failures are not counted as execution. See
 [iOS runtime instructions](../ios/game/README.md). Continue independent work;
 no unlock or player assistance is required for host engineering.
 
+Later unattended work reaches a guarded 624-trace corpus and the same next
+module-service gap on arm64 Mac and an isolated iPhone Simulator. Both
+initializers return zero; 414 routine comparisons still pass. The full
+arm64 iPhoneOS graphics driver and signed framework probe build, and its native
+arm64 Mac submit/fence/readback check passes all 64 words. The Simulator SDK
+omits the driver's required Metal 4 protocols; it supplies CPU/lifecycle
+evidence only. [Graphics adapters and current limits](../ios/graphics/README.md).
+Physical mobile rendering and full guest startup remain open.
+
+
 ## Unattended completion order
 
 The player requested an ongoing goal to finish the Mac port, then the iPhone

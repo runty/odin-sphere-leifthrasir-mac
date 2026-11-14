@@ -8,6 +8,7 @@ import subprocess
 from guard_ir import instrument
 
 p = argparse.ArgumentParser(description=__doc__)
+p.add_argument("--sdk", choices=("iphoneos", "iphonesimulator"), default="iphoneos")
 p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
 a = p.parse_args()
@@ -23,10 +24,11 @@ for group, directory in (("sources", repo), ("headers", root), ("ir", root / "tr
     for name, wanted in state[group].items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != wanted:
             p.error("The established startup corpus changed: " + name)
-out = root / "ios"
+out = root / ("simulator" if a.sdk == "iphonesimulator" else "ios")
 out.mkdir(exist_ok=True)
 llvm = Path("/opt/homebrew/opt/llvm/bin")
-sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
+sdk = subprocess.check_output(["xcrun", "--sdk", a.sdk, "--show-sdk-path"], text=True).strip()
+target = "arm64-apple-ios18" + ("-simulator" if a.sdk == "iphonesimulator" else "")
 objects = []
 
 
@@ -43,12 +45,12 @@ for name, raw_key in state["ir"].items():
     obj = out / (Path(name).stem + ".o")
     stamp = obj.with_suffix(".sha256")
     if not obj.exists() or not stamp.exists() or stamp.read_text() != key:
-        run(obj.stem, [llvm / "clang", "-target", "arm64-apple-ios18", "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", obj])
+        run(obj.stem, [llvm / "clang", "-target", target, "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", obj])
         stamp.write_text(key)
     objects.append(obj)
 for name, path in (("runner", source / "runner.cpp"), ("thunks", root / "thunks.cpp")):
     obj = out / (name + ".o")
-    run(name, ["xcrun", "--sdk", "iphoneos", "clang++", "-target", "arm64-apple-ios18", "-isysroot", sdk,
+    run(name, ["xcrun", "--sdk", a.sdk, "clang++", "-target", target, "-isysroot", sdk,
         "-std=c++17", "-O2", "-I" + str(a.remill / "remill/include"), "-I" + str(source.parent / "cpu"),
         "-I" + str(root), "-c", path, "-o", obj])
     objects.append(obj)

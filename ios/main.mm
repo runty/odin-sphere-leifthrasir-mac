@@ -1,9 +1,13 @@
 #import <Metal/Metal.h>
+#import <TargetConditionals.h>
 #import <UIKit/UIKit.h>
 #import <sys/utsname.h>
 #import <unistd.h>
 
 extern "C" const char *osl_mobile_cpu_report();
+#if OSL_GPU_PROBE
+extern "C" NSDictionary *osl_mobile_gpu_report();
+#endif
 #if OSL_GAME_STARTUP
 extern "C" const char *osl_mobile_game_report(const char *);
 #endif
@@ -40,7 +44,11 @@ extern "C" const char *osl_mobile_game_report(const char *);
 #if OSL_GAME_STARTUP
         NSString *image = [[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
         if ([NSFileManager.defaultManager fileExistsAtPath:image]) {
+#if TARGET_OS_SIMULATOR
+            setenv("OSL_GUEST_IDENTITY", "0", 1);
+#else
             setenv("OSL_GUEST_IDENTITY", "1", 1);
+#endif
             const char *startup = osl_mobile_game_report(image.fileSystemRepresentation);
             NSData *startupData = [NSData dataWithBytes:startup length:strlen(startup)];
             game = [NSJSONSerialization JSONObjectWithData:startupData options:0 error:NULL] ?: @{@"game_booted": @NO, @"error": @"invalid startup report"};
@@ -48,18 +56,30 @@ extern "C" const char *osl_mobile_game_report(const char *);
             game = @{@"game_booted": @NO, @"status": @"private prepared image has not been copied into Guest"};
         }
 #endif
+        NSDictionary *graphics = @{@"status": @"GPU probe not built", @"game_frames": @NO};
+#if OSL_GPU_PROBE
+        graphics = osl_mobile_gpu_report();
+#endif
         struct utsname machine; uname(&machine);
         id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
+#if TARGET_OS_SIMULATOR
+        id metal4 = NSNull.null;
+        NSString *metal4_status = @"unavailable in Simulator SDK";
+#else
+        id metal4 = @([gpu supportsFamily:MTLGPUFamilyMetal4]);
+        NSString *metal4_status = @"queried";
+#endif
         NSDictionary *diagnostics = @{
             @"build_id": NSBundle.mainBundle.infoDictionary[@"OSLBuildID"] ?: @"unknown",
             @"stage": @"real-module startup experiment; full game boot pending",
             @"game_booted": @NO, @"cpu": cpu, @"machine": @(machine.machine),
-            @"game_startup": game,
+            @"game_startup": game, @"graphics": graphics,
+            @"gpu_driver_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGPUDriver"] ?: @"none",
             @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
             @"page_size": @(getpagesize()), @"launch_count": @(count),
             @"metal_device": gpu.name ?: @"unavailable", @"bc_texture_compression": @(gpu.supportsBCTextureCompression),
-            @"metal4_gpu_family": @([gpu supportsFamily:MTLGPUFamilyMetal4]),
+            @"metal4_gpu_family": metal4, @"metal4_query_status": metal4_status,
             @"timestamp": @([[NSDate date] timeIntervalSince1970])};
         NSData *json = [NSJSONSerialization dataWithJSONObject:diagnostics options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:NULL];
         BOOL saved = [json writeToFile:[documents stringByAppendingPathComponent:@"diagnostics.json"] options:NSDataWritingAtomic error:NULL];

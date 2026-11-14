@@ -1,0 +1,142 @@
+diff --git a/src/kosmickrisp/vulkan/kk_bo.c b/src/kosmickrisp/vulkan/kk_bo.c
+index 5562b61..1fd9e75 100644
+--- a/src/kosmickrisp/vulkan/kk_bo.c
++++ b/src/kosmickrisp/vulkan/kk_bo.c
+@@ -15,7 +15,21 @@
+ 
+ #if DETECT_OS_APPLE
+ #include <mach/mach_init.h>
++#include <TargetConditionals.h>
++#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+ #include <mach/mach_vm.h>
++typedef mach_vm_address_t kk_vm_address_t;
++#define kk_vm_remap mach_vm_remap
++#define kk_vm_map mach_vm_map
++#define kk_vm_deallocate mach_vm_deallocate
++#else
++#include <mach/vm_map.h>
++typedef vm_address_t kk_vm_address_t;
++_Static_assert(sizeof(kk_vm_address_t) >= sizeof(void *), "VM address must fit a native pointer");
++#define kk_vm_remap vm_remap
++#define kk_vm_map vm_map
++#define kk_vm_deallocate vm_deallocate
++#endif
+ #endif /* DETECT_OS_APPLE */
+ 
+ VkResult
+@@ -100,8 +114,8 @@ VkResult
+ kk_bo_map_placed(struct kk_device *dev, struct kk_bo *bo, void **addr)
+ {
+ #if DETECT_OS_APPLE
+-   mach_vm_address_t src_addr = (mach_vm_address_t)bo->cpu;
+-   mach_vm_address_t dst_addr = (mach_vm_address_t)*addr;
++   kk_vm_address_t src_addr = (kk_vm_address_t)bo->cpu;
++   kk_vm_address_t dst_addr = (kk_vm_address_t)*addr;
+ 
+    int flags = VM_FLAGS_ANYWHERE;
+    if (dst_addr)
+@@ -114,7 +128,7 @@ kk_bo_map_placed(struct kk_device *dev, struct kk_bo *bo, void **addr)
+     * allows us to create a second mapping pointing to that same memory, placed
+     * wherever the caller requests. Note that this is used even without a fixed
+     * address, since we need a unique mapping to support reserved unmap. */
+-   kern_return_t ret = mach_vm_remap(mach_task_self(), &dst_addr, bo->size_B, 0,
++   kern_return_t ret = kk_vm_remap(mach_task_self(), &dst_addr, bo->size_B, 0,
+                                      flags, mach_task_self(), src_addr, false,
+                                      &cur_prot, &max_prot, VM_INHERIT_DEFAULT);
+    if (ret != KERN_SUCCESS)
+@@ -131,10 +145,10 @@ VkResult
+ kk_bo_unmap(struct kk_device *dev, struct kk_bo *bo, void *addr, bool reserved)
+ {
+ #if DETECT_OS_APPLE
+-   mach_vm_address_t unmap_addr = (mach_vm_address_t)addr;
++   kk_vm_address_t unmap_addr = (kk_vm_address_t)addr;
+    if (reserved) {
+       /* Replace with a reserved mapping using mach_vm_map */
+-      kern_return_t ret = mach_vm_map(
++      kern_return_t ret = kk_vm_map(
+          mach_task_self(), &unmap_addr, bo->size_B, 0,
+          VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, MEMORY_OBJECT_NULL, 0, false,
+          VM_PROT_NONE, VM_PROT_READ | VM_PROT_WRITE, VM_INHERIT_DEFAULT);
+@@ -144,7 +158,7 @@ kk_bo_unmap(struct kk_device *dev, struct kk_bo *bo, void *addr, bool reserved)
+    } else {
+       /* According to spec, we can only return a fail code here if the reserve
+        * flag is set, so ignore the result */
+-      mach_vm_deallocate(mach_task_self(), unmap_addr, bo->size_B);
++      kk_vm_deallocate(mach_task_self(), unmap_addr, bo->size_B);
+    }
+ #endif /* DETECT_OS_APPLE */
+ 
+diff --git a/src/vulkan/meson.build b/src/vulkan/meson.build
+index 614a33a..261babc 100644
+--- a/src/vulkan/meson.build
++++ b/src/vulkan/meson.build
+@@ -73,7 +73,7 @@ if with_platform_macos
+   vulkan_wsi_list += '-DVK_USE_PLATFORM_METAL_EXT'
+   vulkan_wsi_deps += dependency(
+     'appleframeworks',
+-    modules : ['QuartzCore', 'Metal']
++    modules : ['QuartzCore', 'Metal', 'CoreGraphics']
+   )
+ endif
+ 
+diff --git a/src/vulkan/wsi/wsi_common_metal.c b/src/vulkan/wsi/wsi_common_metal.c
+index 54542c6..60d2309 100644
+--- a/src/vulkan/wsi/wsi_common_metal.c
++++ b/src/vulkan/wsi/wsi_common_metal.c
+@@ -1,3 +1,4 @@
++#include <TargetConditionals.h>
+ /*
+  * Copyright 2024 Autodesk, Inc.
+  *
+@@ -40,7 +41,9 @@ wsi_metal_surface_get_support(VkIcdSurfaceBase *surface,
+ }
+ 
+ static const VkPresentModeKHR present_modes[] = {
++#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+    VK_PRESENT_MODE_IMMEDIATE_KHR,
++#endif
+    VK_PRESENT_MODE_FIFO_KHR,
+ };
+ 
+diff --git a/src/vulkan/wsi/wsi_common_metal_layer.m b/src/vulkan/wsi/wsi_common_metal_layer.m
+index 6308d70..3e641d4 100644
+--- a/src/vulkan/wsi/wsi_common_metal_layer.m
++++ b/src/vulkan/wsi/wsi_common_metal_layer.m
+@@ -1,3 +1,4 @@
++#include <TargetConditionals.h>
+ /*
+  * Copyright 2024 Autodesk, Inc.
+  *
+@@ -139,7 +140,11 @@ void
+ wsi_metal_layer_set_immediate(const CAMetalLayer *metal_layer,
+                               bool enable_immediate)
+ {
++#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+    metal_layer.displaySyncEnabled = !enable_immediate;
++#else
++   assert(!enable_immediate);
++#endif
+ }
+ 
+ VkResult
+@@ -149,6 +154,10 @@ wsi_metal_layer_configure(const CAMetalLayer *metal_layer,
+    bool enable_opaque, bool enable_immediate, bool framebuffer_only)
+ {
+    @autoreleasepool {
++#if !TARGET_OS_OSX && !TARGET_OS_MACCATALYST
++      if (enable_immediate)
++         return VK_ERROR_FEATURE_NOT_PRESENT;
++#endif
+       MTLPixelFormat metal_format;
+       VkResult result = get_mtl_pixel_format(format, &metal_format);
+       if (result != VK_SUCCESS)
+@@ -170,7 +179,9 @@ wsi_metal_layer_configure(const CAMetalLayer *metal_layer,
+       metal_layer.maximumDrawableCount = image_count;
+       metal_layer.drawableSize = (CGSize){.width = width, .height = height};
+       metal_layer.opaque = enable_opaque;
++#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+       metal_layer.displaySyncEnabled = !enable_immediate;
++#endif
+       metal_layer.pixelFormat = metal_format;
+ 
+       metal_layer.colorspace = cg_color_space;
