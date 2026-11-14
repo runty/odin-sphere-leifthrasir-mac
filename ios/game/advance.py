@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 from guard_ir import instrument
-from service_build import compile_services, inputs as service_inputs
+from service_build import compile_services, inputs as service_inputs, link_options
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
@@ -162,7 +162,7 @@ for round in range(a.rounds):
             thunks += f'extern "C" Memory *sub_{symbol}(State &s,uint64_t pc,Memory *m) {{ return dispatch(s,pc,m); }}\n'
     (root / "thunks.cpp").write_text(thunks)
     run("runner-build", ["xcrun", "clang++", "-arch", "arm64", "-std=c++17", "-O2", "-DOSL_GAME_CLI=1", "-I" + str(a.remill / "remill/include"),
-        "-I" + str(root), "-I" + str(source.parent / "cpu"), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", *service_objects, *objs, "-o", root / "guest-startup"], 120)
+        "-I" + str(root), "-I" + str(source.parent / "cpu"), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", *service_objects, *objs, *link_options(), "-o", root / "guest-startup"], 120)
     state = {"image_sha256": layout["image_sha256"],
              "trace_inputs": identity,
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},

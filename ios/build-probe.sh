@@ -94,6 +94,8 @@ targets:
     dependencies:
       - sdk: UIKit.framework
       - sdk: Metal.framework
+      - sdk: GameController.framework
+      - sdk: CoreHaptics.framework
       - framework: Source/libodin-cpu.a
         embed: false
       - framework: Source/libodin-runtime.a
@@ -121,6 +123,9 @@ $gpu_dependency
         OSLBuildID: '$revision'
         OSLGameCorpus: '$game_corpus'
         OSLGPUDriver: '$gpu_corpus'
+        GCSupportsControllerUserInteraction: true
+        GCSupportedGameControllers:
+          - ProfileName: ExtendedGamepad
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

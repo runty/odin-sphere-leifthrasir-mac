@@ -5,6 +5,7 @@
 #include "trophies/trophy_service.h"
 #include "../services/memory.h"
 #include "../services/user.h"
+#include "../services/pad.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -55,6 +56,7 @@ using AlignedBytes = std::unique_ptr<uint8_t, FreeBytes>;
 struct Session {
     DirectMemory direct_memory;
     Memory memory;
+    MobilePad pad;
     Session() {
         memory.external_pointer = DirectMemory::pointer;
         osl_aot_user_reset();
@@ -78,6 +80,7 @@ struct Session {
     uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
     uint64_t native_memset_calls = 0, native_memset_bytes = 0;
     bool users_initialized = false;
+    bool pad_initialized = false;
     std::unordered_map<uint64_t, ThreadAttr> thread_attributes;
 };
 static thread_local Session *active;
@@ -372,6 +375,42 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         auto output=guestPointer(*m,s.gpr.rsi.qword,s.gpr.rdx.qword,true);
         if (!output) return m;
         return hostReturn(s,m,uint32_t(Users::name(id,reinterpret_cast<char *>(output),s.gpr.rdx.qword)));
+    }
+    if (!std::strcmp(name,"scePadInit")) {
+        const int32_t result=session.pad.initialize();
+        if (!result) session.pad_initialized=true;
+        return hostReturn(s,m,uint32_t(result));
+    }
+    if (!std::strcmp(name,"scePadOpen"))
+        return hostReturn(s,m,uint32_t(session.pad.open(s.gpr.rdi.dword,s.gpr.rsi.dword,s.gpr.rdx.dword)));
+    if (!std::strcmp(name,"scePadReadState") || !std::strcmp(name,"scePadGetControllerInformation")) {
+        const int32_t handle=static_cast<int32_t>(s.gpr.rdi.dword);
+        const int32_t invalid_handle=session.pad.check(handle);
+        if (invalid_handle) return hostReturn(s,m,uint32_t(invalid_handle));
+        const bool info=!std::strcmp(name,"scePadGetControllerInformation");
+        if (!s.gpr.rsi.qword)
+            return hostReturn(s,m,uint32_t(info ? session.pad.info(handle,nullptr) : session.pad.read(handle,nullptr)));
+        auto output=guestPointer(*m,s.gpr.rsi.qword,info ? sizeof(ControllerInfo) : sizeof(PadData),true);
+        if (!output) return m;
+        int32_t result;
+        if (info) {
+            ControllerInfo value{}; result=session.pad.info(handle,&value);
+            if (!result) std::memcpy(output,&value,sizeof(value));
+        } else {
+            PadData value{}; result=session.pad.read(handle,&value);
+            if (!result) std::memcpy(output,&value,sizeof(value));
+        }
+        return hostReturn(s,m,uint32_t(result));
+    }
+    if (!std::strcmp(name,"scePadSetVibration")) {
+        const int32_t handle=static_cast<int32_t>(s.gpr.rdi.dword);
+        const int32_t invalid_handle=session.pad.check(handle);
+        if (invalid_handle) return hostReturn(s,m,uint32_t(invalid_handle));
+        if (!s.gpr.rsi.qword) return hostReturn(s,m,uint32_t(session.pad.vibration(handle,nullptr)));
+        auto input=guestPointer(*m,s.gpr.rsi.qword,2);
+        if (!input) return m;
+        uint8_t motors[2]; std::memcpy(motors,input,2);
+        return hostReturn(s,m,uint32_t(session.pad.vibration(handle,motors)));
     }
     if (!std::strcmp(name, "sceKernelGetDirectMemorySize"))
         return hostReturn(s, m, DirectMemory::capacity());
@@ -691,6 +730,7 @@ static std::string bootstrap(const char *path) {
         << ",\"native_memset_calls\":" << session->native_memset_calls << ",\"native_memset_bytes\":" << session->native_memset_bytes
         << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
         << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
+        << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
@@ -775,6 +815,27 @@ static bool serviceChecks() {
     require(!std::strcmp(reinterpret_cast<char *>(session.stack.data()+0x171),"Odin Test"));
     require(session.stack[0x170]==0x7b && session.stack[0x17b]==0x7b);
     require(call("sceUserServiceTerminate")==0 && !session.users_initialized);
+    require(call("scePadOpen",1,0,0)==0x80920005u);
+    require(call("scePadInit")==0 && session.pad_initialized);
+    require(call("scePadInit")==0);
+    require(call("scePadOpen",1,3,0)==0x80920001u);
+    require(call("scePadOpen",1,0,1)==0x80920001u);
+    require(call("scePadOpen",1,0,0)==1);
+    require(call("scePadOpen",1,0,0)==0x80920004u);
+    require(call("scePadReadState",99,UINT64_MAX)==0x80920003u && session.memory.fault.empty());
+    require(call("scePadReadState",1,0)==0x80920001u);
+    std::fill(session.stack.begin()+0x300,session.stack.begin()+0x3c0,0x7b);
+    require(call("scePadGetControllerInformation",1,0x20000301)==0);
+    ControllerInfo pad_info{}; std::memcpy(&pad_info,session.stack.data()+0x301,sizeof(pad_info));
+    require(pad_info.resolution_x==1920 && pad_info.resolution_y==943);
+    require(session.stack[0x300]==0x7b && session.stack[0x31d]==0x7b);
+    require(call("scePadReadState",1,0x20000331)==0);
+    PadData pad_data{}; std::memcpy(&pad_data,session.stack.data()+0x331,sizeof(pad_data));
+    require(pad_data.timestamp>0 && pad_data.orientation[3]==1);
+    require(session.stack[0x330]==0x7b && session.stack[0x3a9]==0x7b);
+    require(call("scePadSetVibration",1,0)==0x80920001u);
+    session.stack[0x3b1]=session.stack[0x3b2]=0;
+    require(call("scePadSetVibration",1,0x200003b1)==0);
     require(call("sceSysmoduleLoadModule", 0) == 0x805a1000u);
     require(call("sceSysmoduleLoadModule", 7) == 0 && session.memory.fault.empty());
     require(call("sceSysmoduleUnloadModule", 7) == 0);

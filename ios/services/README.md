@@ -89,3 +89,41 @@ short/null name buffers and reset. The AOT service suite now has 104 checks,
 including misaligned ID/list outputs and name-buffer canaries. The rebuilt Mac
 runner still resolves all 307 real imports. Startup reaches 666 traces / 1,640
 dispatches with user initialization complete, then stops at `scePadInit`.
+
+## GameController pad backend
+
+`MobilePad` implements this image's five imported pad APIs: Init, Open,
+GetControllerInformation, ReadState and SetVibration. The Mac SDL producer and
+mobile producer share `src/runtime_pad_types.h`, including the console's 120-byte
+state and 28-byte information layouts. All guest outputs are checked and copied
+through aligned host locals, including deliberately misaligned guest buffers.
+
+The default source enumerates real GameController extended profiles on the main
+queue. Stable slots track disconnect/reconnect and controller replacement,
+logging in additional local players through the shared user service. Buttons,
+sticks, triggers, menu and optional touchpad click map into the console layout;
+dead zones, finite-value clamping, timestamps and neutral disconnected states
+are explicit. No pairing/discovery UI is started. CoreHaptics handles optional
+rumble where the controller offers engines/localities; hardware effects have
+not been verified. The tests never vibrate physical hardware.
+The app declares the ExtendedGamepad profile following Apple's
+[Game Controllers configuration](https://developer.apple.com/documentation/xcode/configuring-game-controllers).
+
+```sh
+python3 ios/services/test-pad.py --output "$NEW_EXTERNAL_FIXTURE"
+```
+
+38 automated checks exercise state/error contracts, slots, reconnect counts,
+neutral releases, analog extremes/NaN/dead zones, touchpad-click representation,
+output canaries and actual framework-created controller snapshots. The first
+fixture incorrectly set a derived D-pad button rather than its axes; using
+GameController's documented directional-pad setter fixed the fixture. Snapshot
+mapping then passes without weakening the expected button mask. This is not a
+hands-on physical controller test. The complete AOT service suite passes 121
+checks; the sparse-memory suite still passes all 96.
+
+Startup now reaches 680 traces / 1,655 dispatches, both initializers returning
+zero, and stops at `sceSaveDataInitialize`. Touch controls, motion sensing,
+foreground input suppression/suspend handling and in-game physical controller
+acceptance remain work before a finished mobile port. The UIKit probe still
+contains no game renderer or touch overlay.

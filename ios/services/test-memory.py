@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1] / 'game'))
-from service_build import compile_services
+from service_build import compile_services, link_options
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--output',type=Path,required=True)
 p.add_argument('--remill',type=Path,required=True)
@@ -21,7 +21,7 @@ exe=a.output/'memory-check'
 with (a.output/'build.log').open('w') as log:
     subprocess.run(['xcrun','clang++','-arch','arm64','-std=c++17','-O2',
                     '-I'+str(a.remill/'remill/include'),str(repo/'ios/services/memory-test.cpp'),
-                    str(repo/'ios/cpu/runtime.cpp'),*map(str,objects),'-o',str(exe)],stdout=log,stderr=subprocess.STDOUT,check=True)
+                    str(repo/'ios/cpu/runtime.cpp'),*map(str,objects),*link_options(),'-o',str(exe)],stdout=log,stderr=subprocess.STDOUT,check=True)
 result=subprocess.run([str(exe)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30)
 (a.output/'results.log').write_text(result.stdout)
 print(result.stdout,end='')

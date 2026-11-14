@@ -191,3 +191,9 @@ reaches **666 traces / 1,640 dispatches** on the host, stopping at `scePadInit`.
 The 104 AOT service checks, 58 standalone user checks (arm64 and Rosetta), copied
 input checks and Mac 307-import regression pass. Both mobile libraries compile;
 the installed clean probes still represent the earlier 664-trace milestone.
+
+The subsequent GameController adapter compiles for iPhoneOS and Simulator,
+passes 38 backend and 121 service checks, and reaches **680 traces / 1,655
+dispatches** on the host. User/pad initialization and five gesture setup calls
+complete; `sceSaveDataInitialize` is the next missing service. No dialog response,
+save initialization or game frame is fabricated to advance beyond it.

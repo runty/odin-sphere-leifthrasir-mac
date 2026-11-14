@@ -6,11 +6,15 @@ import subprocess
 
 def sources(repo):
     return [repo / 'src/trophies' / (name + '.cpp') for name in
-            ('trophy_data', 'trophy_key', 'trophy_pack', 'trophy_service', 'trophy_store', 'trophy_view', 'trp_archive')] + [repo / 'ios/services' / name for name in ('crypto_commoncrypto.cpp', 'memory.cpp', 'memory_shim.c')] + [repo / 'src' / name for name in ('runtime_memory.c', 'runtime_user.c')]
+            ('trophy_data', 'trophy_key', 'trophy_pack', 'trophy_service', 'trophy_store', 'trophy_view', 'trp_archive')] + [repo / 'ios/services' / name for name in ('crypto_commoncrypto.cpp', 'memory.cpp', 'memory_shim.c', 'pad.mm')] + [repo / 'src' / name for name in ('runtime_memory.c', 'runtime_user.c')]
 
 
 def inputs(repo):
-    return sources(repo) + list((repo / 'src/trophies').glob('*.h')) + [repo / name for name in ('launcher/crypto.h', 'src/runtime.h', 'ios/services/memory.h', 'ios/services/user.h', 'ios/game/service_build.py')]
+    return sources(repo) + list((repo / 'src/trophies').glob('*.h')) + [repo / name for name in ('launcher/crypto.h', 'src/runtime.h', 'src/runtime_pad_types.h', 'ios/services/memory.h', 'ios/services/user.h', 'ios/services/pad.h', 'ios/services/pad-apple.h', 'ios/game/service_build.py')]
+
+
+def link_options():
+    return ['-framework', 'Foundation', '-framework', 'GameController', '-framework', 'CoreHaptics']
 
 
 def compile_services(repo, out, target, sdk):
@@ -26,6 +30,7 @@ def compile_services(repo, out, target, sdk):
             is_c = path.suffix == '.c'
             command = ['xcrun', 'clang' if is_c else 'clang++', '-target', target, '-isysroot', sdk, '-std=gnu11' if is_c else '-std=c++17', '-O2', '-DOSL_AOT_CPU=1',
                        '-I' + str(repo / 'src'), '-I' + str(repo / 'launcher'), '-c', str(path), '-o', str(obj)]
+            if path.suffix == '.mm': command.append('-fobjc-arc')
             with obj.with_suffix('.log').open('w') as log:
                 subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
             stamp.write_text(key)
