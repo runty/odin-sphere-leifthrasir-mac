@@ -26,9 +26,10 @@ It reuses verified IR from the unchanged older backend in a separate directory.
 
 Both devices now list clean `1376d6a`, installed after Documents backups.
 iPhone foreground launch is denied while locked, so fresh iPhone execution
-remains unverified. Simulator still has `1db2a41` (414 cases / 1,022 entries /
-VideoOut); updated matching archives compile against both mobile SDKs, awaiting
-Simulator installation. Mobile App0 assets and
+remains unverified. Clean `00c26a1` Simulator launches 17 and 18 pass CPU 414 and native memory
+19, preserve inputs, and reach VideoOut (1,027 entries / 2,562 dispatches,
+8 GiB guest window, zero permanent backing view). This is Simulator evidence,
+not fresh iPhone execution. Mobile App0 assets and
 the actual game GPU frontend are still unconnected. The packaged Mac remains
 on validated `af52e09`; the player-assisted 30-minute session is deferred.
 
@@ -38,8 +39,13 @@ mappings: 1,022 entries / 3,217 dispatches / 31,840 total checkpoints, both
 initializers zero, three 1080p buffers, no memory fault, zero guest frames.
 The later executed VRCPPS gap now has qualified six-form reciprocal semantics
 (1,572,864 output lanes per CPU path, ISA contracts rather than a bit-exact
-processor approximation table). A separate new-backend corpus is rebuilding
-narrower seed coverage; it has not yet regained that full worker/GPU milestone.
+processor approximation table). A fresh full-window re-lift now regains four
+joined workers and three real 1080p buffers at 1,036 entries / 3,169 dispatches.
+It executes past VRCPPS and stops at the next explicit unsupported `VBLENDPS`
+(`0x106aa713`), with no memory fault and zero game frames. Corpus `149b9196`.
+Normal GPU qualification still passes 60 bridge cases and ordered cleanup;
+fixed/identity/corrupt-input checks also pass. The earlier narrow-window cache
+is retained separately, not used to claim this recovered milestone.
 
 The sections below retain earlier checkpoints and their limitations as history.
 The latest worker/clock qualification is described at the end of this file.
