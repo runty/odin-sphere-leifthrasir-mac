@@ -398,9 +398,10 @@ The standalone UIKit renderer check now initializes the complete renderer on the
 physical A20 Pro: real device/swapchain/presenter, native VideoOut open/close,
 30 main-thread polls, explicit shutdown, SDL lease release and restoration of
 the original key window. CPU 414, native memory 19 and GPU readback 64 still pass.
-These engineering candidates use `ef3bed7-dirty`; no guest code or game frame is
-established by this check. Existing normal probe data remains in a separate
-container, and the standalone renderer process is force-stopped only after its
+Clean `4c2cbcf` now passes physical launches 6/7 with distinct process IDs and
+verified previous-process absence; no guest code or game frame is established
+by this check. Existing normal probe data remains in a separate container; both original input
+hashes are preserved, and the standalone renderer process is force-stopped only after its
 passing report, with fresh PID/bundle-path matching and an absence recheck.
 
 The first full-device attempt terminated at a null instruction address. The

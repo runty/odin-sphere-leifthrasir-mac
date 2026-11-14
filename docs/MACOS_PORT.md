@@ -534,3 +534,13 @@ empty-layer path no longer calls it, with required API presence checks retained.
 Appearance-transition warnings remain when restoring the diagnostic view; the
 UI candidates are not gameplay or full lifecycle acceptance. No mobile game
 content/frame exists yet. The normal probe and original saves remain separate.
+
+
+Clean `4c2cbcf` now repeats complete physical renderer initialization/shutdown
+on launches 6/7 (distinct PIDs, prior PID absent), retaining CPU 414, memory 19,
+GPU 64 and native surface checks. Both original normal-probe input hashes survive
+in their separate container. The standalone renderer process is closed with a
+fresh exact bundle-path/PID match and verified absence; no Odin physical test
+remains active after this checkpoint. Latest bootstrap host GPU corpus `584862ba`
+repeats strict 60-case and cleanup qualification, stopping at VBLENDPD. No game
+frame/mobile save acceptance is claimed, and UIKit appearance warnings remain.
