@@ -681,3 +681,31 @@ checks. No new mobile archive/install or frame is inferred from that later host
 checkpoint; physical startup remains on the qualified 1,059-entry corpus.
 The next service needs its actual ABI/capability checked; the desktop's generic
 no-op registration is not evidence of a functioning mobile crash facility.
+
+### Crash-report capability and initial Gnm packet adapters
+
+`bc3c9f0` returns explicit coredump errors without retaining callbacks or reading
+user data. A non-null handler with an otherwise valid stack size receives
+`0x81180004` (crash-thread creation failure); invalid registration parameters,
+unregister and out-of-handler writes retain their respective library errors.
+The ABI/error reference is [shadPS4 at the pinned revision](https://github.com/shadps4-emu/shadPS4/tree/a26cac679b3f95fee5b591689adec9e53b62adfb/src/core/libraries/kernel/coredump).
+The actual guest proceeds past its registration attempt, and the report keeps
+`crash_callback_supported=false`. No crash-report facility is claimed. Fourteen
+additional dispatch/canary/boundary cases bring HLE/core tests to 4,336, passing
+normally and under ASan/TSan with the existing three cleanup fixtures.
+
+`7761749` adds typed adapters for DrawInitDefaultHardwareState200 and
+DispatchInitDefaultHardwareState. They call the actual backend through aligned
+scratch storage, preserve untouched packet padding, copy out checked bytes and
+reject protected/unmapped outputs. Small buffers retain the backend's no-write
+return. Native comparisons cover unaligned guest pointers, huge size values,
+canaries and exact 256-dword packet contents; total GPU bridge checks are 109.
+The boundary/fixture ASan also runs these checks and the three guest lifecycle
+modes plus five input negatives. Renderer/game IR/driver instrumentation limits
+remain explicit. Both SDK boundary archives compile; no new device build/run is
+inferred. These packet writers do not submit GPU commands or establish a frame.
+
+Checkpoint `567743a3224459a4899cdc23376d854aae74cdab571f421de7d90966ea1220dd`
+has 1,113 entries and continues past crash registration to missing CPU block
+`0x106adf60`. The packet adapters are qualified independently; that guest path
+has not called them yet. Further native discovery is extending the executed path.
