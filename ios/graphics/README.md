@@ -213,3 +213,18 @@ fixtures pass address/thread sanitizers; guest IR and GPU driver are not covered
 by that sanitizer claim. Read [current worker qualification](../game/README.md#owned-guest-workers-clocks-and-failure-cleanup)
 for exact artifacts and remaining service/rendering boundaries. This remains
 native Mac engineering evidence, not an iPhone/iPad frame or gameplay result.
+
+### Early-stop discovery versus qualification
+
+`osl-aot-gpu-probe ... --discover` permits a bounded CPU stop before VideoOut
+has been created. Its exit status checks cleanup of any resources that actually
+exist; the real guest error remains in the report, and `discovery_only:true`
+explicitly identifies the mode. `advance.py` uses this while rebuilding a new
+corpus. It is not renderer qualification or game boot success.
+
+The normal mode retains its VideoOut/tracked-mapping requirements.
+`test-aot.py` rejects a discovery-mode cleanup report and still requires three
+real 1080p buffers and the full cleanup contract. An isolated 1,028-entry
+reciprocal-backend early checkpoint was tested both ways: normal exit 1,
+discovery exit 0, identical missing block and no resources/frames, all cleanup
+complete. The same newly built renderer passes all 60 actual bridge cases.

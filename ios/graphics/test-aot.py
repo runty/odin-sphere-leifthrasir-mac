@@ -61,6 +61,7 @@ prefix='OSL_AOT_GPU_RESULT:'
 cleanup=[json.loads(x[len(prefix):]) for x in lines if x.startswith(prefix)]
 assert len(cleanup)==1
 cleanup=cleanup[0];reports['cleanup']=cleanup
+assert cleanup.get('discovery_only') is False, 'Discovery cannot substitute for renderer qualification'
 reference=state['reference']
 checkpoint_keys=('completed_modules','error','missing_pc','missing_service','gpu_service_calls')
 reports['reference_checkpoint_match']=all(guest.get(key)==reference.get(key) for key in checkpoint_keys)

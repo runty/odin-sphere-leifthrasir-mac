@@ -164,7 +164,8 @@ struct NativeGpu {
 int main(int argc,char **argv) {
     if(!pthread_main_np() || (argc!=3 && argc!=4) || !std::filesystem::is_directory(argv[2])) return 2;
     const bool check_bridge=argc==4 && !std::strcmp(argv[3],"--check-bridge");
-    if(argc==4 && !check_bridge)return 2;
+    const bool discovery_only=argc==4 && !std::strcmp(argv[3],"--discover");
+    if(argc==4 && !check_bridge && !discovery_only)return 2;
     // Use the actual prepared image's procparam SDK, matching the working Mac
     // loader; do not substitute a newer SDK's initialization packets.
     uint64_t sdk=0;
@@ -191,13 +192,17 @@ int main(int argc,char **argv) {
         std::printf("OSL_AOT_GPU_GUEST:%s\n",report.c_str());
         const bool unmapped=context.observed_mapping && !oslgpu_guest_range_mapped(context.observed_mapping,1);
         const bool released=osl_aot_memory_allocated()==0 && runtime_eventflag_live_count()==0;
-        checked=context.opened>0 && context.closed==context.opened && context.queues_created==context.queues_deleted && context.mapped_before_reset && unmapped && released;
+        const bool clean=context.closed==context.opened && context.queues_created==context.queues_deleted && released &&
+                         (!context.observed_mapping || (context.mapped_before_reset && unmapped));
+        // Discovery must report real early CPU stops before VideoOut exists.
+        // Normal qualification still requires a VideoOut and tracked mapping.
+        checked=clean && (discovery_only || (context.opened>0 && context.mapped_before_reset && unmapped));
         std::printf("OSL_AOT_GPU_RESULT:{\"opened\":%u,\"closed\":%u,\"mapped_before_reset\":%s,"
                     "\"unmapped_after_reset\":%s,\"guest_resources_released\":%s,\"sdk\":%u,"
                     "\"presented_frames\":%llu,\"queues_created\":%u,\"queues_deleted\":%u,\"events_added\":%u,"
-                    "\"attributes_set\":%u,\"buffers_registered\":%u,\"game_frames\":false}\n",context.opened,context.closed,
+                    "\"attributes_set\":%u,\"buffers_registered\":%u,\"game_frames\":false,\"discovery_only\":%s}\n",context.opened,context.closed,
                     context.mapped_before_reset?"true":"false",unmapped?"true":"false",released?"true":"false",
-                    static_cast<uint32_t>(sdk),(unsigned long long)oslgpu_presented_frames(),context.queues_created,context.queues_deleted,context.events_added,context.attributes_set,context.buffers_registered);
+                    static_cast<uint32_t>(sdk),(unsigned long long)oslgpu_presented_frames(),context.queues_created,context.queues_deleted,context.events_added,context.attributes_set,context.buffers_registered,discovery_only?"true":"false");
         runtime_log_flush();
         SDL_Event quit{}; quit.type=SDL_EVENT_QUIT; SDL_PushEvent(&quit);
     });

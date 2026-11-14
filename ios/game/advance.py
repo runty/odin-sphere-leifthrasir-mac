@@ -247,7 +247,7 @@ for round in range(a.rounds):
                   "loader_sha256":hashlib.sha256(loader.read_bytes()).hexdigest()}
         state.update(runner_mode="native-arm64-gpu",native_gpu=native)
         profile = gpu_build / "aot-profile"; profile.mkdir(exist_ok=True)
-        command = [gpu_build / "bin/osl-aot-gpu-probe",root / "image.bin",profile]
+        command = [gpu_build / "bin/osl-aot-gpu-probe",root / "image.bin",profile,"--discover"]
         prefix = "OSL_AOT_GPU_GUEST:"
     attempt = len(list(root.glob("attempt-*.json")))
     name = "attempt-" + str(attempt).zfill(5)
