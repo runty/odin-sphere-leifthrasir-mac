@@ -156,9 +156,9 @@ re-lift every seeded PC using the changed semantics before further discovery.
 The executed `VBLENDPS` gap at `0x106aa713` is implemented by
 `remill-blendps.patch`: six legacy/AVX, XMM/YMM, register/memory forms select
 32-bit lanes without floating-point arithmetic. `ios/cpu/test-blendps.py`
-checks every immediate, distinct source/destination patterns, NaN/signed-zero
-bits, preserved sources/flags/MXCSR and legacy/VEX upper lanes. All 12,288 output
-lanes match native x86 under Rosetta exactly. Reciprocal, VPERMILPS and the 414
+checks every immediate, six destructive operand-alias cases (including the
+executed destination/second-source overlap), NaN/signed-zero bits, preserved
+sources/flags/MXCSR and legacy/VEX upper lanes. All 24,576 output lanes match native x86 under Rosetta exactly. Reciprocal, VPERMILPS and the 414
 real-routine checks also pass with the new backend.
 
 Use a NEW backend and game corpus after this semantics change. The builder's
