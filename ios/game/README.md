@@ -816,3 +816,35 @@ The 99-check presentation fixture uses two fixed diagnostic buffers; actual game
 use remains unverified. Both SDK renderer/game/boundary archives compile with
 matching layouts and manifests. Source/state/SDK metadata is preserved in
 `ios-game-uikit-next/checkpoint-presentation/`; physical apps/saves are unchanged.
+
+### Faster preparation for executed-path discovery
+
+`4e47e6f` caches small, in-process trace metadata and verifies the actual generated
+guarded file on every hit. Changed raw IR, missing/tampered output and changed
+helper/image modes regenerate through the existing guard transform. Previously
+narrowed Remill-error blocks are reused only by their exact resulting raw hash
+within the same pinned-image/lifter process; x87 remains an explicit unsupported
+gap. No guest instruction, checkpoint or runtime/GPU behavior is removed.
+
+The 18-case invalidation contract passes. A full 1,243-file audit matches the
+legacy unsupported flags, definitions/declarations, guarded hashes and inserted
+checkpoint counts. A six-attempt real native discovery run grows to 1,288
+entries: preparation falls from 30.228 seconds cold to 0.787–1.066 seconds
+warm, with one new miss per attempt and all 21 previously narrowed files reused.
+These are preparation timings, not game FPS or whole-build timings. The final
+trace header and unresolved thunks are byte-identical to the previous algorithm,
+all compiled-object guard stamps match, and all 1,267 prior raw traces remain
+unchanged. The guard-transform source itself is unchanged.
+
+Checkpoint `ebe8af74a0bf70b7cd511736b30d97e5979d40368a7cba221c1ee220190f30be`
+has 1,288 entries. Strict native replay completes both initializers, starts/joins
+17 workers, registers three buffers and releases queues/mappings. It stops at
+`0x106c8380` in 389.626 ms, with seven initialization GPU calls and zero actual
+game Gnm submissions, vblank/flip-wait calls or frames. Bridge 109 and separate
+boundary ASan lifecycle/input-negative checks pass. Both SDK game/boundary
+archives compile; physical apps and saves are unchanged.
+
+Evidence is under `discovery-profile/{cache-analysis-contract,full-analysis-audit,
+final-corpus,native-gpu,guest-session-address}/`, with frozen state/headers/SDK
+metadata in `ios-game-uikit-next/checkpoint-trace-cache/`. Native CPU discovery
+continues toward the first actual game draw.
