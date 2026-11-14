@@ -8,7 +8,8 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from guard_ir import instrument
+import time
+from trace_preparation import TracePreparationCache
 from discovery_targets import missing_targets
 from service_build import compile_services, inputs as service_inputs, link_options
 
@@ -134,7 +135,7 @@ if a.seed_from:
 
 
 repo = source.parents[1]
-source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "discovery_targets.py",
+source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None
 if a.gpu_build:
@@ -167,13 +168,23 @@ def check_sources():
 service_objects = compile_services(repo, objects / "services", "arm64-apple-macos15", sdk)
 check_sources()
 
+preparation = TracePreparationCache(libc_helpers=True,image_sha256=layout['image_sha256'])
+# A successful narrowing is deterministic for this process's pinned image and
+# lifter. Reuse only its exact resulting file hash; x87 remains an explicit gap.
+narrowed_traces=set()
 for round in range(a.rounds):
+    preparation_start=time.perf_counter()
+    previous_hits,previous_misses=preparation.hits,preparation.misses
+    previous_analysis_hits,previous_analysis_misses=preparation.analysis_hits,preparation.analysis_misses
+    narrowed_lifted,narrowed_reused=0,0
     entries = {}
     declarations = set()
     objs = []
     for ir in sorted(cache.glob("*.ll")):
-        if (re.search(r"\b(?:fcmp|fpext|fptrunc|fadd|fsub|fmul|fdiv|load|store|call)\b[^\n]*\bx86_fp80\b", ir.read_text()) or
-                re.search(r"\bcall\b[^\n]*@__remill_error\b", ir.read_text())):
+        raw=ir.read_text()
+        analysis=preparation.analyze(raw)
+        narrowing_key=(ir.name,analysis.raw_sha256)
+        if analysis.extended_precision or (analysis.remill_error and narrowing_key not in narrowed_traces):
             # Keep unexecuted long-double formatting paths out of a broad trace.
             # An actual x87 block remains an explicit backend gap, never a no-op.
             pc = int(ir.stem, 16)
@@ -187,23 +198,32 @@ for round in range(a.rounds):
             if not backup.exists():
                 backup.write_bytes(ir.read_bytes())
             lift(pc, code[:length], ir)
-            if re.search(r"\b(?:fcmp|fpext|fptrunc|fadd|fsub|fmul|fdiv|load|store|call)\b[^\n]*\bx86_fp80\b", ir.read_text()):
+            narrowed_lifted+=1
+            raw=ir.read_text()
+            analysis=preparation.analyze(raw)
+            if analysis.extended_precision:
                 raise RuntimeError("Executed block requires unsupported x87 extended precision at " + hex(pc))
+            narrowed_traces.add((ir.name,analysis.raw_sha256))
+        elif analysis.remill_error:
+            narrowed_reused+=1
         obj = objects / (ir.stem + ".o")
-        guarded, _ = instrument(ir.read_text(), libc_helpers=True, image_sha256=layout['image_sha256'])
         guarded_path = objects / (ir.stem + ".guarded.ll")
-        guarded_path.write_text(guarded)
-        fingerprint = hashlib.sha256(guarded.encode()).hexdigest()
+        prepared=preparation.prepare(raw,guarded_path)
+        fingerprint=prepared.guarded_sha256
         stamp = obj.with_suffix(".sha256")
         if not obj.exists() or not stamp.exists() or stamp.read_text() != fingerprint:
             run("compile-" + ir.stem, [llvm / "clang", "-target", "arm64-apple-macos15", "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", obj])
             stamp.write_text(fingerprint)
         objs.append(obj)
-        for name in re.findall(r"^define ptr @sub_([0-9a-f]+)\(", ir.read_text(), re.M):
+        for name in prepared.definitions:
             if int(name, 16) in entries:
                 raise RuntimeError("Duplicate lifted entry")
             entries[int(name, 16)] = "sub_" + name
-        declarations.update(re.findall(r"^declare ptr @sub_([0-9a-f]+)\(", ir.read_text(), re.M))
+        declarations.update(prepared.declarations)
+    print("TRACE_PREPARATION:"+json.dumps({'ir_files':len(objs),'hits':preparation.hits-previous_hits,
+          'misses':preparation.misses-previous_misses,'analysis_hits':preparation.analysis_hits-previous_analysis_hits,
+          'analysis_misses':preparation.analysis_misses-previous_analysis_misses,'narrowed_lifted':narrowed_lifted,
+          'narrowed_reused':narrowed_reused,'seconds':time.perf_counter()-preparation_start}),flush=True)
     text = "#pragma once\n"
     for symbol in entries.values():
         text += f'extern "C" Memory *{symbol}(State &,uint64_t,Memory *);\n'
