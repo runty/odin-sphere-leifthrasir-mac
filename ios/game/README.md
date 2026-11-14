@@ -672,3 +672,12 @@ finishes teardown after reactivation; it does not resume gameplay. App0 assets
 are now present on iPad with round-trip SHA checks for all 33 selected files,
 excluding one keystone under the key-path rule. iPhone retains the older probe.
 [Full integration scope](../graphics/README.md#uikit-guest-connection--2026-11-14).
+
+Independent same-backend host discovery now reaches 1,112 entries and 17 joined
+game-created workers, stopping at `sceCoredumpRegisterCoredumpHandler` rather than
+a CPU block. Corpus `95784f27fe7daab11d6be795ee828b3d927f2d33395579846af9f52031a8bd22`
+passes native GPU 60/queue-mapping cleanup and headless/ASLR/input rejection
+checks. No new mobile archive/install or frame is inferred from that later host
+checkpoint; physical startup remains on the qualified 1,059-entry corpus.
+The next service needs its actual ABI/capability checked; the desktop's generic
+no-op registration is not evidence of a functioning mobile crash facility.
