@@ -1,7 +1,26 @@
 {
-  "fmt": {"url": "https://github.com/fmtlib/fmt.git", "commit": "40626af88bd7df9a5fb80be7b25ac85b122d6c21"},
-  "xxhash": {"url": "https://github.com/Cyan4973/xxHash.git", "commit": "e626a72bc2321cd320e953a0ccf1584cad60f363"},
-  "zycore": {"url": "https://github.com/zyantific/zycore-c.git", "commit": "0b2432ced0884fd152b471d97ecf0258ff4d859f"},
-  "zydis": {"url": "https://github.com/zyantific/zydis.git", "commit": "a2278f1d254e492f6a6b39f6cb5d1f5d515659dc"},
-  "robin-map": {"url": "https://github.com/Tessil/robin-map.git", "commit": "4ec1bf19c6a96125ea22062f38c2cf5b958e448e"}
+  "fmt": {
+    "url": "https://github.com/fmtlib/fmt.git",
+    "commit": "40626af88bd7df9a5fb80be7b25ac85b122d6c21"
+  },
+  "xxhash": {
+    "url": "https://github.com/Cyan4973/xxHash.git",
+    "commit": "e626a72bc2321cd320e953a0ccf1584cad60f363"
+  },
+  "zycore": {
+    "url": "https://github.com/zyantific/zycore-c.git",
+    "commit": "0b2432ced0884fd152b471d97ecf0258ff4d859f"
+  },
+  "zydis": {
+    "url": "https://github.com/zyantific/zydis.git",
+    "commit": "a2278f1d254e492f6a6b39f6cb5d1f5d515659dc"
+  },
+  "robin-map": {
+    "url": "https://github.com/Tessil/robin-map.git",
+    "commit": "4ec1bf19c6a96125ea22062f38c2cf5b958e448e"
+  },
+  "vma": {
+    "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git",
+    "commit": "009ecd192c1289c7529bff248a16cfe896254816"
+  }
 }
