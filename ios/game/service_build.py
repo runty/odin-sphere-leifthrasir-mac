@@ -6,11 +6,11 @@ import subprocess
 
 def sources(repo):
     return [repo / 'src/trophies' / (name + '.cpp') for name in
-            ('trophy_data', 'trophy_key', 'trophy_pack', 'trophy_service', 'trophy_store', 'trophy_view', 'trp_archive')] + [repo / 'ios/services' / name for name in ('crypto_commoncrypto.cpp', 'memory.cpp', 'memory_shim.c')] + [repo / 'src/runtime_memory.c']
+            ('trophy_data', 'trophy_key', 'trophy_pack', 'trophy_service', 'trophy_store', 'trophy_view', 'trp_archive')] + [repo / 'ios/services' / name for name in ('crypto_commoncrypto.cpp', 'memory.cpp', 'memory_shim.c')] + [repo / 'src' / name for name in ('runtime_memory.c', 'runtime_user.c')]
 
 
 def inputs(repo):
-    return sources(repo) + list((repo / 'src/trophies').glob('*.h')) + [repo / name for name in ('launcher/crypto.h', 'src/runtime.h', 'ios/services/memory.h', 'ios/game/service_build.py')]
+    return sources(repo) + list((repo / 'src/trophies').glob('*.h')) + [repo / name for name in ('launcher/crypto.h', 'src/runtime.h', 'ios/services/memory.h', 'ios/services/user.h', 'ios/game/service_build.py')]
 
 
 def compile_services(repo, out, target, sdk):

@@ -4,6 +4,7 @@
 #include "traces.h"
 #include "trophies/trophy_service.h"
 #include "../services/memory.h"
+#include "../services/user.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -56,6 +57,7 @@ struct Session {
     Memory memory;
     Session() {
         memory.external_pointer = DirectMemory::pointer;
+        osl_aot_user_reset();
     }
     State state{};
     std::vector<uint8_t> image, stack;
@@ -75,6 +77,7 @@ struct Session {
     std::unordered_map<uint64_t, std::unique_ptr<HostMutex>> mutexes;
     uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
     uint64_t native_memset_calls = 0, native_memset_bytes = 0;
+    bool users_initialized = false;
     std::unordered_map<uint64_t, ThreadAttr> thread_attributes;
 };
 static thread_local Session *active;
@@ -337,6 +340,38 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             std::memcpy(&session.error_dialog_code, param + 4, 4);
         }
         session.missing_service = name; stopGuest(*m, "error dialog presenter unavailable", pc); return m;
+    }
+    if (!std::strcmp(name, "sceUserServiceInitialize")) {
+        const int32_t result=Users::initialize(nullptr); // Production service does not consume params.
+        if (!result) session.users_initialized=true;
+        return hostReturn(s,m,uint32_t(result));
+    }
+    if (!std::strcmp(name, "sceUserServiceTerminate")) {
+        const int32_t result=Users::terminate();
+        if (!result) session.users_initialized=false;
+        return hostReturn(s,m,uint32_t(result));
+    }
+    if (!std::strcmp(name, "sceUserServiceGetInitialUser") || !std::strcmp(name, "sceUserServiceGetLoginUserIdList")) {
+        const bool list=!std::strcmp(name,"sceUserServiceGetLoginUserIdList");
+        if (!s.gpr.rdi.qword)
+            return hostReturn(s,m,uint32_t(list ? Users::list(nullptr) : Users::initial(nullptr)));
+        const size_t size=list ? 16 : 4;
+        auto output=guestPointer(*m,s.gpr.rdi.qword,size,true);
+        if (!output) return m;
+        int32_t ids[4]={};
+        const int32_t result=list ? Users::list(ids) : Users::initial(ids);
+        if (!result) std::memcpy(output,ids,size);
+        return hostReturn(s,m,uint32_t(result));
+    }
+    if (!std::strcmp(name, "sceUserServiceGetUserName")) {
+        const int32_t id=static_cast<int32_t>(s.gpr.rdi.dword);
+        if (!runtime_user_player(id) || !s.gpr.rsi.qword)
+            return hostReturn(s,m,uint32_t(Users::name(id,nullptr,s.gpr.rdx.qword)));
+        char dummy=0;
+        if (!s.gpr.rdx.qword) return hostReturn(s,m,uint32_t(Users::name(id,&dummy,0)));
+        auto output=guestPointer(*m,s.gpr.rsi.qword,s.gpr.rdx.qword,true);
+        if (!output) return m;
+        return hostReturn(s,m,uint32_t(Users::name(id,reinterpret_cast<char *>(output),s.gpr.rdx.qword)));
     }
     if (!std::strcmp(name, "sceKernelGetDirectMemorySize"))
         return hostReturn(s, m, DirectMemory::capacity());
@@ -655,6 +690,7 @@ static std::string bootstrap(const char *path) {
         << ",\"trophy_persistence\":false"
         << ",\"native_memset_calls\":" << session->native_memset_calls << ",\"native_memset_bytes\":" << session->native_memset_bytes
         << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
+        << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
@@ -717,6 +753,28 @@ static bool serviceChecks() {
         if (!value) throw std::runtime_error("Service contract check " + std::to_string(checks + 1) + " failed");
         ++checks;
     };
+    setenv("OSL_USER_NAME","Odin Test",1);
+    require(call("sceUserServiceInitialize")==0 && session.users_initialized);
+    require(call("sceUserServiceInitialize")==0);
+    require(call("sceUserServiceGetInitialUser")==0x80960005u);
+    require(call("sceUserServiceGetInitialUser",0x20000151)==0);
+    int32_t user=0;
+    std::memcpy(&user,session.stack.data()+0x151,4);
+    require(user==1);
+    require(call("sceUserServiceGetLoginUserIdList")==0x80960005u);
+    require(call("sceUserServiceGetLoginUserIdList",0x20000155)==0);
+    int32_t users[4]={};
+    std::memcpy(users,session.stack.data()+0x155,16);
+    require(users[0]==1 && users[1]==-1 && users[2]==-1 && users[3]==-1);
+    require(call("sceUserServiceGetUserName",1,0,16)==0x80960005u);
+    require(call("sceUserServiceGetUserName",2,0x20000170,16)==0x80960005u);
+    std::fill(session.stack.begin()+0x170,session.stack.begin()+0x180,0x7b);
+    require(call("sceUserServiceGetUserName",1,0x20000171,0)==0x8096000au);
+    require(call("sceUserServiceGetUserName",1,0x20000171,8)==0x8096000au && session.stack[0x171]==0x7b);
+    require(call("sceUserServiceGetUserName",1,0x20000171,10)==0);
+    require(!std::strcmp(reinterpret_cast<char *>(session.stack.data()+0x171),"Odin Test"));
+    require(session.stack[0x170]==0x7b && session.stack[0x17b]==0x7b);
+    require(call("sceUserServiceTerminate")==0 && !session.users_initialized);
     require(call("sceSysmoduleLoadModule", 0) == 0x805a1000u);
     require(call("sceSysmoduleLoadModule", 7) == 0 && session.memory.fault.empty());
     require(call("sceSysmoduleUnloadModule", 7) == 0);

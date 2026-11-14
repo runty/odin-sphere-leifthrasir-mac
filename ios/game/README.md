@@ -185,3 +185,9 @@ includes the same audited Metal driver/framework and installs on both devices.
 iPhone input copy succeeds but launch is denied Locked. The iPad input transfer
 times out after installation, so launch is skipped and its new inputs are not
 qualified. No fresh physical CPU or GPU execution is inferred from those installs.
+
+The subsequent shared-user adapter reuses the production offline-user code and
+reaches **666 traces / 1,640 dispatches** on the host, stopping at `scePadInit`.
+The 104 AOT service checks, 58 standalone user checks (arm64 and Rosetta), copied
+input checks and Mac 307-import regression pass. Both mobile libraries compile;
+the installed clean probes still represent the earlier 664-trace milestone.

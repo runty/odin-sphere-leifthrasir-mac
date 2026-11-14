@@ -69,3 +69,23 @@ other image may enable this specialization. A host comparison reaches the same
 1,638-dispatch checkpoint with the helper in roughly 0.11 seconds, versus
 3.9 seconds for translated fills; this is startup evidence, not mobile gameplay
 performance. The default one-million-checkpoint/two-second guards remain active.
+
+## Shared offline users
+
+The production user implementation is now in `src/runtime_user.c`, shared by the
+Mac service resolver and the mobile adapter. It retains the same offline player
+IDs, idempotent initialization, user names, up to four logged-in players and
+once-per-player login events. This does not represent a PSN account. The AOT
+startup owner resets user state between isolated sessions while holding its
+service lease; the Mac lifetime is unchanged.
+
+```sh
+python3 ios/services/test-user.py --output "$NEW_EXTERNAL_FIXTURE"
+```
+
+The standalone service passes 58 checks on native arm64 and x86-64 under Rosetta,
+including eight concurrent login workers, no duplicate events, invalid IDs,
+short/null name buffers and reset. The AOT service suite now has 104 checks,
+including misaligned ID/list outputs and name-buffer canaries. The rebuilt Mac
+runner still resolves all 307 real imports. Startup reaches 666 traces / 1,640
+dispatches with user initialization complete, then stops at `scePadInit`.

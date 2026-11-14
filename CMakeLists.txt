@@ -70,6 +70,7 @@ set(OSL_RUNTIME_SOURCES
     src/runtime_session_log.c
     src/runtime_sema.c
     src/runtime_services.c
+    src/runtime_user.c
     src/runtime_thread.c
     src/runtime_time.c)
 # The built-in system fonts are assembled into runtime_font.c (.incbin): rebuild it when a font changes.
