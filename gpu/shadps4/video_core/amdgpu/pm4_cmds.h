@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstring>
 #include "common/assert.h"
 #include "common/bit_field.h"
@@ -732,6 +733,9 @@ struct PM4CmdWaitRegMem {
     }
 };
 
+// PM4 packets occupy a dword stream: the preceding packet can have an odd
+// word count. The address union must not impose eight-byte packet alignment.
+#pragma pack(push, 4)
 struct PM4CmdWriteData {
     PM4Type3Header header;
     union {
@@ -765,6 +769,10 @@ struct PM4CmdWriteData {
         else return static_cast<T>(addr64);
     }
 };
+#pragma pack(pop)
+static_assert(alignof(PM4CmdWriteData) == alignof(u32));
+static_assert(sizeof(PM4CmdWriteData) == 16 && offsetof(PM4CmdWriteData, addr64) == 8 &&
+              offsetof(PM4CmdWriteData, data) == 16);
 
 struct PM4CmdEventWriteEos {
     enum class Command : u32 {
