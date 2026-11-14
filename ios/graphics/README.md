@@ -1,10 +1,12 @@
 # iPhoneOS Vulkan-on-Metal experiment
 
-The full KosmicKrisp driver now compiles as arm64 iPhoneOS, minimum iOS 27.2,
-with only Apple/system runtime dependencies. This is a build/platform-audit
-result; it has not yet executed on a physical device and does not render the
-game. Both reference devices currently deny app launch while locked. Keep the
-working Mac app and its driver unchanged.
+The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with
+only Apple/system runtime dependencies. Fresh clean iPad `1376d6a` launches 12
+and 13 execute actual 64-word Vulkan fill, fence and mapped GPU readback on the
+A20 Pro. CPU 414 and native memory 19 also pass. iPhone has the same signed
+update but foreground launch is denied while locked, so fresh iPhone driver
+execution is unverified. No mobile game draw/presentation is established. Keep
+the working Mac app/driver unchanged.
 
 The source is Mesa `b628375fb1fd99476bfbaaa0532deb6fe3a6870e`, matching the Mac
 KosmicKrisp superbuild. `mesa-performance.patch` retains the SpartanPort
@@ -228,3 +230,25 @@ real 1080p buffers and the full cleanup contract. An isolated 1,028-entry
 reciprocal-backend early checkpoint was tested both ways: normal exit 1,
 discovery exit 0, identical missing block and no resources/frames, all cleanup
 complete. The same newly built renderer passes all 60 actual bridge cases.
+
+
+## Isolated SDL UIKit dependency
+
+`build-sdl.py` builds SDL 3.4.18 from the existing checked archive lock into a
+separate iPhoneOS or Simulator prefix. It audits archive/source hashes, uses the
+actual selected iOS SDK and arm64 target, and checks every archive member's Mach-O platform so a
+Mac arm64 library is not mistaken for an iPhoneOS one. No shared SDK or other
+project's files are modified.
+
+```sh
+python3 ios/graphics/build-sdl.py --root "$WORK/ios-sdl" --sdk iphoneos
+python3 ios/graphics/build-sdl.py --root "$WORK/ios-sdl" --sdk iphonesimulator
+```
+
+The configuration supplies UIKit/Metal views, audio and controller primitives;
+SDL's own GPU/render/OpenGL/Vulkan-loader backends are disabled. The title uses
+its separate Vulkan-on-Metal renderer. A built static library does not create a
+UIKit window or link the full game frontend. Next qualify main-thread UIKit
+window/Metal-layer ownership, a direct bundled ICD route, the remaining iOS
+renderer dependencies and actual VideoOut/Gnm calls. Preserve separate synthetic
+surface/readback and real guest-frame evidence.
