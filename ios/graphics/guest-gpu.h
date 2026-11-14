@@ -6,6 +6,7 @@
 #include "oslgpu.h"
 #include "core/libraries/kernel/equeue.h"
 #include "core/libraries/videoout/buffer.h"
+#include "core/libraries/gnmdriver/gnmdriver_init.h"
 #include "video_core/texture_cache/image_info.h"
 #include <array>
 #include <cstdlib>
@@ -20,12 +21,32 @@ struct NativeGpu {
     bool mapped_before_reset=false;
     std::array<int64_t,64> queues{};
     unsigned queues_created=0,queues_deleted=0,events_added=0,attributes_set=0,buffers_registered=0;
+    uint64_t gnm_init_calls=0,gnm_init_words=0;
     static bool format32(uint64_t value) {
         return value==0x80000000u || value==0x80002200u || value==0x88060000u || value==0x88000000u || value==0x88740000u;
     }
     static bool call(void *opaque,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result) {
         auto &self=*static_cast<NativeGpu *>(opaque);
         using namespace Libraries::VideoOut;
+        if(!std::strcmp(symbol,"sceGnmDrawInitDefaultHardwareState200") ||
+           !std::strcmp(symbol,"sceGnmDispatchInitDefaultHardwareState")) {
+            constexpr size_t words=Libraries::GnmDriver::HwInitPacketSize;
+            std::array<uint32_t,words> packet{};
+            const uint32_t size=static_cast<uint32_t>(args[1]);
+            uint8_t *output=nullptr;
+            if(size>=words) {
+                output=guestPointer(*memory,args[0],sizeof(packet),true);if(!output)return true;
+                // Native packet writers require aligned u32 storage. Preserve
+                // untouched NOP padding and support unaligned guest pointers.
+                std::memcpy(packet.data(),output,sizeof(packet));
+            }
+            auto init=reinterpret_cast<uint32_t (*)(uint32_t *,uint32_t)>(oslgpu_resolve(nid));
+            if(!init){stopGuest(*memory,"native Gnm initialization export is unavailable");return true;}
+            const uint32_t written=init(packet.data(),size);
+            if(written && (written!=words || !output)){stopGuest(*memory,"unexpected native Gnm initialization size");return true;}
+            if(written)std::memcpy(output,packet.data(),sizeof(packet));
+            ++self.gnm_init_calls;self.gnm_init_words+=written;*result=written;return true;
+        }
         if (!std::strcmp(symbol,"sceVideoOutSetBufferAttribute")) {
             auto output=guestPointer(*memory,args[0],sizeof(BufferAttribute),true);if(!output)return true;
             if(stack>UINT64_MAX-8){stopGuest(*memory,"invalid VideoOut stack argument");return true;}

@@ -69,6 +69,27 @@ static unsigned bridge_checks() {
     require(memory.fault=="VideoOut buffer is outside shared GPU mappings" && gpu.buffers_registered==0);
     std::memcpy(bytes.data()+0x81,&address,8);
     require(call("sceVideoOutRegisterBuffers",{uint64_t(gpu.handle),0,base+0x81,1,base+0x41})==0 && gpu.buffers_registered==1);
+    // Compare real backend PM4 output, including unwritten padding, with checked
+    // guest copy-out. No command is submitted or counted as a rendered frame.
+    constexpr size_t init_words=Libraries::GnmDriver::HwInitPacketSize;
+    static_assert(init_words==256);
+    for(const char *name:{"sceGnmDrawInitDefaultHardwareState200","sceGnmDispatchInitDefaultHardwareState"}) {
+        const char *nid=nullptr;for(const auto &entry:imports)if(!std::strcmp(entry.symbol,name)){nid=entry.nid;break;}
+        require(nid!=nullptr);auto native=reinterpret_cast<uint32_t (*)(uint32_t *,uint32_t)>(oslgpu_resolve(nid));require(native!=nullptr);
+        const auto before=bytes;const auto calls=gpu.gnm_init_calls;
+        require(call(name,{UINT64_MAX,init_words-1})==0 && memory.fault.empty() && bytes==before && gpu.gnm_init_calls==calls+1);
+        call(name,{base+0x10000+0x301,init_words});require(!memory.fault.empty() && protected_bytes[0x301]==0x7b && gpu.gnm_init_calls==calls+1);
+        call(name,{base+2044,init_words});require(!memory.fault.empty() && bytes==before && gpu.gnm_init_calls==calls+1);
+        call(name,{UINT64_MAX,init_words});require(!memory.fault.empty() && gpu.gnm_init_calls==calls+1);
+        for(uint32_t size:{uint32_t(init_words),UINT32_MAX}) {
+            std::fill(bytes.begin()+0x300,bytes.begin()+0x702,0x7b);
+            std::array<uint32_t,init_words+2> expected;expected.fill(0x7b7b7b7b);
+            require(native(expected.data()+1,size)==init_words && expected.front()==0x7b7b7b7b && expected.back()==0x7b7b7b7b);
+            require(call(name,{base+0x301,size})==init_words && memory.fault.empty());
+            require(bytes[0x300]==0x7b && bytes[0x701]==0x7b && !std::memcmp(bytes.data()+0x301,expected.data()+1,init_words*4));
+        }
+    }
+    require(gpu.gnm_init_calls==6 && gpu.gnm_init_words==4*init_words);
     NativeGpu::finish(&gpu);owner.reset();cleanup.done=true;
     require(gpu.opened==gpu.closed && gpu.queues_created==gpu.queues_deleted);
     require(gpu.mapped_before_reset && !oslgpu_guest_range_mapped(gpu.observed_mapping,1));

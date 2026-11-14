@@ -48,10 +48,13 @@ def run(label,args,prefix):
  if len(records)!=1:raise RuntimeError('Missing '+prefix)
  return records[0],r.stdout
 reports={}
-for mode in ('normal','pre-stop','live-stop'):
+for mode in ('bridge','normal','pre-stop','live-stop'):
  profile=out/(mode+'-profile');profile.mkdir()
  result,stdout=run(mode,[root/'image.bin',profile,mode],'OSL_GUEST_SESSION:')
  ownership=[json.loads(s.removeprefix('OSL_GUEST_OWNERSHIP:')) for s in stdout.splitlines() if s.startswith('OSL_GUEST_OWNERSHIP:')];assert len(ownership)==1
+ if mode=='bridge':
+  assert result['bridge_checks']>=109 and result['game_frames'] is False
+  reports[mode]={'bridge_checks':result['bridge_checks'],'ownership':ownership[0]};continue
  guest=result['guest'];cleanup=result['cleanup'];assert cleanup['passed'] and cleanup['guest_resources_released']
  assert cleanup['opened']==cleanup['closed'] and cleanup['queues_created']==cleanup['queues_deleted']
  assert guest['fault_address']==0 and guest['workers_started']==guest['workers_finished']

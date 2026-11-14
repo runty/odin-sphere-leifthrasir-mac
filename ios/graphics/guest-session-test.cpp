@@ -2,6 +2,8 @@
 #include "guest-session.h"
 #include "../services/clock.h"
 #include "oslgpu.h"
+#include "guest-gpu.h"
+#include "image-layout.h"
 #include <SDL3/SDL.h>
 #include <atomic>
 #include <chrono>
@@ -17,6 +19,9 @@ extern "C" uint64_t runtime_tsc_frequency(){return MobileClock::frequency;}
 extern "C" uint64_t runtime_tsc_counter(){return MobileClock::tsc();}
 extern "C" void runtime_log_flush(){std::fflush(nullptr);}
 extern "C" [[noreturn]] void runtime_exit_clean(){std::abort();}
+extern "C" uint64_t osl_aot_memory_allocated();
+extern "C" uint64_t runtime_eventflag_live_count();
+#include "bridge-checks.h"
 static unsigned checks=0;
 static void require(bool ok){if(!ok){std::fprintf(stderr,"Guest session check %u failed\n",checks+1);std::_Exit(2);}++checks;}
 static volatile sig_atomic_t chained=0;
@@ -29,7 +34,7 @@ int main(int argc,char **argv){
         std::printf("OSL_GUEST_VALIDATE:{\"checks\":%u,\"accepted\":%s}\n",checks,valid?"true":"false");return 0;
     }
     if(argc!=4)return 3;
-    const std::string mode=argv[3];require(mode=="normal" || mode=="pre-stop" || mode=="live-stop");
+    const std::string mode=argv[3];require(mode=="normal" || mode=="pre-stop" || mode=="live-stop" || mode=="bridge");
     uint32_t sdk=0;require(osl_guest_session_sdk(argv[1],&sdk));
     struct sigaction custom{},old_segv{},old_bus{};custom.sa_handler=previous;sigemptyset(&custom.sa_mask);
     require(!sigaction(SIGSEGV,&custom,&old_segv) && !sigaction(SIGBUS,&custom,&old_bus));
@@ -45,7 +50,11 @@ int main(int argc,char **argv){
     if(mode=="live-stop")require(osl_guest_session_test_gate_after_buffers(guest));
     if(mode=="pre-stop")osl_guest_session_request_stop(guest);
     std::atomic<bool> done{false};std::string report;
-    std::thread worker([&]{report=osl_guest_session_run(guest,argv[1]);done=true;});
+    std::thread worker([&]{
+        if(mode=="bridge")report="{\"bridge_checks\":"+std::to_string(bridge_checks())+",\"game_frames\":false}";
+        else report=osl_guest_session_run(guest,argv[1]);
+        done=true;
+    });
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);bool stopped=false;
     while(!done && std::chrono::steady_clock::now()<deadline){
         require(oslgpu_poll_main_thread()==1);
@@ -57,7 +66,7 @@ int main(int argc,char **argv){
     }
     require(done);worker.join();require(mode!="live-stop" || stopped);
     std::printf("OSL_GUEST_SESSION:%s\n",report.c_str());
-    require(std::strstr(osl_guest_session_run(guest,argv[1]),"Invalid or reused")!=nullptr);
+    if(mode!="bridge")require(std::strstr(osl_guest_session_run(guest,argv[1]),"Invalid or reused")!=nullptr);
     require(oslgpu_shutdown_main_thread()==0 && !SDL_WasInit(SDL_INIT_VIDEO|SDL_INIT_GAMEPAD));
     require(osl_guest_session_faults_end(guest));
     struct sigaction segv{},bus{};require(!sigaction(SIGSEGV,nullptr,&segv) && !sigaction(SIGBUS,nullptr,&bus));
