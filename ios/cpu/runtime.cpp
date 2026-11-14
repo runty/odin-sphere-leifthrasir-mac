@@ -21,7 +21,7 @@ Memory::~Memory() {
         guestAtomics.unlock();
 }
 
-static void resumeFault(Memory &m) {
+void resumeGuestFault(Memory &m) {
     if (m.recovery) {
         if (m.atomic_held) {
             m.atomic_held = false;
@@ -33,7 +33,7 @@ static void resumeFault(Memory &m) {
 void stopGuest(Memory &m, const char *reason, uint64_t pc) {
     m.fault = reason;
     m.missing_pc = pc;
-    resumeFault(m);
+    resumeGuestFault(m);
 }
 extern "C" void __osl_guest_tick(Memory *m, const State *s) {
     if(const char *reason=guestInterruption(*m))stopGuest(*m,reason,s->gpr.rip.qword);
@@ -42,7 +42,7 @@ extern "C" void __osl_guest_tick(Memory *m, const State *s) {
     if ((m->checkpoints & 1023) == 0 && std::chrono::steady_clock::now() > m->deadline)
         stopGuest(*m, "guest execution deadline exceeded", s->gpr.rip.qword);
     if (!m->fault.empty()) {
-        resumeFault(*m);
+        resumeGuestFault(*m);
         std::abort(); // A guarded guest needs an enclosing checkpoint.
     }
 }
@@ -101,7 +101,7 @@ static void transfer(Memory &m, uint64_t address, void *value, size_t size, bool
     guestAtomics.unlock();
     m.recovery = recovery;
     if (!m.fault.empty())
-        resumeFault(m);
+        resumeGuestFault(m);
 }
 #define SCALAR(BITS, TYPE)                                                                         \
     extern "C" TYPE __remill_read_memory_##BITS(Memory *m, uint64_t a) {                           \
@@ -201,6 +201,6 @@ extern "C" Memory *__remill_compare_exchange_memory_32(Memory *m, uint64_t addre
     guestAtomics.unlock();
     m->recovery = recovery;
     if (!m->fault.empty())
-        resumeFault(*m);
+        resumeGuestFault(*m);
     return m;
 }

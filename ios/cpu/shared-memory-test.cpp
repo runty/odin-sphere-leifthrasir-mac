@@ -54,6 +54,15 @@ int main() {
     // A fault must leave neither the transfer/atomic lock nor map lock held.
     mapRegion(*guarded,0x7000,data.data(),8);require(unmapRegion(*guarded,0x7000));
     {GuestMemoryScope host;require(__remill_read_memory_32(&alias,0x4000)==20000);host.unlock();host.lock();}
+    guarded->fault={};guarded->recovery=&checkpoint;
+    if(setjmp(checkpoint)==0) {
+        __remill_atomic_begin(guarded.get());
+        auto recovery=guarded->recovery;guarded->recovery=nullptr;
+        {GuestMemoryScope native;stopGuest(*guarded,"owned host-service fault");}
+        guarded->recovery=recovery;resumeGuestFault(*guarded);std::abort();
+    }
+    guarded->recovery=nullptr;require(!guarded->atomic_held && guarded->fault=="owned host-service fault");
+    std::atomic<bool> available{false};std::thread next_cpu([&]{GuestMemoryScope native;available=true;});next_cpu.join();require(available);
     for(bool cancel:{false,true}) {
         auto memory=std::make_unique<Memory>();std::atomic<bool> request{false},entered{false},stopped{false};
         if(cancel)memory->cancel_requested=&request;else memory->stop_requested=&request;

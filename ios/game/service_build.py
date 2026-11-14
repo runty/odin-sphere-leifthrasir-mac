@@ -10,7 +10,7 @@ def sources(repo):
 
 
 def inputs(repo):
-    return sources(repo) + list((repo / 'src/trophies').glob('*.h')) + [repo / name for name in ('launcher/crypto.h', 'src/runtime.h', 'src/runtime_pad_types.h', 'src/runtime_savedata_types.h', 'src/runtime_file_types.h', 'ios/services/memory.h', 'ios/services/user.h', 'ios/services/pad.h', 'ios/services/pad-apple.h', 'ios/services/storage.h', 'ios/services/guest_storage.h', 'ios/services/offline.h', 'ios/services/eventflag.h', 'ios/services/gpu.h', 'ios/services/system.h', 'ios/services/condition.h', 'ios/services/thread_storage.h', 'ios/game/service_build.py')]
+    return sources(repo) + list((repo / 'src/trophies').glob('*.h')) + [repo / name for name in ('launcher/crypto.h', 'src/runtime.h', 'src/runtime_pad_types.h', 'src/runtime_savedata_types.h', 'src/runtime_file_types.h', 'ios/services/memory.h', 'ios/services/user.h', 'ios/services/pad.h', 'ios/services/pad-apple.h', 'ios/services/storage.h', 'ios/services/guest_storage.h', 'ios/services/offline.h', 'ios/services/eventflag.h', 'ios/services/gpu.h', 'ios/services/system.h', 'ios/services/condition.h', 'ios/services/thread_storage.h', 'ios/services/workers.h', 'ios/services/wait_scope.h', 'ios/services/clock.h', 'ios/services/guest_clock.h', 'ios/game/service_build.py')]
 
 
 def link_options():

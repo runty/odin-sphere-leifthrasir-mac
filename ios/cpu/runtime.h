@@ -58,4 +58,7 @@ public:
 uint8_t *guestPointer(Memory &, uint64_t, size_t, bool writing = false);
 Memory *dispatch(State &, uint64_t, Memory *);
 void stopGuest(Memory &, const char *, uint64_t pc = 0);
+// Resume only after native scopes have unwound; also releases a guest atomic
+// region before returning to the enclosing checkpoint.
+void resumeGuestFault(Memory &);
 extern "C" const char *osl_mobile_cpu_report();

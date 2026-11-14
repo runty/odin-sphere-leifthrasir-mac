@@ -5,6 +5,27 @@ actual libc and Fios2 initializers and then the real eboot entry through signed
 arm64 AOT code. Unsupported instructions, missing blocks and host services stop
 explicitly. No placeholder service reports full-game success.
 
+## Current engineering status — 2026-11-14
+
+The native arm64 Mac AOT/GPU frontend now runs four actual game-created worker
+threads. They have separate register/fault/checkpoint state, owned guest stacks
+and lazy module TLS, and a shared checked mapping table. Worker creation,
+return/exit, join/detach, deferred cancellation requests, yield, bounded sleep,
+priority/affinity bookkeeping and paired mutex/condition/event waits are wired.
+This is a partial title runtime: missing services, callbacks and translated
+blocks still stop explicitly. iPhone/iPad archives compile, while their default
+probe has no full GPU frontend and still stops earlier at VideoOut.
+
+Frozen native checkpoint: 1,022 entries / 3,217 total dispatches, both real
+initializers zero, four workers started/joined, no memory fault and zero guest
+frames. Checkpoints total 31,840 (31,797 parent plus worker contributions).
+Corpus `25594870c06483aaadbd3aef056a4814c3e330121794fa7526d90f7189d29b5e`.
+The next stop is an executed missing block. Both mobile SDKs export this corpus;
+that does not establish physical execution or a playable mobile app.
+
+The sections below retain earlier checkpoints and their limitations as history.
+The latest worker/clock qualification is described at the end of this file.
+
 ## Private build
 
 Keep the original package, prepared images, generated LLVM IR, objects and
@@ -412,3 +433,64 @@ address/input rejection and both mobile SDK archive builds pass. Current native
 GPU-backed corpus `29361ce73a39bb8c162f9412b7400e27bc4e8a0664e1d1c0e60a615e3f8dc606`
 still stops at `scePthreadCreate`, 938 entries / 2,953 dispatches. Old installed
 mobile probes and their earlier CPU fixture hashes remain separate baselines.
+
+
+## Owned guest workers, clocks and failure cleanup
+
+`workers.h` owns real host threads and preserves their CPU/stack/TLS storage
+through join until the frontend drains its GPU. Handles are monotonic, live
+workers are limited to 64 and retained records to 4,096. A session stop prevents
+new dispatch/HLE work, interrupts checked loops and bounded waits, releases
+thread-owned mutexes and joins every worker before GPU/CPU memory teardown.
+The frontend attachment guard also releases ownership during native C++
+exceptions. Cancellation requests are deferred; arbitrary host pthreads are
+never killed asynchronously. Full guest cleanup callbacks, keys/once/rwlocks
+and any remaining thread APIs still need their actual providers when reached.
+
+Host-service scopes serialize shared frontend state and raw guest transfers.
+They release both leases around blocking mutex/condition/event waits, joins,
+sleep and yield, then reacquire them before touching guest outputs. Actual
+concurrent import-dispatch fixtures cover another CPU setting a waited flag,
+releasing a waited mutex/condition and completing a join. Exception fixtures
+cover parent unwind while a child must reacquire its mutex, and child unwind
+while it owns a mutex. Optimized-library and HLE faults now use the common CPU
+fault resumer, releasing an outstanding guest atomic lock before longjmp.
+
+Kernel TSC calls and the renderer share raw monotonic nanosecond ticks and a
+1 GHz frequency. Process counters share a relative monotonic epoch; process
+time uses microseconds. `ClockGettime` follows the native port's clock-ID map,
+while `Gettimeofday` uses actual wall time. Output adapters validate complete
+16-byte spans and use aligned fixed-width values rather than casting guest
+memory to Darwin structures. The clock tests pass 136 cases / 80,000 monotonic
+reads per Mac architecture and on arm64 ASan/TSan.
+
+Executed-target discovery records each worker's logical missing PC/service,
+fault status and checkpoint count. It can lift several genuinely executed
+missing blocks in a round; `test-discovery-targets.py` rejects malformed,
+non-executable and already-known targets in 22 cases. Reports no longer dump
+argument registers. Concurrent scheduling may expose a different first gap, so
+the frozen GPU check validates every joined CPU's executable/import boundary;
+it does not claim canonical path, register or memory equivalence. Headless
+fixed/ASLR startup retains its stricter byte-pinned target-trace check.
+
+Qualification in the private Odin build root:
+
+- `ios-workers-guard-qualified/`: 4,322 real HLE checks and two exception cases.
+- `ios-workers-guard-{address,thread}/`: the same complete C/C++/Objective-C++
+  provider/checked-runtime fixtures pass ASan and TSan. Linked guest IR is
+  explicitly uninstrumented; this is not a full-game sanitizer qualification.
+- `ios-workers-guard-gpu/`: 60 actual GPU bridge cases and a fresh four-worker
+  guest run with three 1080p buffers, balanced queues/port and ordered cleanup.
+- `ios-workers-guard-headless/`: fixed/ASLR and corrupt/truncated-input checks.
+- `ios-workers-fault-owner-{tests,address,thread}/`: 168 worker lifecycle checks,
+  four actual AOT libc routine workers, a real 64-live-worker budget and cleanup.
+- `ios-worker-fault-memory*`: 17 cases, 20,000 CPU/host atomic updates and 2,000
+  concurrent map cycles, including recovery from native-scope atomic faults.
+- `ios-cpu-worker-faults/fixtures/`: all 414 real routine comparisons and matching
+  mobile runtime archives; core hash
+  `ff76064aabf9066e80742ea14471617d2da5bbfac6d39d155b966987c0e3be86`.
+
+`ios/game/test-worker-services.py --root ... --output NEW --remill ...
+--sanitizer address|thread` rebuilds all portable providers against a frozen
+source/IR/object ledger. Stop discovery first. The real assets remain read-only
+on the host only; physical/Simulator installed baselines are independent.

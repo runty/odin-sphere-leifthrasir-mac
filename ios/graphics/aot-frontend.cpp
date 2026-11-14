@@ -1,3 +1,4 @@
+#include "../services/clock.h"
 // Real AOT guest + native arm64 renderer. This bounded integration executable
 // deliberately supports only the VideoOut calls whose marshalling is defined.
 #include "../services/gpu.h"
@@ -33,10 +34,10 @@ static void gpu_fault(int number,siginfo_t *info,void *context) {
     write(STDERR_FILENO,message,sizeof(message)-1);
     _exit(128+number);
 }
-extern "C" uint64_t runtime_process_time_counter() { return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
-extern "C" uint64_t runtime_process_time_us() { return runtime_process_time_counter()/1000; }
-extern "C" uint64_t runtime_tsc_frequency() { return 1000000000; }
-extern "C" uint64_t runtime_tsc_counter() { return runtime_process_time_counter(); }
+extern "C" uint64_t runtime_process_time_counter() { return MobileClock::processCounter(); }
+extern "C" uint64_t runtime_process_time_us() { return MobileClock::processTime(); }
+extern "C" uint64_t runtime_tsc_frequency() { return MobileClock::frequency; }
+extern "C" uint64_t runtime_tsc_counter() { return MobileClock::tsc(); }
 extern "C" void runtime_log_flush() { std::fflush(nullptr); }
 extern "C" [[noreturn]] void runtime_exit_clean() { runtime_log_flush(); std::_Exit(checked ? 0 : 1); }
 

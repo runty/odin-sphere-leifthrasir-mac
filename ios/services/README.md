@@ -226,9 +226,10 @@ active calls. The owner must outlive/join all workers before teardown.
 
 Checked ABI adapters use local aligned handle values, validate complete guest
 spans and never expose native condition pointers. The existing AOT mutex lookup
-supplies the actual paired pthread mutex. Guest dispatch itself is still serial:
-translated worker/TLS setup and concurrent lazy guest-slot initialization need
-the complete worker runtime before those workers can be enabled.
+supplies the actual paired pthread mutex. Guest CPUs now run concurrently in the native engineering frontend. Shared
+HLE state and lazy guest-slot initialization are serialized by frontend leases,
+which are released around native waits and reacquired before output copies.
+The latest runtime qualification is recorded in the startup runbook.
 
 `python3 ios/services/test-condition.py --output "$WORK/ios-condition-tests"
 --remill "$WORK/cpu-backends"` passes 4,156 checks on each Mac CPU, including
@@ -238,3 +239,16 @@ misaligned/canary outputs and host-deadline stops. `--sanitizer address` and
 `--sanitizer thread` pass on arm64. Eight additional actual import-dispatch
 checks bring the AOT service suite to 4,266. These checks do not establish
 translated guest worker execution or mobile gameplay.
+
+
+## Native AOT worker and clock integration
+
+The frontend now connects real game-created host workers to separate checked
+CPU state and owned stack/TLS storage. See the [current worker checkpoint](../game/README.md#current-engineering-status--2026-11-14)
+and [failure/clock qualification](../game/README.md#owned-guest-workers-clocks-and-failure-cleanup).
+Four native game workers run and join before renderer/memory release. Both
+mobile SDKs compile; a complete mobile rendering frontend remains separate.
+The expanded HLE suite passes 4,322 cases plus two parent/child exception-unwind
+cases under normal execution, ASan and TSan. Those sanitizer runs instrument
+all portable provider/runtime C/C++/Objective-C++ sources, with explicitly
+uninstrumented linked guest IR. They do not establish sanitized full gameplay.

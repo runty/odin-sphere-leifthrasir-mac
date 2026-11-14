@@ -1,5 +1,6 @@
 #pragma once
 #include "../cpu/runtime.h"
+#include "wait_scope.h"
 #include <algorithm>
 #include <cstring>
 #include <mutex>
@@ -69,7 +70,7 @@ public:
 };
 
 namespace GuestEvents {
-inline bool call(const char *name,State &s,Memory &m,MobileEventFlags &owner,uint64_t &result) {
+inline bool call(const char *name,State &s,Memory &m,MobileEventFlags &owner,uint64_t &result,GuestWaitScope scope={}) {
     const bool create=!std::strcmp(name,"sceKernelCreateEventFlag"),
         remove=!std::strcmp(name,"sceKernelDeleteEventFlag"),
         set=!std::strcmp(name,"sceKernelSetEventFlag"),clear=!std::strcmp(name,"sceKernelClearEventFlag"),
@@ -124,7 +125,10 @@ inline bool call(const char *name,State &s,Memory &m,MobileEventFlags &owner,uin
         uint32_t bounded=static_cast<uint32_t>(std::min<int64_t>(UINT32_MAX,std::max<int64_t>(1,remaining)));
         if (timeout_output) bounded=std::min(bounded,requested);
         const uint32_t cap=bounded;
+        scope.before();
         result=owner.wait(first,second,s.gpr.rdx.dword,output ? &observed : nullptr,&bounded);
+        scope.after();
+        if(const char *reason=guestInterruption(m)){stopGuest(m,reason);return true;}
         if (result==MobileEventFlags::timed_out && (!timeout_output || cap<requested)) {
             // The host guard expired, not the guest's requested timeout. Stop
             // outside native locks/scopes rather than fabricate a guest return.
@@ -133,10 +137,11 @@ inline bool call(const char *name,State &s,Memory &m,MobileEventFlags &owner,uin
         if (timeout_output) {
             const uint32_t spent=cap-bounded;
             requested-=std::min(requested,spent);
+            timeout_output=guestPointer(m,s.gpr.r8.qword,4,true);if(!timeout_output)return true;
             std::memcpy(timeout_output,&requested,4);
         }
     }
-    if (output) std::memcpy(output,&observed,8);
+    if (output) {output=guestPointer(m,s.gpr.rcx.qword,8,true);if(!output)return true;std::memcpy(output,&observed,8);}
     return true;
 }
 } // namespace GuestEvents

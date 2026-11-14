@@ -1,5 +1,6 @@
 #pragma once
 #include "../cpu/runtime.h"
+#include "wait_scope.h"
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -49,9 +50,9 @@ public:
         auto object=find(id);if(!object)return EINVAL;
         return all ? pthread_cond_broadcast(&object->native) : pthread_cond_signal(&object->native);
     }
-    struct WaitResult { int error; bool host_deadline; };
+    struct WaitResult { int error; bool host_deadline; const char *interrupted=nullptr; };
     WaitResult wait(uint64_t id,pthread_mutex_t *mutex,bool timed,uint32_t usec,
-                    std::chrono::steady_clock::time_point deadline) {
+                    std::chrono::steady_clock::time_point deadline,const Memory *control=nullptr) {
         if(!mutex)return {EINVAL,false};
         std::shared_ptr<Condition> object;
         {
@@ -66,9 +67,10 @@ public:
         using Clock=std::chrono::steady_clock;
         const auto requested=timed ? Clock::now()+std::chrono::microseconds(usec) : Clock::time_point::max();
         for(;;) {
+            if(control)if(const char *reason=guestInterruption(*control))return {0,false,reason};
             const auto now=Clock::now();
             if(now>=deadline)return {0,true};
-            const auto end=std::min(requested,deadline);
+            const auto end=std::min(std::min(requested,deadline),now+std::chrono::milliseconds(5));
             const auto ns=end>now ? std::chrono::duration_cast<std::chrono::nanoseconds>(end-now).count() : 0;
             timespec interval{time_t(ns/1000000000),long(ns%1000000000)};
 #ifdef __APPLE__
@@ -97,7 +99,7 @@ inline bool error(Memory &memory,int native,uint64_t &result) {
     result=code ? 0x80020000u|code : 0;return true;
 }
 template<class MutexLookup>
-bool call(const char *name,State &state,Memory &memory,MobileConditions &owner,MutexLookup mutex_lookup,uint64_t &result) {
+bool call(const char *name,State &state,Memory &memory,MobileConditions &owner,MutexLookup mutex_lookup,uint64_t &result,GuestWaitScope scope={}) {
     const bool init=!std::strcmp(name,"scePthreadCondInit"),remove=!std::strcmp(name,"scePthreadCondDestroy"),
         signal=!std::strcmp(name,"scePthreadCondSignal"),broadcast=!std::strcmp(name,"scePthreadCondBroadcast"),
         wait=!std::strcmp(name,"scePthreadCondWait"),timed=!std::strcmp(name,"scePthreadCondTimedwait");
@@ -139,8 +141,11 @@ bool call(const char *name,State &state,Memory &memory,MobileConditions &owner,M
         std::memcpy(output,&id,8);
     }
     if(signal || broadcast){error(memory,owner.notify(id,broadcast),result);return true;}
-    const auto outcome=owner.wait(id,mutex,timed,state.gpr.rdx.dword,memory.deadline);
-    if(outcome.host_deadline)stopGuest(memory,"condition wait exceeded host execution deadline");
+    scope.before();
+    const auto outcome=owner.wait(id,mutex,timed,state.gpr.rdx.dword,memory.deadline,&memory);
+    scope.after();
+    if(outcome.interrupted)stopGuest(memory,outcome.interrupted);
+    else if(outcome.host_deadline)stopGuest(memory,"condition wait exceeded host execution deadline");
     else error(memory,outcome.error,result);
     return true;
 }

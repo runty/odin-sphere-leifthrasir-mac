@@ -9,6 +9,7 @@ import re
 import subprocess
 import tempfile
 from guard_ir import instrument
+from discovery_targets import missing_targets
 from service_build import compile_services, inputs as service_inputs, link_options
 
 p = argparse.ArgumentParser(description=__doc__)
@@ -132,7 +133,7 @@ if a.seed_from:
 
 
 repo = source.parents[1]
-source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",
+source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "discovery_targets.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None
 if a.gpu_build:
@@ -270,15 +271,10 @@ for round in range(a.rounds):
     atomic_json(root / (name + ".json"), report)
     atomic_json(root / "latest.json", report)
     print(json.dumps(report), flush=True)
-    pc = report.get("missing_pc", 0)
-    if report.get("error") != "missing translated block":
-        break
-    offset = pc - layout["base"]
-    segment = next((s for s in layout["segments"] if s[2] & 1 and s[0] <= offset < s[0] + s[1]), None)
-    if segment is None:
-        raise RuntimeError("Requested trace is outside executable guest memory")
-    if pc in entries:
-        raise RuntimeError("A known trace was not dispatched")
-    length = min(a.window_bytes, segment[0] + segment[1] - offset)
-    code = image[offset:offset + length]
-    lift(pc, code, cache / (hex(pc) + ".ll"))
+    pending=missing_targets(report,layout["base"],layout["segments"],entries)
+    if not pending:break
+    for pc in pending:
+        offset=pc-layout["base"]
+        segment=next(s for s in layout["segments"] if s[2]&1 and s[0]<=offset<s[0]+s[1])
+        length=min(a.window_bytes,segment[0]+segment[1]-offset)
+        lift(pc,image[offset:offset+length],cache/(hex(pc)+".ll"))

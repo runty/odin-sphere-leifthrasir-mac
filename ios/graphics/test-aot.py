@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import sys
 from pathlib import Path
 import subprocess
 
@@ -60,11 +62,32 @@ cleanup=[json.loads(x[len(prefix):]) for x in lines if x.startswith(prefix)]
 assert len(cleanup)==1
 cleanup=cleanup[0];reports['cleanup']=cleanup
 reference=state['reference']
-for key in ('completed_modules','error','missing_pc','missing_service','gpu_service_calls'):
-    assert guest[key]==reference[key],key
+checkpoint_keys=('completed_modules','error','missing_pc','missing_service','gpu_service_calls')
+reports['reference_checkpoint_match']=all(guest.get(key)==reference.get(key) for key in checkpoint_keys)
+parallel=reference.get('workers_started',0)>0
+if not parallel:
+    for key in checkpoint_keys:assert guest[key]==reference[key],key
+else:
+    # Real scheduling may expose a different CPU's first missing block. Check
+    # every stopped CPU against the pinned code/import boundaries; do not claim
+    # canonical path or register/memory equivalence across concurrent runs.
+    sys.path.insert(0,str(repo/'ios/game'))
+    from discovery_targets import missing_targets
+    layout=json.loads((root/'image.json').read_text())
+    known={int(value) for value in re.findall(r'\{([0-9]+),&sub_[0-9a-f]+\}',(root/'traces.h').read_text())}
+    pending=missing_targets(guest,layout['base'],layout['segments'],known)
+    symbols={item['symbol'] for item in layout['imports']}
+    workers=guest['worker_reports']
+    assert 1<=guest['workers_started']<=4096 and guest['workers_started']==guest['workers_finished']==len(workers)
+    for cpu in [guest,*workers]:
+        assert cpu['fault_address']==0
+        assert cpu['error'] in ('missing translated block','missing host service','guest execution interrupted','')
+        if cpu['error']=='missing host service':assert cpu['missing_service'] in symbols
+    assert pending or any(cpu['error']=='missing host service' for cpu in [guest,*workers])
+    reports['concurrent_stop_validation']='all CPUs joined; explicit executable/import gaps; no canonical-path equivalence claim'
 assert guest['completed_modules']==2 and guest['fault_address']==0 and guest['gpu_adapter_enabled']
-assert cleanup['opened']==cleanup['closed']==1 and cleanup['queues_created']==cleanup['queues_deleted']==2
-assert cleanup['events_added']==2 and cleanup['attributes_set']==1 and cleanup['buffers_registered']==3
+assert cleanup['opened']==cleanup['closed']==1 and cleanup['queues_created']==cleanup['queues_deleted']>=2
+assert cleanup['events_added']>=2 and cleanup['attributes_set']>=1 and cleanup['buffers_registered']>=3
 assert cleanup['mapped_before_reset'] and cleanup['unmapped_after_reset'] and cleanup['guest_resources_released']
 assert cleanup['game_frames'] is False and cleanup['presented_frames']==0
 reports.update(corpus_sha256=state['corpus_sha256'],platform='native arm64 macOS',physical_device=False,

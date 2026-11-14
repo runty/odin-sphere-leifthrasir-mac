@@ -202,3 +202,14 @@ recorded and the next missing service is `scePthreadCondInit`. Corpus:
 `56494c9841212760f7f43bd409fffa98c952d0d11daf6b06e40b51e54250941e`.
 The repeatable bridge and guest checks pass in `ios-aot-gpu-frozen-checks/`.
 This remains an initialization checkpoint with zero guest frames.
+
+
+The later native AOT integration now starts and joins four actual guest workers.
+Its 1,022-entry corpus passes a frozen GPU repeat with zero guest frames; all
+workers finish before VideoOut/event deletion and shared direct-memory reset.
+Guest/GPU TSC ticks now come from one raw-nanosecond provider, with matching
+1 GHz frequency and a shared relative process epoch. CPU/provider failure
+fixtures pass address/thread sanitizers; guest IR and GPU driver are not covered
+by that sanitizer claim. Read [current worker qualification](../game/README.md#owned-guest-workers-clocks-and-failure-cleanup)
+for exact artifacts and remaining service/rendering boundaries. This remains
+native Mac engineering evidence, not an iPhone/iPad frame or gameplay result.

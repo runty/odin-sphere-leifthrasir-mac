@@ -13,8 +13,11 @@
 #include "../services/system.h"
 #include "../services/condition.h"
 #include "../services/thread_storage.h"
+#include "../services/workers.h"
+#include "../services/guest_clock.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
+#include <exception>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -53,15 +56,15 @@ struct HostMutex {
             pthread_mutex_destroy(&mutex);
     }
 };
-struct ThreadAttr {
-    uint64_t stack = 1024 * 1024, stack_address = 0, affinity = 0x7f;
-    int priority = 700, detached = 0, policy = 1, inherit = 4;
-};
+using ThreadAttr=GuestThreadAttributes;
 
 struct FreeBytes { void operator()(uint8_t *p) const { std::free(p); } };
 using AlignedBytes = std::unique_ptr<uint8_t, FreeBytes>;
 
+struct Session;
+static void releaseThreadMutexes(Session &,uint64_t);
 struct Session {
+    std::recursive_mutex services;
     DirectMemory direct_memory;
     Memory memory;
     MobilePad pad;
@@ -76,6 +79,7 @@ struct Session {
     unsigned gpu_service_calls=0;
     explicit Session(const MobileGpuServices *renderer=nullptr) : gpu(renderer) {
         memory.external_pointer = DirectMemory::pointer;
+        memory.stop_requested = &stopping;
         osl_aot_user_reset();
 #ifdef OSL_GAME_CLI
         if (const char *path=std::getenv("OSL_STARTUP_DISPATCH_TRACE")) {
@@ -85,6 +89,9 @@ struct Session {
 #endif
     }
     ~Session() {
+        stopping=true;
+        releaseThreadMutexes(*this,0x40000000);
+        if(workers)workers->stopAndJoin();
         if (gpu) gpu->finish(gpu->context);
         direct_memory.reset();
     }
@@ -94,27 +101,64 @@ struct Session {
     std::vector<AlignedBytes> gpu_allocations;
     ModuleTlsTemplates tls_templates;
     std::unique_ptr<ThreadStorage> primary_storage;
+    std::atomic<bool> stopping{false};
+    std::unique_ptr<MobileWorkers> workers;
     std::map<uint16_t, unsigned> compatibility_modules;
     unsigned gesture_setup_calls = 0;
     bool save_dialog_initialized = false, common_dialog_initialized = false, live_streaming_initialized = false, error_dialog_initialized = false;
     int32_t error_dialog_code = 0;
     osl::trophies::TrophyService trophies;
     const char *stage = "prepare", *missing_service = "";
-    unsigned completed_modules = 0, calls = 0;
+    unsigned completed_modules = 0;
+    std::atomic<unsigned> calls{0};
     uint64_t heap_api = 0, next_allocation = 0x30000000;
     uint64_t image_address = image_base, stack_address = 0x20000000;
     bool identity = false;
     std::unordered_map<uint64_t, int> mutex_attributes;
-    std::unordered_map<uint64_t, std::unique_ptr<HostMutex>> mutexes;
+    std::unordered_map<uint64_t, std::shared_ptr<HostMutex>> mutexes;
+    std::unordered_map<uint64_t,std::unordered_map<uint64_t,std::pair<std::shared_ptr<HostMutex>,unsigned>>> held_mutexes;
     MobileConditions conditions;
     uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
-    uint64_t native_memset_calls = 0, native_memset_bytes = 0;
+    std::atomic<uint64_t> native_memset_calls{0},native_memset_bytes{0};
     bool users_initialized = false;
     bool pad_initialized = false;
     bool saves_initialized = false;
+    ThreadAttr main_attributes;
     std::unordered_map<uint64_t, ThreadAttr> thread_attributes;
 };
 static thread_local Session *active;
+static thread_local MobileWorkers::Worker *active_worker;
+static Memory *gameDispatch(State &,uint64_t,Memory *);
+static void runWorker(Session &,MobileWorkers::Worker &);
+static uint64_t currentThread(){return active_worker ? active_worker->id : 0x40000000;}
+static const char *&missingService(Session &s){return active_worker ? active_worker->missing_service : s.missing_service;}
+struct ServiceScope {
+    std::unique_lock<std::recursive_mutex> state;
+    GuestMemoryScope memory;
+    std::shared_ptr<HostMutex> retained_mutex;
+    explicit ServiceScope(Session &session):state(session.services){}
+    void release(){memory.unlock();state.unlock();}
+    void acquire(){state.lock();memory.lock();}
+    GuestWaitScope wait(){return {this,[](void *p){static_cast<ServiceScope *>(p)->release();},[](void *p){static_cast<ServiceScope *>(p)->acquire();}};}
+};
+static void releaseThreadMutexes(Session &session,uint64_t id) {
+    ServiceScope scope(session);auto found=session.held_mutexes.find(id);if(found==session.held_mutexes.end())return;
+    for(auto &entry:found->second)while(entry.second.second){if(pthread_mutex_unlock(&entry.second.first->mutex))break;--entry.second.second;}
+    session.held_mutexes.erase(found);
+}
+
+
+
+struct WorkerAttachment {
+    Session &session;MobileWorkers::Worker &worker;int exceptions=std::uncaught_exceptions();
+    WorkerAttachment(Session &owner,MobileWorkers::Worker &cpu):session(owner),worker(cpu){active=&session;active_worker=&worker;}
+    ~WorkerAttachment() {
+        if(std::uncaught_exceptions()>exceptions)session.stopping=true;
+        worker.memory.recovery=nullptr;worker.memory.cancel_requested=nullptr;
+        if(worker.memory.atomic_held)__remill_atomic_end(&worker.memory);
+        releaseThreadMutexes(session,worker.id);active_worker=nullptr;active=nullptr;
+    }
+};
 
 static uint64_t load64(Memory &m, uint64_t address) {
     uint64_t value = 0;
@@ -128,7 +172,7 @@ static void store64(Memory &m, uint64_t address, uint64_t value) {
 }
 static uint64_t allocate(Session &s, uint64_t size, bool gpu_visible = false) {
     if (!size || size > 128 * 1024 * 1024) {
-        stopGuest(s.memory, "unsupported allocation size");
+        stopGuest(active_worker ? active_worker->memory : s.memory, "unsupported allocation size");
         return 0;
     }
     std::unique_ptr<std::vector<uint8_t>> bytes;
@@ -152,15 +196,27 @@ static uint64_t allocate(Session &s, uint64_t size, bool gpu_visible = false) {
     else
         s.next_allocation += (size + 16383) & ~uint64_t(16383);
     if (address >= (uint64_t(1) << 40) || size > (uint64_t(1) << 40) - address) {
-        stopGuest(s.memory, "host allocation exceeds guest GPU address range");
+        stopGuest(active_worker ? active_worker->memory : s.memory, "host allocation exceeds guest GPU address range");
         return 0;
     }
-    mapRegion(s.memory, address, data, size);
     if (aligned)
         s.gpu_allocations.push_back(std::move(aligned));
     else
         s.owned.push_back(std::move(bytes));
+    mapRegion(s.memory,address,data,size);
     return address;
+}
+static int initializeMutex(Session &session,Memory &memory,uint64_t slot,int type) {
+    auto output=guestPointer(memory,slot,8,true);if(!output)return EINVAL;
+    if(session.mutexes.size()>=4096)return ENOMEM;
+    auto mutex=std::make_shared<HostMutex>();pthread_mutexattr_t attributes;
+    int error=pthread_mutexattr_init(&attributes);if(error)return error;
+    error=pthread_mutexattr_settype(&attributes,type==2 ? PTHREAD_MUTEX_RECURSIVE : type==3 ? PTHREAD_MUTEX_NORMAL : PTHREAD_MUTEX_ERRORCHECK);
+    if(!error)error=pthread_mutex_init(&mutex->mutex,&attributes);
+    pthread_mutexattr_destroy(&attributes);if(error)return error;
+    mutex->initialized=true;
+    const uint64_t address=allocate(session,256);if(!memory.fault.empty())return ENOMEM;
+    session.mutexes.emplace(address,std::move(mutex));std::memcpy(output,&address,8);return 0;
 }
 static uint64_t orbisError(int e) { return e ? uint32_t(0x80020000u | unsigned(e)) : 0; }
 static Memory *hostReturn(State &s, Memory *m, uint64_t value) {
@@ -170,16 +226,16 @@ static Memory *hostReturn(State &s, Memory *m, uint64_t value) {
     return m;
 }
 extern "C" Memory *__osl_libc_memset(State &s, uint64_t pc, Memory *m) {
-    const uint64_t size=s.gpr.rdx.qword, destination=s.gpr.rdi.qword;
-    if (size>DirectMemory::capacity()) {
-        stopGuest(*m,"libc memset exceeds direct pool capacity",pc); return m;
+    const uint64_t size=s.gpr.rdx.qword,destination=s.gpr.rdi.qword;
+    auto recovery=m->recovery;m->recovery=nullptr;
+    {
+        GuestMemoryScope scope;
+        if(size>DirectMemory::capacity())stopGuest(*m,"libc memset exceeds direct pool capacity",pc);
+        else if(size){if(auto bytes=guestPointer(*m,destination,size,true))std::memset(bytes,static_cast<uint8_t>(s.gpr.rsi.qword),size);}
+        if(m->fault.empty() && active){++active->native_memset_calls;active->native_memset_bytes+=size;}
     }
-    if (size) {
-        auto bytes=guestPointer(*m,destination,size,true);
-        if (!bytes) return m;
-        std::memset(bytes,static_cast<uint8_t>(s.gpr.rsi.qword),size);
-    }
-    if (active) { ++active->native_memset_calls; active->native_memset_bytes+=size; }
+    m->recovery=recovery;
+    if(!m->fault.empty()){resumeGuestFault(*m);return m;}
     return hostReturn(s,m,destination);
 }
 static bool gestureSetupFunction(const char *name) {
@@ -214,20 +270,28 @@ static bool errorDialogFunction(const char *name) {
 }
 static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
+    ServiceScope scope(session);
     const auto &import = imports[(pc - hle_base) / 0x1000];
     const char *name = import.symbol;
+    uint64_t clock_result=0;
+    if(GuestClock::call(name,s,*m,clock_result))return m->fault.empty() ? hostReturn(s,m,clock_result) : m;
     uint64_t system_result=0;
     if (GuestSystem::call(name,s,*m,system_result))
         return m->fault.empty() ? hostReturn(s,m,system_result) : m;
     uint64_t tls_result=0;
-    if (session.primary_storage && GuestTls::call(name,s,*m,*session.primary_storage,tls_result))
+    if (auto *tls=active_worker ? active_worker->storage.get() : session.primary_storage.get(); tls && GuestTls::call(name,s,*m,*tls,tls_result))
         return m->fault.empty() ? hostReturn(s,m,tls_result) : m;
+    const bool condition_wait=!std::strcmp(name,"scePthreadCondWait") || !std::strcmp(name,"scePthreadCondTimedwait");
+    if(condition_wait && active_worker)m->cancel_requested=&active_worker->cancel_pending;
     uint64_t condition_result=0;
     if (GuestConditions::call(name,s,*m,session.conditions,[&](uint64_t id) -> pthread_mutex_t * {
             const auto found=session.mutexes.find(id);
-            return found==session.mutexes.end() ? nullptr : &found->second->mutex;
-        },condition_result))
+            if(found==session.mutexes.end())return nullptr;
+            scope.retained_mutex=found->second;return &found->second->mutex;
+        },condition_result,scope.wait())) {
+        m->cancel_requested=nullptr;
         return m->fault.empty() ? hostReturn(s,m,condition_result) : m;
+    }
     if (session.gpu) {
         const uint64_t args[]={s.gpr.rdi.qword,s.gpr.rsi.qword,s.gpr.rdx.qword,
                                s.gpr.rcx.qword,s.gpr.r8.qword,s.gpr.r9.qword};
@@ -286,7 +350,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         session.offline.net_callbacks.erase(s.gpr.rdi.dword); return hostReturn(s,m,0);
     }
     uint64_t event_result=0;
-    if (GuestEvents::call(name,s,*m,session.event_flags,event_result))
+    if (GuestEvents::call(name,s,*m,session.event_flags,event_result,scope.wait()))
         return m->fault.empty() ? hostReturn(s,m,event_result) : m;
     uint64_t storage_result=0;
     if (GuestStorage::save(name,s,*m,session.storage,session.saves_initialized,storage_result) ||
@@ -317,7 +381,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
                 empty_provider = false;
         }
         if (!empty_provider) {
-            session.missing_service = name;
+            missingService(session) = name;
             stopGuest(*m, "module provider unavailable", pc);
             return m;
         }
@@ -337,7 +401,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     }
     if (gestureSetupFunction(name)) {
         if (!session.compatibility_modules[206]) {
-            session.missing_service = name;
+            missingService(session) = name;
             stopGuest(*m, "SystemGesture provider is not loaded", pc);
             return m;
         }
@@ -353,7 +417,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     }
     if (saveDialogFunction(name)) {
         if (!session.compatibility_modules[160]) {
-            session.missing_service = name;
+            missingService(session) = name;
             stopGuest(*m, "SaveDataDialog provider is not loaded", pc);
             return m;
         }
@@ -374,13 +438,13 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         if (!session.save_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
         if (!s.gpr.rdi.qword) return hostReturn(s, m, 0x80b8000du);
         if (!guestPointer(*m, s.gpr.rdi.qword, 56)) return m;
-        session.missing_service = name;
+        missingService(session) = name;
         stopGuest(*m, "save dialog presenter unavailable", pc);
         return m;
     }
     if (trophyFunction(name)) {
         if (!session.compatibility_modules[173]) {
-            session.missing_service = name;
+            missingService(session) = name;
             stopGuest(*m, "Trophy provider is not loaded", pc);
             return m;
         }
@@ -420,7 +484,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     }
     if (streamingLifecycle(name)) {
         if (!session.compatibility_modules[129]) {
-            session.missing_service = name;
+            missingService(session) = name;
             stopGuest(*m, "GameLiveStreaming provider is not loaded", pc);
             return m;
         }
@@ -431,7 +495,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     }
     if (errorDialogFunction(name)) {
         if (!session.compatibility_modules[172]) {
-            session.missing_service = name; stopGuest(*m, "ErrorDialog provider is not loaded", pc); return m;
+            missingService(session) = name; stopGuest(*m, "ErrorDialog provider is not loaded", pc); return m;
         }
         if (!std::strcmp(name, "sceErrorDialogInitialize")) {
             if (session.error_dialog_initialized) return hostReturn(s, m, 0x80b80004u);
@@ -449,7 +513,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             if (!param) return m;
             std::memcpy(&session.error_dialog_code, param + 4, 4);
         }
-        session.missing_service = name; stopGuest(*m, "error dialog presenter unavailable", pc); return m;
+        missingService(session) = name; stopGuest(*m, "error dialog presenter unavailable", pc); return m;
     }
     if (!std::strcmp(name, "sceUserServiceInitialize")) {
         const int32_t result=Users::initialize(nullptr); // Production service does not consume params.
@@ -551,7 +615,65 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     if (!std::strcmp(name, "sceKernelGetProcParam"))
         return hostReturn(s, m, session.image_address + procparam);
     if (!std::strcmp(name, "scePthreadSelf"))
-        return hostReturn(s, m, 0x40000000);
+        return hostReturn(s, m, currentThread());
+    if(!std::strcmp(name,"scePthreadSetprio") || !std::strcmp(name,"scePthreadGetprio") ||
+       !std::strcmp(name,"scePthreadSetaffinity") || !std::strcmp(name,"scePthreadGetaffinity")) {
+        auto worker=session.workers ? session.workers->find(s.gpr.rdi.qword) : nullptr;
+        ThreadAttr *attributes=s.gpr.rdi.qword==0x40000000 ? &session.main_attributes : worker ? &worker->attributes : nullptr;
+        if(!attributes)return hostReturn(s,m,orbisError(3));
+        if(!std::strcmp(name,"scePthreadSetprio"))attributes->priority=s.gpr.rsi.dword;
+        else if(!std::strcmp(name,"scePthreadSetaffinity"))attributes->affinity=s.gpr.rsi.qword;
+        else {
+            if(!s.gpr.rsi.qword)return hostReturn(s,m,orbisError(22));
+            const bool priority=!std::strcmp(name,"scePthreadGetprio");
+            auto output=guestPointer(*m,s.gpr.rsi.qword,priority ? 4 : 8,true);if(!output)return m;
+            if(priority)std::memcpy(output,&attributes->priority,4);else std::memcpy(output,&attributes->affinity,8);
+        }
+        return hostReturn(s,m,0);
+    }
+    if(!std::strcmp(name,"scePthreadCreate")) {
+        if(!s.gpr.rdi.qword || !session.workers)return hostReturn(s,m,orbisError(22));
+        auto output=guestPointer(*m,s.gpr.rdi.qword,8,true);if(!output)return m;
+        ThreadAttr attributes;
+        if(s.gpr.rsi.qword){const uint64_t id=load64(*m,s.gpr.rsi.qword);if(!m->fault.empty())return m;auto found=session.thread_attributes.find(id);if(found==session.thread_attributes.end())return hostReturn(s,m,orbisError(22));attributes=found->second;}
+        const uint64_t entry=s.gpr.rdx.qword;
+        const uint64_t normalized=entry>=session.image_address && entry-session.image_address<image_size ? entry-session.image_address : UINT64_MAX;
+        bool executable=false;for(const auto &segment:segments)if((segment.flags&1) && normalized>=segment.address && normalized-segment.address<segment.size)executable=true;
+        if(!executable)return hostReturn(s,m,orbisError(22));
+        if(s.gpr.r8.qword)for(unsigned i=0;i<31;++i){auto byte=guestPointer(*m,s.gpr.r8.qword+i,1);if(!byte)return m;if(!*byte)break;}
+        uint64_t id=0;const int error=session.workers->spawn(entry,s.gpr.rcx.qword,attributes,[&session](auto &worker){runWorker(session,worker);},id);
+        if(!error)std::memcpy(output,&id,8);
+        uint64_t result=0;GuestConditions::error(*m,error,result);return m->fault.empty() ? hostReturn(s,m,result) : m;
+    }
+    if(!std::strcmp(name,"scePthreadExit")) {
+        if(!active_worker){stopGuest(*m,"main guest thread exit");return m;}
+        active_worker->exit_requested=true;active_worker->result=s.gpr.rdi.qword;stopGuest(*m,"guest thread exited");return m;
+    }
+    if(!std::strcmp(name,"scePthreadEqual"))return hostReturn(s,m,s.gpr.rdi.qword==s.gpr.rsi.qword);
+    if(!std::strcmp(name,"scePthreadYield")){scope.release();std::this_thread::yield();scope.acquire();return hostReturn(s,m,0);}
+    if(!std::strcmp(name,"scePthreadCancel") || !std::strcmp(name,"scePthreadDetach")) {
+        const int error=!session.workers ? ESRCH : !std::strcmp(name,"scePthreadCancel") ? session.workers->cancel(s.gpr.rdi.qword) : session.workers->detach(s.gpr.rdi.qword);
+        uint64_t result=0;GuestConditions::error(*m,error,result);return m->fault.empty() ? hostReturn(s,m,result) : m;
+    }
+    if(!std::strcmp(name,"scePthreadJoin")) {
+        if(!session.workers)return hostReturn(s,m,orbisError(3));
+        if(s.gpr.rsi.qword && !guestPointer(*m,s.gpr.rsi.qword,8,true))return m;
+        if(active_worker)m->cancel_requested=&active_worker->cancel_pending;
+        scope.release();const auto joined=session.workers->join(s.gpr.rdi.qword,currentThread(),*m);scope.acquire();m->cancel_requested=nullptr;
+        if(joined.stop){stopGuest(*m,joined.stop);return m;}
+        uint64_t result=0;GuestConditions::error(*m,joined.error,result);
+        if(!joined.error && s.gpr.rsi.qword)store64(*m,s.gpr.rsi.qword,joined.result);
+        return m->fault.empty() ? hostReturn(s,m,result) : m;
+    }
+    if(!std::strcmp(name,"sceKernelUsleep")) {
+        using Clock=std::chrono::steady_clock;const auto now=Clock::now();
+        const uint64_t maximum=std::chrono::duration_cast<std::chrono::microseconds>(Clock::time_point::max()-now).count();
+        const auto end=s.gpr.rdi.qword>maximum ? Clock::time_point::max() : now+std::chrono::microseconds(s.gpr.rdi.qword);
+        if(active_worker)m->cancel_requested=&active_worker->cancel_pending;
+        const char *stopped=nullptr;scope.release();
+        while(Clock::now()<end){if((stopped=guestInterruption(*m)))break;const auto time=Clock::now();if(time>=m->deadline){stopped="guest sleep exceeded host execution deadline";break;}std::this_thread::sleep_until(std::min(std::min(end,m->deadline),time+std::chrono::milliseconds(1)));}
+        scope.acquire();m->cancel_requested=nullptr;if(stopped){stopGuest(*m,stopped);return m;}return hostReturn(s,m,0);
+    }
     if (!std::strcmp(name, "scePthreadAttrInit")) {
         if (!s.gpr.rdi.qword)
             return hostReturn(s, m, orbisError(22));
@@ -600,10 +722,12 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         auto attr = session.thread_attributes.find(address);
         if (attr == session.thread_attributes.end())
             return hostReturn(s, m, orbisError(22));
-        if (s.gpr.rdi.qword != 0x40000000)
-            return hostReturn(s, m, orbisError(3));
-        attr->second.stack = session.stack.size();
-        attr->second.stack_address = session.stack_address;
+        if(s.gpr.rdi.qword==0x40000000){attr->second.stack=session.stack.size();attr->second.stack_address=session.stack_address;}
+        else {
+            auto thread=session.workers ? session.workers->find(s.gpr.rdi.qword) : nullptr;
+            if(!thread)return hostReturn(s,m,orbisError(3));
+            attr->second=thread->attributes;
+        }
         return hostReturn(s, m, 0);
     }
     if (!std::strcmp(name, "scePthreadAttrGetaffinity") ||
@@ -685,35 +809,57 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
                 return hostReturn(s, m, orbisError(22));
             type = attr->second;
         }
-        auto mutex = std::make_unique<HostMutex>();
-        pthread_mutexattr_t attr;
-        int result = pthread_mutexattr_init(&attr);
-        if (result)
-            return hostReturn(s, m, orbisError(result));
-        result = pthread_mutexattr_settype(&attr, type == 2   ? PTHREAD_MUTEX_RECURSIVE
-                                                  : type == 3 ? PTHREAD_MUTEX_NORMAL
-                                                              : PTHREAD_MUTEX_ERRORCHECK);
-        if (!result)
-            result = pthread_mutex_init(&mutex->mutex, &attr);
-        pthread_mutexattr_destroy(&attr);
-        if (result)
-            return hostReturn(s, m, orbisError(result));
-        mutex->initialized = true;
-        const uint64_t address = allocate(session, 256);
-        session.mutexes[address] = std::move(mutex);
-        store64(*m, s.gpr.rdi.qword, address);
-        return hostReturn(s, m, 0);
+        if(!s.gpr.rdi.qword)return hostReturn(s,m,orbisError(22));
+        const int error=initializeMutex(session,*m,s.gpr.rdi.qword,type);
+        uint64_t result=0;GuestConditions::error(*m,error,result);return m->fault.empty() ? hostReturn(s,m,result) : m;
     }
-    if (!std::strcmp(name, "scePthreadMutexLock") || !std::strcmp(name, "scePthreadMutexUnlock")) {
-        auto mutex = session.mutexes.find(load64(*m, s.gpr.rdi.qword));
-        if (mutex == session.mutexes.end())
-            return hostReturn(s, m, orbisError(22));
-        const int result = !std::strcmp(name, "scePthreadMutexLock")
-                               ? pthread_mutex_lock(&mutex->second->mutex)
-                               : pthread_mutex_unlock(&mutex->second->mutex);
-        return hostReturn(s, m, orbisError(result));
+
+    if (!std::strcmp(name,"scePthreadMutexLock") || !std::strcmp(name,"scePthreadMutexTrylock") ||
+        !std::strcmp(name,"scePthreadMutexUnlock") || !std::strcmp(name,"scePthreadMutexDestroy")) {
+        if(!s.gpr.rdi.qword)return hostReturn(s,m,orbisError(22));
+        uint64_t id=load64(*m,s.gpr.rdi.qword);if(!m->fault.empty())return m;
+        if(id<2) {
+            if(!std::strcmp(name,"scePthreadMutexDestroy"))return hostReturn(s,m,0);
+            if(!std::strcmp(name,"scePthreadMutexUnlock"))return hostReturn(s,m,orbisError(1));
+            const int error=initializeMutex(session,*m,s.gpr.rdi.qword,1);
+            if(error || !m->fault.empty()){uint64_t result=0;GuestConditions::error(*m,error,result);return m->fault.empty() ? hostReturn(s,m,result) : m;}
+            id=load64(*m,s.gpr.rdi.qword);
+        }
+        auto found=session.mutexes.find(id);if(found==session.mutexes.end())return hostReturn(s,m,orbisError(22));
+        scope.retained_mutex=found->second;
+        if(!std::strcmp(name,"scePthreadMutexDestroy")) {
+            auto output=guestPointer(*m,s.gpr.rdi.qword,8,true);if(!output)return m;
+            if(scope.retained_mutex.use_count()>2)return hostReturn(s,m,orbisError(16));
+            const int error=pthread_mutex_destroy(&scope.retained_mutex->mutex);
+            uint64_t result=0;GuestConditions::error(*m,error,result);
+            if(!error){scope.retained_mutex->initialized=false;session.mutexes.erase(found);unmapRegion(*m,id);const uint64_t zero=0;std::memcpy(output,&zero,8);}
+            return m->fault.empty() ? hostReturn(s,m,result) : m;
+        }
+        auto &held=session.held_mutexes[currentThread()];
+        if(!std::strcmp(name,"scePthreadMutexUnlock")) {
+            const int error=pthread_mutex_unlock(&scope.retained_mutex->mutex);uint64_t result=0;GuestConditions::error(*m,error,result);
+            if(!error){auto own=held.find(id);if(own!=held.end() && own->second.second && !--own->second.second)held.erase(own);}
+            return m->fault.empty() ? hostReturn(s,m,result) : m;
+        }
+        held.try_emplace(id,std::make_pair(scope.retained_mutex,0u));
+        int error=0;const char *stopped=nullptr;
+        if(!std::strcmp(name,"scePthreadMutexTrylock"))error=pthread_mutex_trylock(&scope.retained_mutex->mutex);
+        else {
+            scope.release();
+            for(;;) {
+                if((stopped=guestInterruption(*m)))break;
+                if(std::chrono::steady_clock::now()>=m->deadline){stopped="guest mutex lock exceeded host execution deadline";break;}
+                error=pthread_mutex_trylock(&scope.retained_mutex->mutex);if(error!=EBUSY)break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            scope.acquire();
+        }
+        if(!error && !stopped)++held.at(id).second;
+        else if(!held.at(id).second)held.erase(id);
+        if(stopped){stopGuest(*m,stopped);return m;}
+        uint64_t result=0;GuestConditions::error(*m,error,result);return m->fault.empty() ? hostReturn(s,m,result) : m;
     }
-    session.missing_service = name;
+    missingService(session) = name;
     stopGuest(*m, "missing host service", pc);
     return m;
 }
@@ -721,6 +867,7 @@ static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
     const uint64_t lookup = pc >= session.image_address && pc - session.image_address < image_size
                                 ? pc - session.image_address + image_base : pc;
+    if(const char *reason=guestInterruption(*m)){stopGuest(*m,reason,lookup);return m;}
 #ifdef OSL_GAME_CLI
     // Code targets only: never record guest registers, stack or credentials.
     if (session.dispatch_trace) std::fprintf(session.dispatch_trace.get(),"%llx\n",(unsigned long long)lookup);
@@ -741,8 +888,7 @@ static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
             m->fault = "host service allocation or mapping failed";
         }
         m->recovery = recovery;
-        if (!m->fault.empty() && recovery)
-            std::longjmp(*recovery, 1);
+        if (!m->fault.empty())resumeGuestFault(*m);
         return result;
     }
     for (const auto &entry : traces)
@@ -750,6 +896,25 @@ static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
             return entry.function(s, pc, m);
     stopGuest(*m, "missing translated block", lookup);
     return m;
+}
+
+
+static void runWorker(Session &session,MobileWorkers::Worker &worker) {
+    WorkerAttachment attachment(session,worker);worker.memory.dispatcher=gameDispatch;
+    std::jmp_buf checkpoint;worker.memory.recovery=&checkpoint;
+    if(setjmp(checkpoint)==0) {
+        worker.state.gpr.rsp.qword=worker.storage->stackAddress()+worker.storage->stackSize()-0xf8;
+        worker.state.gpr.rdi.qword=worker.argument;store64(worker.memory,worker.state.gpr.rsp.qword,0xfeedface);
+        dispatch(worker.state,worker.entry,&worker.memory);
+        if(worker.memory.fault.empty()) {
+            if(worker.state.gpr.rip.qword!=0xfeedface)worker.memory.fault="guest worker did not return to its exit sentinel";
+            else worker.result=worker.state.gpr.rax.qword;
+        }
+    }
+    worker.memory.recovery=nullptr;worker.memory.cancel_requested=nullptr;
+    if(worker.exit_requested && worker.memory.fault=="guest thread exited")worker.memory.fault={};
+    if(worker.memory.fault=="guest thread cancellation requested"){worker.result=UINT64_MAX;worker.memory.fault={};}
+    if(!worker.memory.fault.empty() && worker.memory.fault!="guest execution interrupted")session.stopping=true;
 }
 
 static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullptr) {
@@ -794,6 +959,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
             return "{\"error\":\"unsupported module TLS metadata\"}";
     }
     session->primary_storage=std::make_unique<ThreadStorage>(session->memory,session->tls_templates,session->identity,0x80000000);
+    session->workers=std::make_unique<MobileWorkers>(session->memory,session->tls_templates,session->identity,session->stopping);
     for (const auto &segment : segments)
         mapRegion(session->memory, session->image_address + segment.address,
                   session->image.data() + segment.address, segment.size, (segment.flags & 2) != 0 && (segment.flags & 1) == 0);
@@ -823,6 +989,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
     session->storage.configure((private_root/"App0").string(),(private_root/"MobileProfile").string());
     std::jmp_buf recovery;
     active = session;
+    active_worker = nullptr;
     session->memory.recovery = &recovery;
     const auto guest_started = std::chrono::steady_clock::now();
     session->memory.deadline = guest_started + std::chrono::seconds(2);
@@ -858,23 +1025,39 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         }
     }
     session->memory.recovery = nullptr;
+    session->stopping=true;
+    releaseThreadMutexes(*session,0x40000000);
+    session->workers->stopAndJoin();
+    auto worker_snapshot=session->workers->snapshot();
+    const Memory *failure=&session->memory;
+    const char *missing_service=session->missing_service;
+    uint64_t failed_thread=0x40000000,total_checkpoints=session->memory.checkpoints;
+    unsigned finished_workers=0;
+    for(const auto &worker:worker_snapshot) {
+        total_checkpoints+=worker->memory.checkpoints;
+        if(worker->finished.load())++finished_workers;
+        if((failure->fault.empty() || failure->fault=="guest execution interrupted") &&
+           !worker->memory.fault.empty() && worker->memory.fault!="guest execution interrupted") {
+            failure=&worker->memory;missing_service=worker->missing_service;failed_thread=worker->id;
+        }
+    }
     const uint64_t missing =
-        session->memory.missing_pc >= session->image_address &&
-                session->memory.missing_pc - session->image_address < image_size
-            ? session->memory.missing_pc - session->image_address + image_base
-            : session->memory.missing_pc;
+        failure->missing_pc >= session->image_address && failure->missing_pc-session->image_address<image_size
+            ? failure->missing_pc-session->image_address+image_base : failure->missing_pc;
     const double elapsed_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guest_started).count();
     std::ostringstream out;
     out << "{\"stage\":\"" << session->stage
         << "\",\"completed_modules\":" << session->completed_modules
         << ",\"trace_count\":" << std::size(traces)
-        << ",\"checkpoints\":" << session->memory.checkpoints << ",\"guest_elapsed_ms\":" << elapsed_ms
+        << ",\"checkpoints\":" << failure->checkpoints << ",\"guest_elapsed_ms\":" << elapsed_ms
         << ",\"game_booted\":false,\"dispatches\":" << session->calls << ",\"error\":\""
-        << session->memory.fault << "\",\"missing_pc\":" << missing
+        << failure->fault << "\",\"missing_pc\":" << missing
         << ",\"identity_mapping\":" << (session->identity ? "true" : "false")
         << ",\"image_address\":" << session->image_address
         << ",\"stack_address\":" << session->stack_address
-        << ",\"fault_address\":" << session->memory.fault_address
+        << ",\"fault_address\":" << failure->fault_address
+        << ",\"failed_thread\":" << failed_thread << ",\"workers_started\":" << session->workers->started()
+        << ",\"workers_finished\":" << finished_workers << ",\"checkpoints_total\":" << total_checkpoints
         << ",\"error_dialog_code\":" << uint32_t(session->error_dialog_code)
         << ",\"broadcasting\":false,\"live_streaming_initialized\":" << (session->live_streaming_initialized ? "true" : "false")
         << ",\"trophy_persistence\":false"
@@ -896,10 +1079,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
         << ",\"flexible_reserved_bytes\":" << session->flexible_reserved_bytes
         << ",\"flexible_bytes\":" << session->flexible_bytes << ",\"missing_service\":\""
-        << session->missing_service << "\",\"service_args\":[" << session->state.gpr.rdi.qword << ","
-        << session->state.gpr.rsi.qword << "," << session->state.gpr.rdx.qword << "," << session->state.gpr.rcx.qword
-        << "," << session->state.gpr.r8.qword << "," << session->state.gpr.r9.qword
-        << "],\"heap_api_registered\":" << (session->heap_api != 0 ? "true" : "false") << "}";
+        << missing_service << "\",\"heap_api_registered\":" << (session->heap_api != 0 ? "true" : "false") << "}";
     std::string result = out.str();
     result.pop_back();
     std::ostringstream modules_out;
@@ -910,7 +1090,18 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         modules_out << "\"" << id << "\":" << references;
         first_module = false;
     }
-    modules_out << "}}";
+    modules_out << "},\"worker_reports\":[";
+    bool first_worker=true;
+    for(const auto &worker:worker_snapshot) {
+        if(!first_worker)modules_out << ",";first_worker=false;
+        const uint64_t raw=worker->memory.missing_pc;
+        const uint64_t logical=raw>=session->image_address && raw-session->image_address<image_size ? raw-session->image_address+image_base : raw;
+        modules_out << "{\"id\":" << worker->id << ",\"error\":\"" << worker->memory.fault
+                    << "\",\"missing_pc\":" << logical << ",\"missing_service\":\"" << worker->missing_service
+                    << "\",\"fault_address\":" << worker->memory.fault_address << ",\"checkpoints\":" << worker->memory.checkpoints
+                    << ",\"thread_storage_reserved_bytes\":" << worker->storage->allocatedBytes() << "}";
+    }
+    modules_out << "]}";
     active = nullptr;
     return result + modules_out.str();
 }
@@ -930,6 +1121,7 @@ extern "C" const char *osl_mobile_game_report_with_gpu(const char *path,const Mo
     return report.c_str();
 }
 #ifdef OSL_GAME_CLI
+extern "C" Memory *__remill_atomic_begin(Memory *);
 static bool serviceChecks() {
     auto owner = std::make_unique<Session>();
     auto &session = *owner;
@@ -1200,8 +1392,155 @@ static bool serviceChecks() {
     require(session.memory.fault=="unsupported TLS module or offset");
     session.primary_storage.reset();session.memory.fault={};
     require(!guestPointer(session.memory,tls,1));session.memory.fault={};
+    // Both optimized library helpers and HLE faults must release a guest
+    // atomic region before the outer checkpoint resumes on another CPU.
+    std::jmp_buf host_fault;
+    for(unsigned kind=0;kind<2;++kind) {
+        session.memory.fault={};session.memory.recovery=&host_fault;
+        if(setjmp(host_fault)==0) {
+            __remill_atomic_begin(&session.memory);
+            if(!kind){session.state=State{};session.state.gpr.rdx.qword=DirectMemory::capacity()+1;__osl_libc_memset(session.state,0x10cd0ce0,&session.memory);}
+            else {
+                session.state=State{};session.state.gpr.rdi.qword=0x20000ff1;session.state.gpr.rsp.qword=0x20000ff8;
+                for(size_t i=0;i<std::size(imports);++i)if(!std::strcmp(imports[i].symbol,"sceKernelGettimeofday")){gameDispatch(session.state,hle_base+i*0x1000,&session.memory);break;}
+            }
+            throw std::runtime_error("Host fault did not reach its checkpoint");
+        }
+        session.memory.recovery=nullptr;require(!session.memory.atomic_held && !session.memory.fault.empty());
+        std::atomic<bool> available{false};std::thread next_cpu([&]{GuestMemoryScope memory;available=true;});next_cpu.join();require(available);
+    }
+    session.memory.fault={};
+    // Real concurrent import dispatch: waits and joins must release frontend
+    // leases so another guest CPU can signal, unlock and finish.
+    session.memory.deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+    session.workers=std::make_unique<MobileWorkers>(session.memory,session.tls_templates,false,session.stopping);
+    require(call("sceKernelCreateEventFlag",0x20000401,0,0x20,0)==0);
+    const uint64_t shared_flag=load64(session.memory,0x20000401);
+    std::atomic<bool> event_entered{false},event_passed{false};
+    auto worker_call=[&](MobileWorkers::Worker &node,const char *name,uint64_t first=0,uint64_t second=0,uint64_t third=0,uint64_t fourth=0,uint64_t fifth=0) {
+        if(!node.memory.fault.empty())return UINT64_MAX;
+        node.state=State{};node.state.gpr.rsp.qword=node.storage->stackAddress()+node.storage->stackSize()-0xf8;
+        store64(node.memory,node.state.gpr.rsp.qword,0xfeedface);
+        node.state.gpr.rdi.qword=first;node.state.gpr.rsi.qword=second;node.state.gpr.rdx.qword=third;node.state.gpr.rcx.qword=fourth;node.state.gpr.r8.qword=fifth;
+        for(size_t i=0;i<std::size(imports);++i)if(!std::strcmp(imports[i].symbol,name)){hostService(node.state,hle_base+i*0x1000,&node.memory);return node.state.gpr.rax.qword;}
+        return UINT64_MAX;
+    };
+    ThreadAttr small;small.stack=65536;uint64_t event_thread=0;
+    require(session.workers->spawn(1,0,small,[&](auto &node) {
+        WorkerAttachment attachment(session,node);event_entered=true;
+        const bool ok=worker_call(node,"sceKernelWaitEventFlag",shared_flag,1,1,0x20000411)==0 && node.memory.fault.empty();
+        event_passed=ok;
+    },event_thread)==0);
+    while(!event_entered)std::this_thread::yield();
+    require(call("sceKernelSetEventFlag",shared_flag,1)==0);
+    require(call("scePthreadJoin",event_thread,0x20000421)==0 && event_passed);
+    require(load64(session.memory,0x20000411)==1);
+    require(call("sceKernelDeleteEventFlag",shared_flag)==0);
+    require(call("scePthreadMutexInit",0x20000431)==0 && call("scePthreadCondInit",0x20000441)==0);
+    std::atomic<bool> condition_entered{false},condition_passed{false};uint64_t condition_thread=0;
+    session.stack[0x451]=0;
+    require(session.workers->spawn(1,0,small,[&](auto &node) {
+        WorkerAttachment attachment(session,node);
+        bool ok=worker_call(node,"scePthreadMutexLock",0x20000431)==0;
+        condition_entered=true;
+        while(ok && !session.stack[0x451])ok=worker_call(node,"scePthreadCondWait",0x20000441,0x20000431)==0 && node.memory.fault.empty();
+        ok=ok && worker_call(node,"scePthreadMutexUnlock",0x20000431)==0;
+        const auto address=worker_call(node,"__tls_get_addr",0x20000501);
+        if(node.memory.fault.empty()){GuestMemoryScope memory;auto data=guestPointer(node.memory,address,32);ok=ok && data && data[0]==0x51 && data[31]==0;}
+        condition_passed=ok && node.memory.fault.empty();
+    },condition_thread)==0);
+    store64(session.memory,0x20000501,2);store64(session.memory,0x20000509,0);
+    while(!condition_entered)std::this_thread::yield();
+    require(call("scePthreadMutexLock",0x20000431)==0);
+    {GuestMemoryScope memory;session.stack[0x451]=1;}
+    require(call("scePthreadCondBroadcast",0x20000441)==0 && call("scePthreadMutexUnlock",0x20000431)==0);
+    require(call("scePthreadJoin",condition_thread,0)==0 && condition_passed);
+    require(call("scePthreadCondDestroy",0x20000441)==0 && call("scePthreadMutexDestroy",0x20000431)==0);
+    require(call("scePthreadJoin",condition_thread,0)==0x80020016u);
+    require(call("scePthreadGetprio",UINT64_MAX,0x20000461)==0x80020003u);
+    require(call("scePthreadSetprio",0x40000000,725)==0 && call("scePthreadGetprio",0x40000000,0x20000461)==0);
+    int32_t observed_priority=0;std::memcpy(&observed_priority,session.stack.data()+0x461,4);require(observed_priority==725);
+    call("scePthreadGetprio",0x40000000,0x20000fff);require(!session.memory.fault.empty());
+    require(call("scePthreadSetaffinity",0x40000000,0x55)==0 && call("scePthreadGetaffinity",0x40000000,0x20000461)==0);
+    require(load64(session.memory,0x20000461)==0x55);
+    require(call("sceKernelGetTscFrequency")==1000000000);
+    const uint64_t ticks=call("sceKernelReadTsc"),process_time=call("sceKernelGetProcessTime");
+    require(call("sceKernelReadTsc")>=ticks && call("sceKernelGetProcessTime")>=process_time);
+    require(call("sceKernelClockGettime",0,0x20000481)==0 && session.state.gpr.rsp.qword==0x20001000);
+    require(call("sceKernelClockGettime",3,UINT64_MAX)==0x80020016u && session.memory.fault.empty());
+    require(call("sceKernelGettimeofday",0x200004a1)==0 && call("sceKernelGettimeofday",0)==0x80020016u);
+    call("sceKernelGettimeofday",0x20000ff1);require(!session.memory.fault.empty());
+    session.workers.reset();session.memory.fault={};
     active = nullptr;
     std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
+    return true;
+}
+static bool workerCleanupCheck() {
+    std::shared_ptr<HostMutex> retained;
+    std::atomic<bool> entered{false},finished{false};bool expected_failure=false;
+    try {
+        auto owner=std::make_unique<Session>();auto &session=*owner;session.stack.resize(4096);
+        mapRegion(session.memory,0x20000000,session.stack.data(),session.stack.size());
+        session.memory.deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        session.workers=std::make_unique<MobileWorkers>(session.memory,session.tls_templates,false,session.stopping);
+        active=&session;active_worker=nullptr;
+        auto invoke=[&](State &state,Memory &memory,uint64_t stack,const char *name,uint64_t first,uint64_t second=0) {
+            state=State{};state.gpr.rsp.qword=stack;store64(memory,stack,0xfeedface);
+            state.gpr.rdi.qword=first;state.gpr.rsi.qword=second;
+            for(size_t i=0;i<std::size(imports);++i)if(!std::strcmp(imports[i].symbol,name)){hostService(state,hle_base+i*0x1000,&memory);return state.gpr.rax.qword;}
+            return UINT64_MAX;
+        };
+        auto call=[&](const char *name,uint64_t first,uint64_t second=0){return invoke(session.state,session.memory,0x20000ff8,name,first,second);};
+        if(call("scePthreadMutexInit",0x20000101) || call("scePthreadCondInit",0x20000111))throw std::logic_error("cleanup fixture setup failed");
+        retained=session.mutexes.at(load64(session.memory,0x20000101));
+        ThreadAttr attributes;attributes.stack=65536;uint64_t id=0;
+        if(session.workers->spawn(1,0,attributes,[&](auto &node) {
+            WorkerAttachment attachment(session,node);
+            const uint64_t stack=node.storage->stackAddress()+node.storage->stackSize()-0xf8;
+            bool ok=invoke(node.state,node.memory,stack,"scePthreadMutexLock",0x20000101)==0;
+            entered=true;
+            if(ok)invoke(node.state,node.memory,stack,"scePthreadCondWait",0x20000111,0x20000101);
+            finished=ok && node.memory.fault=="guest execution interrupted";
+        },id))throw std::logic_error("cleanup fixture spawn failed");
+        while(!entered)std::this_thread::yield();
+        if(call("scePthreadMutexLock",0x20000101))throw std::logic_error("cleanup fixture parent lock failed");
+        // Simulate a native failure while the parent owns the guest mutex and
+        // the child must reacquire it to leave its condition wait.
+        throw std::runtime_error("owned worker cleanup fixture");
+    } catch(const std::logic_error &){throw;}
+      catch(const std::runtime_error &){expected_failure=true;}
+    active=nullptr;active_worker=nullptr;
+    if(!expected_failure || !finished || !retained || pthread_mutex_trylock(&retained->mutex))throw std::runtime_error("worker exception cleanup did not release ownership");
+    if(pthread_mutex_unlock(&retained->mutex))throw std::runtime_error("worker cleanup mutex unlock failed");
+    retained.reset();
+    std::atomic<bool> child_locked{false};std::shared_ptr<HostMutex> child_mutex;
+    {
+        auto owner=std::make_unique<Session>();auto &session=*owner;session.stack.resize(4096);
+        mapRegion(session.memory,0x20000000,session.stack.data(),session.stack.size());
+        session.memory.deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        session.workers=std::make_unique<MobileWorkers>(session.memory,session.tls_templates,false,session.stopping);
+        active=&session;active_worker=nullptr;
+        if(initializeMutex(session,session.memory,0x20000101,1))throw std::logic_error("worker-unwind fixture setup failed");
+        child_mutex=session.mutexes.at(load64(session.memory,0x20000101));
+        ThreadAttr attributes;attributes.stack=65536;uint64_t id=0;
+        if(session.workers->spawn(1,0,attributes,[&](auto &node) {
+            WorkerAttachment attachment(session,node);
+            node.state.gpr.rsp.qword=node.storage->stackAddress()+node.storage->stackSize()-0xf8;
+            store64(node.memory,node.state.gpr.rsp.qword,0xfeedface);node.state.gpr.rdi.qword=0x20000101;
+            for(size_t i=0;i<std::size(imports);++i)if(!std::strcmp(imports[i].symbol,"scePthreadMutexLock")){hostService(node.state,hle_base+i*0x1000,&node.memory);break;}
+            child_locked=node.state.gpr.rax.qword==0 && node.memory.fault.empty();
+            throw std::runtime_error("owned child-unwind fixture");
+        },id))throw std::logic_error("worker-unwind fixture spawn failed");
+        auto worker=session.workers->find(id);
+        while(!child_locked && !worker->finished.load())std::this_thread::yield();
+        session.workers->stopAndJoin();
+        if(!child_locked || worker->memory.fault!="native worker callback failed")throw std::runtime_error("child failure did not unwind its ownership");
+    }
+    active=nullptr;active_worker=nullptr;
+    if(!child_mutex || pthread_mutex_trylock(&child_mutex->mutex))throw std::runtime_error("child failure retained its mutex");
+    if(pthread_mutex_unlock(&child_mutex->mutex))throw std::runtime_error("child failure cleanup unlock failed");
+    child_mutex.reset();
+    std::puts("{\"worker_cleanup_checks\":2,\"failure_injected\":true,\"child_joined\":true,\"parent_mutex_released\":true,\"child_exception_released_mutex\":true,\"failed\":0,\"game_frames\":false}");
     return true;
 }
 int main(int argc, char **argv) {
@@ -1209,6 +1548,7 @@ int main(int argc, char **argv) {
         return 2;
     try {
         if (!std::strcmp(argv[1], "--service-check")) return serviceChecks() ? 0 : 1;
+        if (!std::strcmp(argv[1], "--worker-cleanup-check")) return workerCleanupCheck() ? 0 : 1;
         std::printf("OSL_STARTUP_RESULT:%s\n", bootstrap(argv[1]).c_str());
         return 0;
     } catch (const std::exception &e) {
