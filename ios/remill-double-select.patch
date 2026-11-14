@@ -1,0 +1,35 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2562,3 +2562,31 @@
+ IF_AVX(DEF_ISEL(VRSQRTPS_XMMdq_MEMdq) = RSQRTPS<VV128W, MV128>;)
+ IF_AVX(DEF_ISEL(VRSQRTPS_YMMqq_YMMqq) = RSQRTPS<VV256W, V256>;)
+ IF_AVX(DEF_ISEL(VRSQRTPS_YMMqq_MEMqq) = RSQRTPS<VV256W, MV256>;)
++
++// Packed double selectors copy raw 64-bit lanes without floating-point effects.
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(BLENDPD, D dst, S1 src1, S2 src2, I8 immediate) {
++  const auto first = UReadV64(src1);
++  const auto second = UReadV64(src2);
++  auto result = UClearV64(UReadV64(dst));
++  const auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i)
++    result = UInsertV64(result, i, (mask & (1u << i)) ? UExtractV64(second, i) : UExtractV64(first, i));
++  UWriteV64(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(BLENDPD_XMMdq_XMMdq_IMMb) = BLENDPD<V128W, V128, V128>;
++DEF_ISEL(BLENDPD_XMMdq_MEMdq_IMMb) = BLENDPD<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VBLENDPD_XMMdq_XMMdq_XMMdq_IMMb) = BLENDPD<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VBLENDPD_XMMdq_XMMdq_MEMdq_IMMb) = BLENDPD<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VBLENDPD_YMMqq_YMMqq_YMMqq_IMMb) = BLENDPD<VV256W, V256, V256>;)
++IF_AVX(DEF_ISEL(VBLENDPD_YMMqq_YMMqq_MEMqq_IMMb) = BLENDPD<VV256W, V256, MV256>;)
++// The existing SHUFPD helper already selects within each independent 128-bit
++// pair, including distinct immediate bits 2/3 for the upper YMM pair.
++DEF_ISEL(SHUFPD_XMMpd_MEMpd_IMMb) = SHUFPD<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VSHUFPD_XMMdq_XMMdq_XMMdq_IMMb) = SHUFPD<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VSHUFPD_XMMdq_XMMdq_MEMdq_IMMb) = SHUFPD<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VSHUFPD_YMMqq_YMMqq_YMMqq_IMMb) = SHUFPD<VV256W, V256, V256>;)
++IF_AVX(DEF_ISEL(VSHUFPD_YMMqq_YMMqq_MEMqq_IMMb) = SHUFPD<VV256W, V256, MV256>;)
