@@ -29,6 +29,11 @@ loop:
 '''
 guarded, count = instrument(ir)
 assert count == 3
+try:
+    instrument(ir, libc_helpers=True, image_sha256='unverified')
+    raise AssertionError('Unverified profile accepted a native helper')
+except ValueError:
+    pass
 (root / 'loop.ll').write_text(guarded)
 (root / 'check.cpp').write_text('''#include "runtime.h"
 #include <cassert>

@@ -1,5 +1,6 @@
 #include "runtime.h"
 #include <cstdlib>
+#include <atomic>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -60,6 +61,8 @@ uint8_t *guestPointer(Memory &m, uint64_t address, size_t size, bool writing) {
             }
             return r.data + (address - r.base);
         }
+    if (m.external_pointer)
+        if (auto p = m.external_pointer(address, size, writing)) return p;
     m.fault_address = address;
     stopGuest(m, "unmapped guest memory");
     return nullptr;
@@ -137,6 +140,17 @@ extern "C" Memory *__remill_atomic_begin(Memory *m) {
     m->atomic_held = true;
     return m;
 }
+// x86 barriers must retain their ordering when AOT code runs on arm64. Use the
+// strongest fence until directional weakening has independent concurrency proof.
+#define BARRIER(NAME) \
+    extern "C" Memory *__remill_barrier_##NAME(Memory *m) { \
+        std::atomic_thread_fence(std::memory_order_seq_cst); return m; \
+    }
+BARRIER(load_load)
+BARRIER(load_store)
+BARRIER(store_load)
+BARRIER(store_store)
+#undef BARRIER
 extern "C" Memory *__remill_atomic_end(Memory *m) {
     if (!m->atomic_held) {
         stopGuest(*m, "unbalanced guest atomic region");

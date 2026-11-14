@@ -38,7 +38,14 @@ static uint64_t pool_size_bytes(void) {
 #define POOL_SIZE pool_size_bytes()
 #define FLEXIBLE_SIZE (UINT64_C(448) * 1024 * 1024)
 #define PAGE UINT64_C(16384)
-#ifdef __APPLE__
+#if defined(OSL_AOT_CPU)
+/* A signed AOT process owns a small movable window instead of Rosetta's fixed
+ * half-terabyte range. MAP_FIXED is still confined to this reservation. */
+static uintptr_t aot_user_min, aot_user_max;
+#define LOW_MIN UINT64_C(0x0800000000)
+#define USER_MIN aot_user_min
+#define USER_MAX aot_user_max
+#elif defined(__APPLE__)
 /* Rosetta occupies part of the lower PS4 range. Use its upper half for guest mappings. */
 #define LOW_MIN UINT64_C(0x7000000000)
 #define USER_MIN UINT64_C(0x8000000000)
@@ -46,7 +53,9 @@ static uint64_t pool_size_bytes(void) {
 #define LOW_MIN UINT64_C(0x0800000000)
 #define USER_MIN UINT64_C(0x1000000000)
 #endif
+#ifndef OSL_AOT_CPU
 #define USER_MAX UINT64_C(0xfc00000000)
+#endif
 #define LIMIT 4096
 #define INVALID ((int32_t)UINT32_C(0x80020016))
 #define NO_MEMORY ((int32_t)UINT32_C(0x8002000c))
@@ -159,8 +168,13 @@ static int32_t mem_fail(int32_t code, int line) {
 static int valid_alignment(uint64_t a) { return a >= PAGE && a <= POOL_SIZE && !(a & (a-1)); }
 static uint64_t align_up(uint64_t n, uint64_t a) { return (n+a-1) & ~(a-1); }
 static int host_prot(int prot) {
+#ifdef OSL_AOT_CPU
+    /* Guest execute permission never authorizes native executable pages. */
+    return ((prot & 0x15) ? PROT_READ : 0) | ((prot & 0x22) ? PROT_WRITE|PROT_READ : 0);
+#else
     /* GPU read/write bits (0x10/0x20) need host access for the future GPU backend. */
     return ((prot & 0x11) ? PROT_READ : 0) | ((prot & 0x22) ? PROT_WRITE|PROT_READ : 0) | ((prot & 4) ? PROT_EXEC|PROT_READ : 0);
+#endif
 }
 #ifdef _WIN32
 /* ---- host mappings (Windows) ----
@@ -349,6 +363,9 @@ static int open_pool(void) { return memfd_create("osl-guest-memory",MFD_CLOEXEC)
 static int pool(void) {
     if (pool_fd>=0) return 0;
     runtime_memory_reserve();
+#ifdef OSL_AOT_CPU
+    if (!USER_MIN) return -1;
+#endif
     int fd=open_pool();
     if (fd<0) return -1;
     if (ftruncate(fd,(off_t)(POOL_SIZE+FLEX_SPAN))) { close(fd); return -1; }
@@ -361,6 +378,21 @@ static int pool(void) {
 /* The whole PS4 user range is claimed up front, so a host allocation can never land inside it;
  * every later guest mapping replaces part of this reservation (MAP_FIXED stays inside it). */
 void runtime_memory_reserve(void) {
+#ifdef OSL_AOT_CPU
+    if (USER_MIN) return;
+    const uint64_t span=UINT64_C(8)*1024*1024*1024;
+    /* Hints are non-destructive. Reject a kernel-selected address that cannot
+     * fit the GPU's 40-bit descriptors, including high Simulator allocations. */
+    for (uintptr_t hint=UINT64_C(0x1000000000); hint<UINT64_C(0x4000000000); hint+=span) {
+        void *base=mmap((void *)hint,span,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
+        if (base==MAP_FAILED) continue;
+        uintptr_t address=(uintptr_t)base;
+        if (address && address<UINT64_C(0x10000000000) && span<=UINT64_C(0x10000000000)-address) {
+            aot_user_min=address; aot_user_max=address+span; return;
+        }
+        munmap(base,span);
+    }
+#else
     static int reserved;
     if (reserved) return;
     void *base=mmap((void *)USER_MIN,USER_MAX-USER_MIN,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|OSL_NOREPLACE,-1,0);
@@ -370,6 +402,7 @@ void runtime_memory_reserve(void) {
         exit(21);
     }
     reserved=1;
+#endif
 }
 static int in_user_range(uintptr_t address, uint64_t size) {
     return address>=USER_MIN && address<USER_MAX && size<=USER_MAX-address;
@@ -1079,6 +1112,39 @@ int runtime_memory_region(uintptr_t address, uintptr_t *start, uintptr_t *end, i
     read_unlock();
     return found;
 }
+#ifdef OSL_AOT_CPU
+/* Checked CPU access consults the live table on every transfer. Unmaps and
+ * protection changes must never leave a stale writable Memory::Region. The
+ * startup adapter serializes sessions; no guest worker threads run yet. */
+int osl_aot_memory_access(uintptr_t address, size_t size, int writing) {
+    if (!size || size>UINTPTR_MAX-address) return 0;
+    read_lock();
+    uintptr_t at=address, end=address+size;
+    size_t i=vma_index(at);
+    while (at<end) {
+        if (i==vma_count || vmas[i].start>at || vmas[i].kind==KIND_RESERVED ||
+            !(vmas[i].prot & (writing ? 2 : 7))) break;
+        at=vmas[i++].end;
+    }
+    read_unlock();
+    return at>=end;
+}
+uint64_t osl_aot_memory_allocated(void) {
+    read_lock(); uint64_t bytes=live_bytes; read_unlock(); return bytes;
+}
+/* Only called after a serialized startup session has stopped all guest work. */
+void osl_aot_memory_reset(void) {
+    write_lock();
+    if (USER_MIN) munmap((void *)USER_MIN,USER_MAX-USER_MIN);
+    if (backing_base) munmap(backing_base,POOL_SIZE+FLEX_SPAN);
+    if (pool_fd>=0) close(pool_fd);
+    aot_user_min=aot_user_max=0; backing_base=NULL; pool_fd=-1;
+    memset(blocks,0,sizeof(blocks)); memset(flex_bitmap,0,sizeof(flex_bitmap));
+    vma_count=pending_count=0;
+    live_bytes=flexible_bytes=0;
+    write_unlock();
+}
+#endif
 /* GPU page tracking: restrict host access, never beyond the guest's own protection. */
 void runtime_memory_gpu_protect(uintptr_t address, uint64_t size, int read, int write) {
     read_lock();

@@ -3,6 +3,7 @@
 #include "image-layout.h"
 #include "traces.h"
 #include "trophies/trophy_service.h"
+#include "../services/memory.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -51,7 +52,11 @@ struct FreeBytes { void operator()(uint8_t *p) const { std::free(p); } };
 using AlignedBytes = std::unique_ptr<uint8_t, FreeBytes>;
 
 struct Session {
+    DirectMemory direct_memory;
     Memory memory;
+    Session() {
+        memory.external_pointer = DirectMemory::pointer;
+    }
     State state{};
     std::vector<uint8_t> image, stack;
     std::vector<std::unique_ptr<std::vector<uint8_t>>> owned;
@@ -69,6 +74,7 @@ struct Session {
     std::unordered_map<uint64_t, int> mutex_attributes;
     std::unordered_map<uint64_t, std::unique_ptr<HostMutex>> mutexes;
     uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
+    uint64_t native_memset_calls = 0, native_memset_bytes = 0;
     std::unordered_map<uint64_t, ThreadAttr> thread_attributes;
 };
 static thread_local Session *active;
@@ -125,6 +131,19 @@ static Memory *hostReturn(State &s, Memory *m, uint64_t value) {
     s.gpr.rip.qword = load64(*m, s.gpr.rsp.qword);
     s.gpr.rsp.qword += 8;
     return m;
+}
+extern "C" Memory *__osl_libc_memset(State &s, uint64_t pc, Memory *m) {
+    const uint64_t size=s.gpr.rdx.qword, destination=s.gpr.rdi.qword;
+    if (size>DirectMemory::capacity()) {
+        stopGuest(*m,"libc memset exceeds direct pool capacity",pc); return m;
+    }
+    if (size) {
+        auto bytes=guestPointer(*m,destination,size,true);
+        if (!bytes) return m;
+        std::memset(bytes,static_cast<uint8_t>(s.gpr.rsi.qword),size);
+    }
+    if (active) { ++active->native_memset_calls; active->native_memset_bytes+=size; }
+    return hostReturn(s,m,destination);
 }
 static bool gestureSetupFunction(const char *name) {
     return !std::strcmp(name, "sceSystemGestureOpen") ||
@@ -320,7 +339,34 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         session.missing_service = name; stopGuest(*m, "error dialog presenter unavailable", pc); return m;
     }
     if (!std::strcmp(name, "sceKernelGetDirectMemorySize"))
-        return hostReturn(s, m, uint64_t(5056) * 1024 * 1024);
+        return hostReturn(s, m, DirectMemory::capacity());
+    if (!std::strcmp(name, "sceKernelAllocateDirectMemory")) {
+        if (!s.gpr.r9.qword) return hostReturn(s, m, orbisError(22));
+        auto output = guestPointer(*m, s.gpr.r9.qword, 8, true);
+        if (!output) return m;
+        int64_t physical = 0;
+        const int32_t result = DirectMemory::allocate(s.gpr.rdi.qword, s.gpr.rsi.qword, s.gpr.rdx.qword,
+                                                     s.gpr.rcx.qword, s.gpr.r8.dword, &physical);
+        if (!result) std::memcpy(output, &physical, 8);
+        return hostReturn(s, m, uint32_t(result));
+    }
+    if (!std::strcmp(name, "sceKernelMapDirectMemory") || !std::strcmp(name, "sceKernelMapNamedDirectMemory")) {
+        if (!s.gpr.rdi.qword) return hostReturn(s, m, orbisError(22));
+        auto output = guestPointer(*m, s.gpr.rdi.qword, 8, true);
+        if (!output) return m;
+        void *address = nullptr;
+        std::memcpy(&address, output, 8);
+        const int32_t result = DirectMemory::map(&address, s.gpr.rsi.qword, s.gpr.rdx.dword,
+                                                 s.gpr.rcx.dword, s.gpr.r8.qword, s.gpr.r9.qword);
+        if (!result) store64(*m, s.gpr.rdi.qword, reinterpret_cast<uint64_t>(address));
+        return hostReturn(s, m, uint32_t(result));
+    }
+    if (!std::strcmp(name, "sceKernelReleaseDirectMemory"))
+        return hostReturn(s, m, uint32_t(DirectMemory::release(s.gpr.rdi.qword, s.gpr.rsi.qword)));
+    if (!std::strcmp(name, "sceKernelMunmap"))
+        return hostReturn(s, m, uint32_t(DirectMemory::unmap(reinterpret_cast<void *>(s.gpr.rdi.qword), s.gpr.rsi.qword)));
+    if (!std::strcmp(name, "sceKernelMprotect"))
+        return hostReturn(s, m, uint32_t(DirectMemory::protect(reinterpret_cast<void *>(s.gpr.rdi.qword), s.gpr.rsi.qword, s.gpr.rdx.dword)));
     if (!std::strcmp(name, "sceKernelGetProcParam"))
         return hostReturn(s, m, session.image_address + procparam);
     if (!std::strcmp(name, "scePthreadSelf"))
@@ -607,13 +653,16 @@ static std::string bootstrap(const char *path) {
         << ",\"error_dialog_code\":" << uint32_t(session->error_dialog_code)
         << ",\"broadcasting\":false,\"live_streaming_initialized\":" << (session->live_streaming_initialized ? "true" : "false")
         << ",\"trophy_persistence\":false"
+        << ",\"native_memset_calls\":" << session->native_memset_calls << ",\"native_memset_bytes\":" << session->native_memset_bytes
+        << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
         << ",\"flexible_reserved_bytes\":" << session->flexible_reserved_bytes
         << ",\"flexible_bytes\":" << session->flexible_bytes << ",\"missing_service\":\""
         << session->missing_service << "\",\"service_args\":[" << session->state.gpr.rdi.qword << ","
-        << session->state.gpr.rsi.qword << "," << session->state.gpr.rdx.qword
+        << session->state.gpr.rsi.qword << "," << session->state.gpr.rdx.qword << "," << session->state.gpr.rcx.qword
+        << "," << session->state.gpr.r8.qword << "," << session->state.gpr.r9.qword
         << "],\"heap_api_registered\":" << (session->heap_api != 0 ? "true" : "false") << "}";
     std::string result = out.str();
     result.pop_back();
@@ -646,7 +695,7 @@ static bool serviceChecks() {
     mapRegion(session.memory, 0x20000000, session.stack.data(), session.stack.size());
     active = &session;
     unsigned checks = 0;
-    auto call = [&](const char *name, uint64_t argument = 0, uint64_t second = 0, uint64_t third = 0, uint64_t fourth = 0) {
+    auto call = [&](const char *name, uint64_t argument = 0, uint64_t second = 0, uint64_t third = 0, uint64_t fourth = 0, uint64_t fifth = 0, uint64_t sixth = 0) {
         session.memory.fault = {};
         session.state = State{};
         session.state.gpr.rsp.qword = 0x20000ff8;
@@ -654,6 +703,8 @@ static bool serviceChecks() {
         session.state.gpr.rsi.qword = second;
         session.state.gpr.rdx.qword = third;
         session.state.gpr.rcx.qword = fourth;
+        session.state.gpr.r8.qword = fifth;
+        session.state.gpr.r9.qword = sixth;
         store64(session.memory, session.state.gpr.rsp.qword, 0xfeedface);
         for (size_t i = 0; i < std::size(imports); ++i)
             if (!std::strcmp(imports[i].symbol, name)) {
@@ -711,6 +762,47 @@ static bool serviceChecks() {
     require(call("sceNpTrophyUnlockTrophy", context, handle, 3, 0x20000124) == 0x8055160cu);
     require(call("sceNpTrophyDestroyHandle", handle) == 0);
     require(call("sceNpTrophyGetTrophyUnlockState", context, handle, 0x20000100, 0x20000120) == 0x80551608u);
+    require(call("sceKernelGetDirectMemorySize") == uint64_t(5056)*1024*1024);
+    require(call("sceKernelAllocateDirectMemory", 0, DirectMemory::capacity(), 16384, 16384, 0, 0) == 0x80020016u);
+    require(call("sceKernelAllocateDirectMemory", 0, DirectMemory::capacity(), 16384, 16384, 0, 0x20000181) == 0);
+    const uint64_t physical = load64(session.memory, 0x20000181);
+    require(physical == 0);
+    store64(session.memory, 0x20000189, 0);
+    require(call("sceKernelMapDirectMemory", 0x20000189, 16384, 3, 0, physical, 16384) == 0);
+    const uint64_t mapped = load64(session.memory, 0x20000189);
+    store64(session.memory, mapped, 0x5a3cc3a5);
+    require(load64(session.memory, mapped) == 0x5a3cc3a5);
+    require(call("sceKernelReleaseDirectMemory", physical, 16384) == 0);
+    require(DirectMemory::pointer(mapped,8,false) == nullptr);
+    for (uint64_t size : {0,1,2,3,15,16,17,255,256,257}) {
+        session.memory.fault={};
+        std::fill(session.stack.begin()+0x200,session.stack.begin()+0x400,0x7b);
+        session.state=State{};
+        session.state.gpr.rsp.qword=0x20000ff8;
+        store64(session.memory,session.state.gpr.rsp.qword,0xfeedface);
+        session.state.gpr.rdi.qword=0x20000201;
+        session.state.gpr.rsi.qword=0x1234cc;
+        session.state.gpr.rdx.qword=size;
+        session.state.gpr.rbx.qword=0xabcdef;
+        session.state.gpr.r12.qword=0x123456;
+        __osl_libc_memset(session.state,0x10cd0ce0,&session.memory);
+        require(session.memory.fault.empty() && session.state.gpr.rax.qword==0x20000201);
+        require(session.state.gpr.rsp.qword==0x20001000 && session.state.gpr.rip.qword==0xfeedface);
+        require(session.state.gpr.rbx.qword==0xabcdef && session.state.gpr.r12.qword==0x123456);
+        bool correct=true;
+        for (uint64_t i=0;i<512;++i)
+            correct &= session.stack[0x200+i]==(i>=1 && i<1+size ? 0xcc : 0x7b);
+        require(correct);
+    }
+    session.state.gpr.rdi.qword=0;
+    session.state.gpr.rdx.qword=0;
+    session.state.gpr.rsp.qword=0x20000ff8;
+    __osl_libc_memset(session.state,0x10cd0ce0,&session.memory);
+    require(session.memory.fault.empty() && session.state.gpr.rax.qword==0);
+    session.state.gpr.rdi.qword=0x20000fff;
+    session.state.gpr.rdx.qword=2;
+    __osl_libc_memset(session.state,0x10cd0ce0,&session.memory);
+    require(!session.memory.fault.empty() && session.stack.back()==0);
     session.memory.fault = {};
     uint64_t allocation = allocate(session, 4096, true);
     auto bytes = guestPointer(session.memory, allocation, 4096);

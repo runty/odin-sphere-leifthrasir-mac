@@ -136,7 +136,7 @@ for round in range(a.rounds):
             if re.search(r"\b(?:fcmp|fpext|fptrunc|fadd|fsub|fmul|fdiv|load|store|call)\b[^\n]*\bx86_fp80\b", ir.read_text()):
                 raise RuntimeError("Executed block requires unsupported x87 extended precision at " + hex(pc))
         obj = objects / (ir.stem + ".o")
-        guarded, _ = instrument(ir.read_text())
+        guarded, _ = instrument(ir.read_text(), libc_helpers=True, image_sha256=layout['image_sha256'])
         guarded_path = objects / (ir.stem + ".guarded.ll")
         guarded_path.write_text(guarded)
         fingerprint = hashlib.sha256(guarded.encode()).hexdigest()

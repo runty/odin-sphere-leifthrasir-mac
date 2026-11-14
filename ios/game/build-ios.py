@@ -21,10 +21,12 @@ repo = source.parents[1]
 state = json.loads((root / "build-state.json").read_text())
 if state["reference"].get("completed_modules") != 2:
     p.error("First establish both actual module initializers on the Mac")
-for group, directory in (("sources", repo), ("headers", root), ("ir", root / "traces")):
-    for name, wanted in state[group].items():
-        if hashlib.sha256((directory / name).read_bytes()).hexdigest() != wanted:
-            p.error("The established startup corpus changed: " + name)
+def check_inputs():
+    for group, directory in (("sources", repo), ("headers", root), ("ir", root / "traces")):
+        for name, wanted in state[group].items():
+            if hashlib.sha256((directory / name).read_bytes()).hexdigest() != wanted:
+                p.error("The established startup corpus changed: " + name)
+check_inputs()
 out = root / ("simulator" if a.sdk == "iphonesimulator" else "ios")
 out.mkdir(exist_ok=True)
 llvm = Path("/opt/homebrew/opt/llvm/bin")
@@ -40,7 +42,7 @@ def run(name, command):
 
 
 for name, raw_key in state["ir"].items():
-    guarded, _ = instrument((root / "traces" / name).read_text())
+    guarded, _ = instrument((root / "traces" / name).read_text(), libc_helpers=True, image_sha256=state['image_sha256'])
     guarded_path = out / (Path(name).stem + ".guarded.ll")
     guarded_path.write_text(guarded)
     key = hashlib.sha256(guarded.encode()).hexdigest()
@@ -59,6 +61,7 @@ for name, path in (("runner", source / "runner.cpp"), ("thunks", root / "thunks.
 archive = out / "libodin-startup.new.a"
 archive.unlink(missing_ok=True)
 run("archive", [llvm / "llvm-ar", "rcs", archive, *objects])
+check_inputs() # Never publish a mixed archive if sources changed during compilation.
 archive.replace(out / "libodin-startup.a")
 runtime_hash = hashlib.sha256((source.parent / "cpu/runtime.h").read_bytes() + (source.parent / "cpu/runtime.cpp").read_bytes()).hexdigest()
 (out / "manifest.json").write_text(json.dumps({"corpus_sha256": state["corpus_sha256"], "runtime_sha256": runtime_hash,

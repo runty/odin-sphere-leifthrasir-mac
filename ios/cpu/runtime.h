@@ -29,6 +29,7 @@ struct Memory {
     uint64_t missing_pc = 0, fault_address = 0;
     bool atomic_held = false;
     Memory *(*dispatcher)(State &, uint64_t, Memory *) = nullptr;
+    uint8_t *(*external_pointer)(uint64_t, size_t, bool) = nullptr;
     ~Memory();
 };
 using Lifted = Memory *(*)(State &, uint64_t, Memory *);

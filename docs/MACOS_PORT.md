@@ -2,7 +2,7 @@
 
 The reference target is a local offline Mac app running the CUSA05083 US base build under Rosetta. Fork baseline `d2a9d8a253dd17680c5349cae0e1735c67fe2455` is upstream v0.2.3. Keep `main` at the upstream baseline and develop on `codex/macos-port`. The initial host is an M5 Max running macOS 27.2.1. Other upstream profiles need their own verification.
 
-## Current delivery status — 2026-11-13
+## Current delivery status — 2026-11-14
 
 | Area | Established | Remaining acceptance |
 | --- | --- | --- |
@@ -12,8 +12,8 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Signed local alpha installed, relative graphics dependencies, protected local state, verified local runtime library; normal app launch logs Metal launcher shown | Automated native UI capture is unavailable; fresh-account/visible click-through remain unclaimed |
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
-| Mobile baseline | Clean CPU-only build ran on iPhone; clean 371-trace startup probe installs on both devices | Both currently deny background launch while locked; latest returned iPhone JSON is stale and excluded |
-| Mobile startup/graphics | Explicit checked image/dispatch/host services, native GPU-visible address experiment; Metal device bridge compiles for iPhoneOS | Full eboot startup, complete iOS driver, captured game draw, title/battle frames and offline lifecycle |
+| Mobile baseline | Clean CPU-only build ran on iPhone; clean 624-trace startup/GPU probe installs on both devices | Both deny background launch while locked; stale returned hardware JSON is excluded |
+| Mobile startup/graphics | Host reaches 664 traces with checked sparse direct memory and native libc fill; iPhoneOS driver/framework builds and native submit/readback passes | Full eboot startup, physical GPU execution, captured game draw, title/battle frames and offline lifecycle |
 
 The first module-startup hardware result is explicitly a development build:
 244 traces, two zero-return initializers, 397 dispatches, missing logical PC
@@ -31,6 +31,14 @@ arm64 Mac submit/fence/readback check passes all 64 words. The Simulator SDK
 omits the driver's required Metal 4 protocols; it supplies CPU/lifecycle
 evidence only. [Graphics adapters and current limits](../ios/graphics/README.md).
 Physical mobile rendering and full guest startup remain open.
+
+The next host checkpoint completes both initializers and 1,638 dispatches with
+1,070,596,096 direct bytes allocated, then stops at `sceUserServiceInitialize`.
+The sparse memory and checked libc adapters pass 96 memory and 88 service checks;
+fixed-address and repeated ASLR runs agree. A clean 635-trace Simulator run also
+passes 414 comparisons and preserves its input container across app replacement.
+These later results do not turn an installation on locked hardware into an
+execution result. [Current startup scope](../ios/game/README.md).
 
 
 ## Unattended completion order

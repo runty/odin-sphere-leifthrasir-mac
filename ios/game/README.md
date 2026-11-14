@@ -148,7 +148,7 @@ entrypoints and never starts recording, a network stream or a permission flow.
 Message-dialog residency is accepted only because this image imports no such
 API. Error/Save dialog lifecycle is implemented; missing presenters stop.
 
-Current host startup reaches **635 traces / 1,516 dispatches**, both original
+The earlier host startup reached **635 traces / 1,516 dispatches**, both original
 initializers return zero, and no memory fault occurs. The PS4 direct-memory
 capacity query returns the production port's 5,056 MiB value. The next gap is
 `sceKernelAllocateDirectMemory`, requesting 51 MiB. A sparse backing/alias
@@ -159,3 +159,21 @@ Native service messages remain in private logs. The CLI emits exactly one
 `OSL_STARTUP_RESULT:` record so diagnostic text cannot be mistaken for its JSON
 checkpoint. The UIKit API still returns JSON directly. This host checkpoint has
 not replaced the clean signed 624-trace baseline installed on devices.
+
+## Sparse memory checkpoint
+
+The checked direct-memory adapter now completes real physical allocation and
+mapping, including the first 51 MiB heap and subsequent game heaps. Host startup
+reaches **664 traces / 1,638 dispatches**, with both module initializers returning
+zero and no memory fault. It owns **1,070,596,096 direct bytes** at this checkpoint.
+The next missing service is `sceUserServiceInitialize`; this is still not a game
+boot. The native memset adapter processes 49 calls / 955,255,600 bytes and avoids
+the large translated initialization loops. [Memory scope and checks](../services/README.md).
+
+The fixed-address and two ASLR identity runs reach matching checkpoints. Copied
+corrupt/truncated image and pointer-table fixtures are rejected. Native memory,
+service, CPU comparison, atomic/fault and loop guard checks pass. iPhoneOS and
+Simulator exports validate their inputs again before publishing an archive, so
+an edit during compilation cannot silently publish mixed inputs. Physical
+devices still have the clean signed 624-trace baseline; newer host/Simulator
+evidence does not qualify execution on a locked device.
