@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prove a real concurrent source edit cannot publish a mixed startup checkpoint."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -16,6 +17,7 @@ if out.exists() or len(out.parts)<3 or out.parts[1]!='Volumes' or not Path('/Vol
     p.error('Use a new directory on a mounted external disk')
 out.mkdir(parents=True)
 repo=Path(__file__).resolve().parents[2]
+original_hash=hashlib.sha256((repo/'src/runtime_user.c').read_bytes()).hexdigest()
 source=out/'source';run=out/'run';run.mkdir()
 with (out/'checkout.log').open('w') as log:
     subprocess.run(['git','-C',repo,'worktree','add','--detach',source,'HEAD'],stdout=log,stderr=subprocess.STDOUT,check=True)
@@ -41,8 +43,9 @@ with (out/'discovery.log').open('w') as log:
 text=(out/'discovery.log').read_text()
 assert status!=0 and 'Startup sources changed during discovery' in text,text[-2000:]
 assert not (run/'build-state.json').exists() and not (run/'latest.json').exists()
+assert hashlib.sha256((repo/'src/runtime_user.c').read_bytes()).hexdigest()==original_hash
 report={'concurrent_edit_rejected':True,'mixed_checkpoint_published':False,
-        'original_worktree_modified':False,'fixture_source_retained':str(source),
+        'original_runtime_user_unchanged':True,'fixture_source_retained':str(source),
         'game_executed':False,'exit_code':status}
 (out/'verification.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))
