@@ -51,6 +51,21 @@ target_compile_options(osl_keys PRIVATE -Wall -Wextra -Werror)
 add_subdirectory(gpu)
 add_subdirectory(launcher)
 
+# Isolated native renderer check; this never links or executes the x86 loader.
+option(OSL_BUILD_ARM64_GPU_PROBE "Build the native arm64 renderer initialization probe" OFF)
+if(APPLE AND OSL_BUILD_ARM64_GPU_PROBE)
+    if(NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        message(FATAL_ERROR "The frontend probe currently qualifies native arm64 macOS only")
+    endif()
+    add_executable(osl-native-gpu-probe EXCLUDE_FROM_ALL
+        ios/graphics/frontend-probe.cpp src/runtime_memory.c ios/services/memory_shim.c src/runtime_errno.c)
+    set_target_properties(osl-native-gpu-probe PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+    target_compile_definitions(osl-native-gpu-probe PRIVATE OSL_AOT_CPU=1)
+    target_include_directories(osl-native-gpu-probe PRIVATE src gpu/shim gpu/shadps4)
+    target_compile_options(osl-native-gpu-probe PRIVATE -include ${CMAKE_SOURCE_DIR}/src/host_darwin.h)
+    target_link_libraries(osl-native-gpu-probe PRIVATE oslgpu)
+endif()
+
 set(OSL_RUNTIME_SOURCES
     src/runtime.c
     src/runtime_audio.c
@@ -231,3 +246,11 @@ add_executable(osl-triangle-fan-tests EXCLUDE_FROM_ALL tests/triangle_fan_tests.
 set_target_properties(osl-triangle-fan-tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 target_include_directories(osl-triangle-fan-tests PRIVATE gpu/shim)
 target_compile_options(osl-triangle-fan-tests PRIVATE -Wall -Wextra -Werror)
+
+add_executable(osl-gpu-worker-tests EXCLUDE_FROM_ALL tests/gpu_worker_tests.cpp)
+set_target_properties(osl-gpu-worker-tests PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+target_include_directories(osl-gpu-worker-tests PRIVATE gpu/shim gpu/shadps4)
+target_link_libraries(osl-gpu-worker-tests PRIVATE oslgpu)
+if(APPLE)
+    target_compile_options(osl-gpu-worker-tests PRIVATE -include ${CMAKE_SOURCE_DIR}/src/host_darwin.h)
+endif()

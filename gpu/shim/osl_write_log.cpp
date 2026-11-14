@@ -13,7 +13,7 @@
 #include <sys/ucontext.h>
 #include <unistd.h>
 #endif
-#include <x86intrin.h>
+#include "common/rdtsc.h"
 
 namespace OslWriteLog {
 namespace {
@@ -62,7 +62,7 @@ void Note(std::uint64_t address, const void* data, std::uint64_t size, Source so
 
 void Record(std::uint64_t address, const void* data, std::uint64_t size, Source source) {
     static thread_local const std::uint32_t tid = static_cast<std::uint32_t>(gettid());
-    Entry e{address, size, 0, __rdtsc(), source, tid};
+    Entry e{address, size, 0, Common::ReadHostCounter(), source, tid};
     std::memcpy(&e.first, data, size < 8 ? size : 8);
     Push(ring, head, e);
     // Only small writes are scanned: scanning downloads of megabytes delays them enough to hide
@@ -86,6 +86,13 @@ void Record(std::uint64_t address, const void* data, std::uint64_t size, Source 
 
 extern "C" void oslgpu_dump_guest_writes(void* ucontext) {
     using namespace OslWriteLog;
+#if defined(__APPLE__) && defined(__aarch64__)
+    // Native arm64 fault registers describe the renderer, not AMD64 guest state.
+    // The x86-only register-based memory walk below cannot be used here.
+    (void)ucontext;
+    if (Mode()) std::fprintf(stderr, "Write log: guest register dump unavailable for native arm64 faults\n");
+    return;
+#else
     if (Mode() == 0) {
         return;
     }
@@ -111,7 +118,7 @@ extern "C" void oslgpu_dump_guest_writes(void* ucontext) {
     }
     const char* sources[] = {"backing",      "WriteData",           "fence",
                              "EOP (decoded)", "WriteData (decoded)", "EOS (decoded)"};
-    const std::uint64_t now = __rdtsc();
+    const std::uint64_t now = Common::ReadHostCounter();
     const auto print = [&](const Entry& e, const char* what) {
         std::fprintf(stderr,
                      "Write log: %s %s %#llx +%llu first %#llx tid %u, %.3f s before the fault\n",
@@ -165,4 +172,5 @@ extern "C" void oslgpu_dump_guest_writes(void* ucontext) {
         }
     }
     std::fprintf(stderr, "Write log: %llu writes logged\n", (unsigned long long)n);
+#endif
 }

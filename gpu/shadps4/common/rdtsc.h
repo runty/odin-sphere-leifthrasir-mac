@@ -10,6 +10,9 @@
 #endif
 
 #include "common/types.h"
+#if defined(ARCH_X86_64) && !defined(_MSC_VER)
+#include <x86intrin.h>
+#endif
 
 namespace Common {
 
@@ -48,6 +51,29 @@ static inline u64 FencedRDTSC() {
 #endif
 }
 #endif
+
+// Unfenced host ticks for profiling and a portable spin-loop hint.
+// Ticks are compared only within the same host clock domain.
+static inline u64 ReadHostCounter() {
+#if defined(ARCH_X86_64)
+    return __rdtsc();
+#elif defined(ARCH_ARM64)
+    u64 value;
+    asm volatile("mrs %0, cntvct_el0" : "=r"(value));
+    return value;
+#else
+#error "Missing host counter implementation"
+#endif
+}
+static inline void SpinPause() {
+#if defined(ARCH_X86_64)
+    _mm_pause();
+#elif defined(ARCH_ARM64) && defined(_MSC_VER)
+    __yield();
+#elif defined(ARCH_ARM64)
+    asm volatile("yield");
+#endif
+}
 
 u64 EstimateRDTSCFrequency();
 

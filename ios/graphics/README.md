@@ -100,3 +100,40 @@ returns zero from both modules and matches the 624-trace / 1,499-dispatch /
 7,419-checkpoint stop at module ID 7. Its Metal 4 query is `null` with an
 explicit SDK-unavailable status; no unsupported enum or header is substituted.
 No Simulator graphics-driver success is claimed.
+
+
+## Native arm64 game-frontend initialization
+
+The game renderer itself now builds and links as native arm64 macOS. The draw
+pipeline, binding helper, recorder and profiling paths use architecture-specific
+host ticks and spin hints; x86 keeps its existing unfenced counter. Darwin's
+x86 signal-register layout is exposed only on x86, and the x86 guest-register
+write-log walk is explicitly unavailable for an arm64 renderer fault. The
+shared frame reader uses public `vm_read_overwrite` on iOS.
+
+`OSL_BUILD_ARM64_GPU_PROBE=ON` adds the isolated `osl-native-gpu-probe` target
+without linking or executing the x86 loader. On the M5 Max it creates a main-
+thread SDL window, selects the audited native KosmicKrisp driver, creates the
+Vulkan/Metal surface and presenter, registers 585 GPU/event symbols, and opens
+and closes a real VideoOut handle. A bounded SDL quit exits successfully.
+**Zero guest draws, submissions or presented frames are established.** This is
+native Mac engineering evidence; it has not executed on iPhone or iPad.
+
+The first link experiment exposed an x86 Zycore archive through the shared SDK.
+A private native Zydis 4.1.1/Zycore build fixes that; the final link has no ignored
+architecture libraries. Current native frontend dependency builds use Homebrew
+SDL 3.4.20/fmt 12.2.1/xxHash 0.8.4/PNG 1.6.59/Vulkan 1.4.363 and are development
+inputs, not the pinned release dependency reproduction. They do not replace the
+installed Mac alpha or modify another project's SDK.
+
+`osl-gpu-worker-tests` exercises 20,000 binding-helper handoffs and 180,000
+variable-size draw-ring packets, crossing the ring capacity repeatedly, with
+idle sleep/wake and destructor checks. Both arm64 and Rosetta x86 pass; the
+x86 triangle-fan regression also passes 16,376 cases. Private evidence lives in
+`native-gpu-arm64/frontend-verification.json`, `gpu-worker-verification.json`
+and the corresponding build/run logs below the Odin build root.
+
+Next connect the checked AOT guest and shared GPU mappings to this renderer,
+then port its surface/window and dependency interfaces to UIKit/iPhoneOS. The
+existing driver-only buffer readback result and this frontend initialization
+result do not establish a rendered game frame.
