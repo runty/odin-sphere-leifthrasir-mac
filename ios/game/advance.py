@@ -23,6 +23,7 @@ p.add_argument("--identity", action="store_true", help="Experiment with checked 
 p.add_argument("--adopt-existing-cache", action="store_true", help="Record provenance for a known task-local legacy trace cache")
 p.add_argument("--gpu-build", type=Path, help="Isolated native arm64 renderer CMake build for real GPU-backed discovery")
 p.add_argument("--gpu-driver-manifest", type=Path, help="Explicit native macOS Vulkan ICD manifest for GPU-backed discovery")
+p.add_argument("--stop-file", type=Path, help="Stop after publishing a completed checkpoint when this file exists; never interrupts a compiler or guest")
 a = p.parse_args()
 root = a.root.resolve()
 if len(root.parts) < 3 or root.parts[1] != "Volumes" or not Path("/Volumes", root.parts[2]).is_mount():
@@ -271,6 +272,9 @@ for round in range(a.rounds):
     atomic_json(root / (name + ".json"), report)
     atomic_json(root / "latest.json", report)
     print(json.dumps(report), flush=True)
+    if a.stop_file and a.stop_file.exists():
+        print("Discovery stop requested after completed checkpoint", flush=True)
+        break
     pending=missing_targets(report,layout["base"],layout["segments"],entries)
     if not pending:break
     for pc in pending:
