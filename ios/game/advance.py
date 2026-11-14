@@ -153,7 +153,7 @@ if a.gpu_build:
         p.error("GPU discovery needs a native arm64 driver")
     gpu_env = dict(os.environ,VK_DRIVER_FILES=str(driver_manifest),VK_ICD_FILENAMES=str(driver_manifest),SDL_VULKAN_LIBRARY=str(loader))
     source_paths += (repo / "CMakeLists.txt", repo / "gpu/CMakeLists.txt",repo / "cmake/OslPinnedSources.cmake",
-                     repo / "src/oslgpu.h",repo / "ios/graphics/aot-frontend.cpp",repo / "ios/graphics/bridge-checks.h")
+                     repo / "src/oslgpu.h",repo / "ios/graphics/aot-frontend.cpp",repo / "ios/graphics/bridge-checks.h",repo / "ios/graphics/guest-gpu.h")
     source_paths += tuple(path for directory in (repo / "gpu/shim",repo / "gpu/shadps4")
                           for path in sorted(directory.rglob("*")) if path.is_file() and path.suffix in (".cpp",".h",".c",".comp",".frag",".vert",".glsl",".hlsl",".cmake"))
     run("gpu-configure",["cmake","-S",repo,"-B",gpu_build,"-DOSL_AOT_ROOT="+str(root),"-DOSL_REMILL_INCLUDE="+str(a.remill / "remill/include")],120)
