@@ -7,36 +7,39 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-14
 
-The native arm64 Mac AOT/GPU frontend now runs four actual game-created worker
-threads. They have separate register/fault/checkpoint state, owned guest stacks
-and lazy module TLS, and a shared checked mapping table. Worker creation,
-return/exit, join/detach, deferred cancellation requests, yield, bounded sleep,
-priority/affinity bookkeeping and paired mutex/condition/event waits are wired.
-This is a partial title runtime: missing services, callbacks and translated
-blocks still stop explicitly. iPhone/iPad archives compile; their probe has
-no full game GPU frontend. Fixed-address Simulator startup reaches VideoOut,
-while fresh iPad identity-mode startup currently faults earlier, as below.
+Clean signed `1376d6a` iPad mini A20 Pro launches 12 and 13 now complete
+both actual module initializers and allocate 1,294,155,776 bytes from the
+direct pool in a 4 GiB owned guest window, without the old null-memory fault. The permanent
+backing view is absent. Real startup reaches the explicit `sceVideoOutOpen`
+service gap at 1,027 entries / 2,562 dispatches, with no memory fault. Both
+launches pass all 414 CPU cases, 19 actual alias/protection/zero-reuse/teardown
+checks and 64-word Vulkan fill/fence/readback. Private inputs remain identical.
+This is real physical memory/startup progress; no mobile game frame is claimed.
 
-The qualified worker corpus is 1,022 entries / 3,217 dispatches, both real
-initializers zero, four workers started/joined, no memory fault and zero guest
-frames; 31,840 total checkpoints. Corpus `25594870c06483aaadbd3aef056a4814c3e330121794fa7526d90f7189d29b5e`.
-Further host discovery reaches 1,027 entries and an explicit unsupported
-`VRCPPS` at `0x106aa6df`. Unknown instructions remain real backend gaps.
+The AOT provider retains full physical-pool accounting and uses transient
+backing aliases capped at 4 MiB per chunk. Its owned window tries 8/4/2 GiB,
+rejecting mappings that do not fit. Tests pass 138 contracts normally and under
+ASan/TSan, including concurrent writeback and forced zeroing when hole punching
+is unavailable. Headless fixed/identity/corrupt-input checks still pass. Corpus:
+`6be8c7c08d02a24ca7373c0a79ec785a4f44001c798ee31f33b87109106fff23`.
+It reuses verified IR from the unchanged older backend in a separate directory.
 
-Clean `1db2a41` was installed/listed on both physical devices. iPad mini A20 Pro
-launches 1 and 2 pass all 414 CPU cases and actual 64-word GPU fill/fence/readback,
-with inputs preserved. Game startup completes both initializers but faults at
-unmapped zero after 7,053 checkpoints / 1,451 dispatches in identity mode.
-Diagnostic build `054eaea` reproduces it on launch 3 and locates the stop in the
-verified libc memset helper `0x10cd0ce0`. Clean `1ca1f12` reproduces it in BOTH
-identity and fixed-address modes (launches 4 and 5), caller `0x1068c366`.
-A bounded console launch 6 confirms real direct-pool allocation failures
-`0x8002000c` at `runtime_memory.c:598`, before the null memset. This points to
-physical memory-provider setup, rather than solely address rebasing. It remains
-an unresolved startup defect, not a game or frame result. iPhone foreground launch is denied while locked;
-no fresh iPhone execution is claimed. Matching Simulator launches 15 and 16
-repeat 414 cases, 1,022 entries and 2,562 dispatches at VideoOut. No mobile App0
-assets or actual game renderer are connected yet.
+Both devices now list clean `1376d6a`, installed after Documents backups.
+iPhone foreground launch is denied while locked, so fresh iPhone execution
+remains unverified. Simulator still has `1db2a41` (414 cases / 1,022 entries /
+VideoOut); updated matching archives compile against both mobile SDKs, awaiting
+Simulator installation. Mobile App0 assets and
+the actual game GPU frontend are still unconnected. The packaged Mac remains
+on validated `af52e09`; the player-assisted 30-minute session is deferred.
+
+The earlier qualified native arm64 Mac AOT/GPU corpus `25594870` ran four
+actual game-created workers with owned state/stack/TLS and checked shared
+mappings: 1,022 entries / 3,217 dispatches / 31,840 total checkpoints, both
+initializers zero, three 1080p buffers, no memory fault, zero guest frames.
+The later executed VRCPPS gap now has qualified six-form reciprocal semantics
+(1,572,864 output lanes per CPU path, ISA contracts rather than a bit-exact
+processor approximation table). A separate new-backend corpus is rebuilding
+narrower seed coverage; it has not yet regained that full worker/GPU milestone.
 
 The sections below retain earlier checkpoints and their limitations as history.
 The latest worker/clock qualification is described at the end of this file.
