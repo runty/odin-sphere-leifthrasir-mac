@@ -317,3 +317,14 @@ unknown dispatch differences still fail. Evidence is in
 `ios-eventflag-address-traces/` and `ios-eventflag-startup-tests-verified/`.
 `OSL_STARTUP_DISPATCH_TRACE` is CLI-only and records normalized code targets,
 never guest register, stack or credential contents.
+
+
+Clean `10d9c3a` Simulator launches 13 and 14 now repeat 859 traces / 2,562
+dispatches, matching the host's fixed-address mode. Both initializers complete,
+twelve event flags exist, all 414 CPU comparisons pass and no memory fault
+occurs. Input hashes survive replacement/relaunch; actual App0 assets remain
+unimported. The matching signed iPhoneOS app/framework builds and passes strict
+signature verification, staged only in `ios-probe-eventflag-gpu/`. Physical
+devices retain `dcd85de`; no physical launch or guest frame is inferred.
+Evidence: `ios-probe-eventflag-simulator/verification.json` and
+`ios-probe-eventflag-gpu/verification-status.json` in the private build root.

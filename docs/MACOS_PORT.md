@@ -13,7 +13,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
 | Mobile baseline | Clean CPU-only build ran on iPhone; clean `dcd85de` 664-trace startup/GPU probe installs on both devices | iPhone launch denied Locked; iPad input transfer timed out; stale hardware JSON is excluded |
-| Mobile startup/graphics | Clean `0c6414d` host/Simulator reach 751 traces through storage/offline NP; iPhoneOS app/framework builds; native arm64 game frontend initializes Metal surface/VideoOut with zero guest draws | Event flags/workers/TLS, shared GPU mappings, real asset import, UIKit presentation, physical GPU execution, captured game draw, title/battle frames and lifecycle |
+| Mobile startup/graphics | Clean `10d9c3a` Simulator repeats 859 traces / 2,562 dispatches through twelve event flags to real VideoOut boundary; signed iPhoneOS app/framework staged; native arm64 frontend initializes its Metal surface with zero guest draws | Connect CPU/GPU and real VideoOut/Gnm/event calls, workers/TLS, shared GPU mappings, real asset import, UIKit presentation, physical GPU execution, captured game draw, title/battle frames and lifecycle |
 
 The first module-startup hardware result is explicitly a development build:
 244 traces, two zero-return initializers, 397 dispatches, missing logical PC
@@ -452,6 +452,8 @@ conditionally visit two extra comparison blocks based on relative pointer
 ordering. Complete logical dispatch traces match after normalizing only the
 exact byte-pinned range-check path; all other differences still fail. The
 combined corrupted/truncated image/pointer rejection tests then pass. This is
-canonical code-target/boundary evidence, not full CPU-state equivalence. The earlier clean `0c6414d` Simulator
-and physical `dcd85de` results remain separate until a fresh export/launch is
-verified. [Shared event-flag scope](../ios/services/README.md#shared-event-flags-and-guarded-guest-waits).
+canonical code-target/boundary evidence, not full CPU-state equivalence. Clean `10d9c3a` Simulator launches 13 and 14 now repeat the verified fixed-
+address host result: 859 traces / 2,562 dispatches, 414 CPU checks, both
+initializers complete, twelve flags and no memory fault. Private inputs survive
+replacement/relaunch. The matching signed iPhoneOS/GPU app builds and verifies,
+staged only. Physical devices retain `dcd85de`. [Shared event-flag scope](../ios/services/README.md#shared-event-flags-and-guarded-guest-waits).
