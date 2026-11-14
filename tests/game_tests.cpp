@@ -1648,7 +1648,7 @@ void TestUnlockBookshelfWiring() {
     const std::string loader = ReadFile(root / "src" / "loader.c");
     const size_t apply = loader.find("if (bookshelf_unlock)\n        apply_unlock_bookshelf(");
     const size_t redzone = loader.find("runtime_redzone_install(image,");
-    const size_t reserve = loader.find("bookshelf_unlock ? round_page(OSL_BOOKSHELF_STUB_BYTES) : 0");
+    const size_t reserve = loader.find("bookshelf_unlock ? osl_round_page(OSL_BOOKSHELF_STUB_BYTES) : 0");
     CHECK(apply != std::string::npos && redzone != std::string::npos && reserve != std::string::npos);
     CHECK(reserve < apply && apply < redzone);
 }

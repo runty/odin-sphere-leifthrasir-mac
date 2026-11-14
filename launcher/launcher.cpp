@@ -307,7 +307,9 @@ public:
         trophy_page_ = std::make_unique<TrophyPage>(host_, UserDir());
         launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
         updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(InstallDir(), OSL_PORT_VERSION));
+#ifndef __APPLE__
         updater_->StartCheck();
+#endif
         ApplySavedPrompts();
 
         outcome = Outcome::kRunning;
@@ -1033,7 +1035,11 @@ private:
             "This open source PC port is maintained and developed in my free time. If you enjoy the project and would "
             "like to support its continued development, you can sponsor my work on GitHub.",
             "Support is completely optional and helps support ongoing improvements and future projects.");
+#ifdef __APPLE__
+        ui.Paragraph("Odin Sphere Leifthrasir for PlayStation 4, running on this Mac through Rosetta and Metal. No game files are included; "
+#else
         ui.Paragraph("Odin Sphere Leifthrasir for PlayStation 4, running natively on this PC. No game files are included; "
+#endif
                      "the game runs from the user's own copy.");
         ui.Spacer(4);
         std::error_code ec;
@@ -1066,6 +1072,9 @@ private:
         ui.Info("Renderer", "Vulkan");
 #ifdef _WIN32
         ui.Info("Platform", "Windows x64");
+#elif defined(__APPLE__)
+        ui.Info("Platform", "Apple silicon / Rosetta 2 / Metal");
+        ui.Info("Updates", "Local Mac build; automatic updates disabled");
 #else
         ui.Info("Platform", "Linux x86-64 (experimental)");
 #endif

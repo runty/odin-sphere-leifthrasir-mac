@@ -114,6 +114,9 @@ std::vector<Place> StandardPlaces(const fs::path& program_folder) {
         }
     }
 #ifndef _WIN32
+#ifdef __APPLE__
+    AddChildren(places, "/Volumes");
+#endif
     // SteamOS mounts the SD card at /run/media/<device>, other desktops at /run/media/<user>/<name> or /media/<user>.
     AddChildren(places, "/run/media");
     if (const char* user = std::getenv("USER"); user && *user) {

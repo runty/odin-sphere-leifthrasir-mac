@@ -586,6 +586,12 @@ const UpdateSnapshot& Settle(UpdateController& controller) {
 UpdateConfig CheckConfig(const std::filesystem::path& install, const std::filesystem::path& release_json,
                          std::string current_version) {
     UpdateConfig config = osl::MakeUpdateConfig(install, current_version);
+#ifdef __APPLE__
+    // Exercise the shared update state machine with an explicit synthetic package.
+    // The production Mac configuration deliberately has no installable asset.
+    config.asset_name = osl::LinuxPackageName;
+    config.checksum_asset_name = osl::LinuxChecksumName;
+#endif
     config.release_json_override = release_json;
     config.log = nullptr;
     return config;
@@ -704,6 +710,10 @@ void TestConfig() {
     const std::filesystem::path build_tree = temp.path / "repo" / "build" / "cmake" / "clang64" / "bin";
     WriteFile(build_tree / "trg-updater.exe", "helper");
     CHECK(!osl::MakeUpdateConfig(build_tree, "0.1.0").install_supported);
+#elif defined(__APPLE__)
+    CHECK(!without_helper.install_supported);
+    CHECK(!without_helper.asset_name && !without_helper.checksum_asset_name);
+    CHECK(!without_helper.install_unsupported_reason.empty());
 #else
     CHECK(without_helper.package_kind == UpdatePackageKind::kAppImage);
 #endif

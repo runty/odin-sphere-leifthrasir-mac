@@ -99,6 +99,8 @@ trg::update::UpdateConfig MakeUpdateConfig(const std::filesystem::path& install_
     } else {
         config.install_supported = true;
     }
+#elif defined(__APPLE__)
+    config.install_unsupported_reason = "Automatic updates are disabled in the local Mac port. Rebuild with the pinned Mac pipeline.";
 #else
     config.package_kind = UpdatePackageKind::kAppImage;
     config.asset_name = LinuxPackageName;

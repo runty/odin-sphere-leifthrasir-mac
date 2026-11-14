@@ -1,0 +1,29 @@
+{
+  "driver_build_repository": "https://github.com/Fleurat/SpartanPort.git",
+  "driver_build_commit": "76830ef10f99cf5ca26f0cd2e41a4ab83207ae5f",
+  "kosmickrisp_commit": "af7dd0a35c071cecbfff32662675641d19e8e4db",
+  "mesa_commit": "b628375fb1fd99476bfbaaa0532deb6fe3a6870e",
+  "vulkan_tag": "vulkan-sdk-1.4.357.0",
+  "archives": {
+    "openssl": {
+      "version": "3.5.4",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz",
+      "sha256": "967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99"
+    },
+    "png": {
+      "version": "1.6.50",
+      "url": "https://download.sourceforge.net/libpng/libpng-1.6.50.tar.gz",
+      "sha256": "71158e53cfdf2877bc99bcab33641d78df3f48e6e0daad030afe9cb8c031aa46"
+    },
+    "freetype": {
+      "version": "2.13.3",
+      "url": "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz",
+      "sha256": "bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103"
+    },
+    "sdl": {
+      "version": "3.4.18",
+      "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz",
+      "sha256": "9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3"
+    }
+  }
+}

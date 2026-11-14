@@ -2,6 +2,28 @@
 
 The reference target is a local offline Mac app running the CUSA05083 US base build under Rosetta. Fork baseline `d2a9d8a253dd17680c5349cae0e1735c67fe2455` is upstream v0.2.3. Keep `main` at the upstream baseline and develop on `codex/macos-port`. The initial host is an M5 Max running macOS 27.2.1. Other upstream profiles need their own verification.
 
+## Unattended completion order
+
+The player requested an ongoing goal to finish the Mac port, then the iPhone
+and iPad port, without waiting for assistance. The player-assisted 30-minute
+gameplay session is explicitly deferred. Continue implementation and automated
+checks; record physical-device lock/disconnect failures without asking the
+player to stay awake. Use backed-up local progress until an Odin cloud-save
+folder is explicitly selected. Remaining hands-on acceptance stays visible and
+does not block independent engineering work.
+
+1. Finish the Finder bootstrap, relocatable driver bundle, launcher integration,
+   safe pipeline install and repeated packaged-app checks. See
+   [Mac app build and verification](../macos/README.md).
+2. Complete bounded automated runtime, storage-failure and lifecycle checks;
+   retain the earlier player's combat/audio/save evidence and defer the soak.
+3. Build a signed Odin arm64 diagnostic/CPU app for both reference devices.
+   Reuse proven infrastructure with Odin-specific inputs, identity and checks.
+4. Establish translated real-module execution, then GPU replay and visible
+   scenes; proceed through mobile input/audio/suspend/save/install milestones.
+   Rosetta is not a mobile backend. Report the actual reached checkpoint and
+   any CPU/renderer gap instead of treating a diagnostic shell as the game.
+
 ## First bring-up
 
 Use an external work directory, with a link to the player's package in `WORK/game/`. Upstream's Python preparation tools require cryptography. Run from the checkout:
