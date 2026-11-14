@@ -252,3 +252,21 @@ UIKit window or link the full game frontend. Next qualify main-thread UIKit
 window/Metal-layer ownership, a direct bundled ICD route, the remaining iOS
 renderer dependencies and actual VideoOut/Gnm calls. Preserve separate synthetic
 surface/readback and real guest-frame evidence.
+
+## UIKit/SDL Metal-layer ownership probe
+
+Set `OSL_PROBE_SDL_PREFIX` to the matching audited SDL prefix when calling
+`ios/build-probe.sh`. The app copies and validates that static archive, links
+its Apple framework dependencies and calls the surface probe on UIKit's main
+queue after startup diagnostics. A hidden SDL UIKit window creates a Metal view
+and nonzero drawable extent, then destroys both and releases its video lease.
+The original app key window must remain unchanged. Wrong-platform prefixes and
+changed archives are rejected before Xcode project generation.
+
+The development candidate passes on owned Simulator (1320×2868) and actual iPad
+(2316×1512), with CPU 414 and memory 19 still passing; iPad GPU readback remains
+64/64. These are actual UIKit/Metal-layer lifecycle results, not an acquired
+Vulkan surface, presented image, guest draw or game frame. `surface` diagnostics
+report main-thread/scene/driver/extent/cleanup facts and explicitly leave
+`vulkan_surface_created:false`. Next connect the bundled ICD and native renderer
+to that surface, preserving lifetime and foreground constraints.

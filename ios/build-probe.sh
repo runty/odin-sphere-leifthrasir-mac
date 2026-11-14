@@ -87,6 +87,33 @@ PYGPU
 else
     rm -f "$build_dir/Source/gpu_probe.mm"
 fi
+sdl_enabled=0
+sdl_dependency=""
+sdl_corpus=none
+if [[ -n ${OSL_PROBE_SDL_PREFIX:-} ]]; then
+    sdl_prefix=$OSL_PROBE_SDL_PREFIX
+    sdl_corpus=$(python3 - "$sdl_prefix" "$probe_sdk" <<'PYSDL'
+import hashlib,json,sys
+from pathlib import Path
+prefix=Path(sys.argv[1]).resolve();manifest=json.loads((prefix.parent/('inputs-'+sys.argv[2]+'.json')).read_text())
+library=prefix/'lib/libSDL3.a'
+if manifest['platform']!=sys.argv[2] or manifest['architectures']!='arm64' or Path(manifest['library'])!=library:
+    raise SystemExit('SDL prefix does not match the requested mobile platform')
+if hashlib.sha256(library.read_bytes()).hexdigest()!=manifest['library_sha256']:
+    raise SystemExit('SDL archive differs from its checked manifest')
+print(manifest['library_sha256'])
+PYSDL
+)
+    cp "$sdl_prefix/lib/libSDL3.a" "$build_dir/Source/libSDL3.a"
+    mkdir -p "$build_dir/Source/Headers"
+    ditto "$sdl_prefix/include/SDL3" "$build_dir/Source/Headers/SDL3"
+    cp "$source_dir/ios/graphics/surface-probe.mm" "$build_dir/Source/surface_probe.mm"
+    sdl_enabled=1
+    deployment=27.2
+    sdl_dependency=$'      - framework: Source/libSDL3.a\n        embed: false\n      - sdk: CoreMedia.framework\n      - sdk: CoreVideo.framework\n      - sdk: CoreAudio.framework\n      - sdk: AudioToolbox.framework\n      - sdk: AVFoundation.framework\n      - sdk: CoreBluetooth.framework\n      - sdk: CoreGraphics.framework\n      - sdk: CoreMotion.framework\n      - sdk: QuartzCore.framework'
+else
+    rm -f "$build_dir/Source/libSDL3.a" "$build_dir/Source/surface_probe.mm"
+fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi
 cat > "$build_dir/project.yml" <<YAML
@@ -112,6 +139,7 @@ targets:
         embed: false
 $game_dependency
 $gpu_dependency
+$sdl_dependency
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.probe
@@ -122,7 +150,7 @@ $gpu_dependency
         CLANG_ENABLE_OBJC_ARC: YES
 $entitlements_setting
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
-        GCC_PREPROCESSOR_DEFINITIONS: 'OSL_GAME_STARTUP=$game_enabled OSL_GPU_PROBE=$gpu_enabled'
+        GCC_PREPROCESSOR_DEFINITIONS: 'OSL_GAME_STARTUP=$game_enabled OSL_GPU_PROBE=$gpu_enabled OSL_SDL_SURFACE=$sdl_enabled'
         HEADER_SEARCH_PATHS: '\$(PROJECT_DIR)/Source/Headers'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CURRENT_PROJECT_VERSION: 1
@@ -134,6 +162,7 @@ $entitlements_setting
         OSLBuildID: '$revision'
         OSLGameCorpus: '$game_corpus'
         OSLGPUDriver: '$gpu_corpus'
+        OSLSDLArchive: '$sdl_corpus'
         GCSupportsControllerUserInteraction: true
         GCSupportedGameControllers:
           - ProfileName: ExtendedGamepad

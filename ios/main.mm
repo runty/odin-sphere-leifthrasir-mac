@@ -6,6 +6,9 @@
 
 extern "C" const char *osl_mobile_cpu_report();
 extern "C" NSDictionary *osl_mobile_vm_report();
+#if OSL_SDL_SURFACE
+extern "C" NSDictionary *osl_mobile_surface_report(UIWindowScene *);
+#endif
 #if OSL_GPU_PROBE
 extern "C" NSDictionary *osl_mobile_gpu_report();
 #endif
@@ -74,6 +77,14 @@ extern "C" NSDictionary *osl_mobile_memory_report();
 #endif
         const char *vmProbe = getenv("OSL_VM_PROBE");
         NSDictionary *virtualMemory = vmProbe && !strcmp(vmProbe, "1") ? osl_mobile_vm_report() : @{@"status": @"not requested", @"game_frames": @NO};
+        __block NSDictionary *surface = @{@"status": @"SDL surface provider not linked", @"game_frames": @NO};
+#if OSL_SDL_SURFACE
+        for(unsigned attempt=0;attempt<20;++attempt) {
+            dispatch_sync(dispatch_get_main_queue(), ^{ surface=osl_mobile_surface_report(self.view.window.windowScene); });
+            if(![surface[@"status"] isEqual:@"waiting_foreground"])break;
+            [NSThread sleepForTimeInterval:0.05];
+        }
+#endif
         struct utsname machine; uname(&machine);
         id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
 #if TARGET_OS_SIMULATOR
@@ -90,8 +101,10 @@ extern "C" NSDictionary *osl_mobile_memory_report();
             @"game_startup": game, @"graphics": graphics,
             @"memory": memory,
             @"virtual_memory": virtualMemory,
+            @"surface": surface,
             @"gpu_driver_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGPUDriver"] ?: @"none",
             @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",
+            @"sdl_archive_sha256": NSBundle.mainBundle.infoDictionary[@"OSLSDLArchive"] ?: @"none",
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
             @"page_size": @(getpagesize()), @"launch_count": @(count),
             @"metal_device": gpu.name ?: @"unavailable", @"bc_texture_compression": @(gpu.supportsBCTextureCompression),
