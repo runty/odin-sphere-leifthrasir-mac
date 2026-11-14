@@ -8,6 +8,7 @@
 #include "../services/pad.h"
 #include "../services/guest_storage.h"
 #include "../services/offline.h"
+#include "../services/eventflag.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -62,6 +63,7 @@ struct Session {
     MobilePad pad;
     MobileStorage storage;
     OfflineServices offline;
+    MobileEventFlags event_flags;
     Session() {
         memory.external_pointer = DirectMemory::pointer;
         osl_aot_user_reset();
@@ -239,6 +241,9 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     if (!std::strcmp(name,"sceNetCtlUnregisterCallback")) {
         session.offline.net_callbacks.erase(s.gpr.rdi.dword); return hostReturn(s,m,0);
     }
+    uint64_t event_result=0;
+    if (GuestEvents::call(name,s,*m,session.event_flags,event_result))
+        return m->fault.empty() ? hostReturn(s,m,event_result) : m;
     uint64_t storage_result=0;
     if (GuestStorage::save(name,s,*m,session.storage,session.saves_initialized,storage_result) ||
         GuestStorage::file(name,s,*m,session.storage,storage_result))
@@ -793,6 +798,7 @@ static std::string bootstrap(const char *path) {
         << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
         << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
+        << ",\"event_flags\":" << session->event_flags.count()
         << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
         << ",\"network_connected\":false,\"psn_signed_in\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
@@ -899,6 +905,18 @@ static bool serviceChecks() {
     for(unsigned i=1;i<=4096;++i) require(exhausted.context()==i);
     require(exhausted.context()==0 && exhausted.contexts.size()==4096);
     setenv("OSL_USER_NAME","Odin Test",1);
+    require(call("sceKernelCreateEventFlag",0)==MobileEventFlags::invalid);
+    require(call("sceKernelCreateEventFlag",0x20000081,0,0x10,0)==0);
+    const uint64_t kernel_flag=load64(session.memory,0x20000081);
+    require(kernel_flag && session.event_flags.count()==1);
+    require(call("sceKernelSetEventFlag",kernel_flag,3)==0);
+    require(call("sceKernelPollEventFlag",kernel_flag,2,0x21,0x20000091)==0);
+    require(load64(session.memory,0x20000091)==3);
+    require(session.state.gpr.rip.qword==0xfeedface && session.state.gpr.rsp.qword==0x20001000);
+    require(call("sceKernelClearEventFlag",kernel_flag,0)==0);
+    require(call("sceKernelPollEventFlag",kernel_flag,1,1,0)==0x80020010u);
+    require(call("sceKernelDeleteEventFlag",kernel_flag)==0 && session.event_flags.count()==0);
+    require(call("sceKernelSetEventFlag",kernel_flag,1)==MobileEventFlags::missing);
     require(call("sceUserServiceInitialize")==0 && session.users_initialized);
     require(call("sceUserServiceInitialize")==0);
     require(call("sceUserServiceGetInitialUser")==0x80960005u);

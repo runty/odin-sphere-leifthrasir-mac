@@ -53,6 +53,8 @@ void runtime_user_login(int player);
 int runtime_user_player(int32_t user);
 uintptr_t runtime_font_resolve(const char *name);
 uintptr_t runtime_eventflag_resolve(const char *name);
+uint64_t runtime_eventflag_live_count(void);
+unsigned runtime_eventflag_waiters(uint64_t handle);
 /* The osl.ini whose keyboard bindings the pad reads, once, at the first sample. */
 void runtime_pad_set_settings(const char *settings_file);
 uintptr_t runtime_pad_resolve(const char *name);
