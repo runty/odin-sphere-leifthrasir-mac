@@ -97,6 +97,7 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
                 const bool handled=NativeGpu::call(&s.gpu,name,nid,args,stack,memory,result);
                 if(handled && ++s.calls==7 && s.test_gate) {
                     s.test_gate_reached=true;
+                    std::fputs("OSL_GUEST_TEST_GATE_REACHED\n",stderr);std::fflush(stderr);
                     const auto end=std::min(memory->deadline,std::chrono::steady_clock::now()+std::chrono::seconds(1));
                     while(!s.stop && std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }

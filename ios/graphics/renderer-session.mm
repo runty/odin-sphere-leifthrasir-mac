@@ -56,6 +56,7 @@ static OdinRendererSession *activeSession;
     payload[@"timestamp"]=@([NSDate.date timeIntervalSince1970]);
     NSData *data=[NSJSONSerialization dataWithJSONObject:payload options:NSJSONWritingPrettyPrinted|NSJSONWritingSortedKeys error:NULL];
     [data writeToFile:[documents stringByAppendingPathComponent:@"renderer-stages.json"] options:NSDataWritingAtomic error:NULL];
+    if(report[@"stage"])NSLog(@"OdinRendererStage:%@",report[@"stage"]);
 }
 - (void)endBackgroundTask {
     if(backgroundTask!=UIBackgroundTaskInvalid){[UIApplication.sharedApplication endBackgroundTask:backgroundTask];backgroundTask=UIBackgroundTaskInvalid;}
