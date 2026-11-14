@@ -206,3 +206,28 @@ remain explicit backend gaps. New semantics SHA:
 `34c958493fd1e1ae4a4043d033efb08e6e33d6ad034d21386711a3ad903c9c0a`.
 Re-lift all PC seeds in a NEW corpus/backend; never reuse old IR across this
 change. These unit tests do not establish mobile game execution or frames.
+
+### Packed reciprocal square roots
+
+`remill-rsqrtps.patch` implements the executed VRSQRTPS gap at `0x106aa80c`,
+including all six legacy/VEX XMM/YMM register/memory forms. Normal estimates
+use integer binary search and midpoint comparisons; two 64-bit limbs avoid
+host FP rounding/exceptions and also compile for Remill's 32-bit semantics.
+Denormals become signed zero; negative normals/infinity produce indefinite,
+positive infinity produces zero, and NaNs preserve sign/payload and quiet.
+[Intel instruction reference](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf).
+
+`ios/cpu/test-rsqrtps.py` checks 8,192 input patterns, every exponent/sign,
+32 MXCSR control/status combinations and 1,572,864 output lanes separately on
+native x86 under Rosetta and arm64 AOT. Both meet ISA accuracy/special/upper-lane
+and flag contracts. This is not bit-exact equivalence to any processor's
+approximation table. Reciprocal regression and real-routine CPU 414 pass; both
+mobile fixture archives build. New semantics SHA:
+`6220000320437ddeaad5b1df03638988ce3c83ecee1d5dc742568a9eda766bb6`.
+Whole ordered patch-set audit passes and rejects extra tracked/untracked source.
+
+NEW full-window corpus `d32f7665` re-lifts all 1,039 seed PCs and advances through
+VRSQRTPS to explicit VBLENDPD `0x106aa939`. Native Mac GPU qualification passes
+60 bridge checks, four joined guest workers, three buffers, 3,164 dispatches /
+32,086 aggregate checkpoints and no fault/frame. Headless fixed/identity/corrupt
+input checks pass. This is host CPU/renderer evidence, not new mobile execution.

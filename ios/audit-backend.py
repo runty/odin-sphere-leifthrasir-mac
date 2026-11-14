@@ -3,7 +3,7 @@
 import argparse,hashlib,json,os,subprocess,tempfile
 from pathlib import Path
 PIN='66c488c9911fd9b368e4d0c9647d74239f8bba8b'
-PATCHES=('llvm23','lifter-lifetime','packed-simd','pcmpistrm','vpermilps','rcpps','blendps','shufps','vpermilpd')
+PATCHES=('llvm23','lifter-lifetime','packed-simd','pcmpistrm','vpermilps','rcpps','blendps','shufps','vpermilpd','rsqrtps')
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--backend',type=Path,required=True);a=p.parse_args();backend=a.backend.resolve();source=Path(__file__).resolve().parent
 if len(backend.parts)<3 or backend.parts[1]!='Volumes' or not Path('/Volumes',backend.parts[2]).is_mount():p.error('Use an isolated backend on a mounted external disk')
 def git(*args,env=None):return subprocess.check_output(['git','-C',str(backend),*args],env=env)

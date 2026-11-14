@@ -1,0 +1,67 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2502,3 +2502,63 @@
+ IF_AVX(DEF_ISEL(VPERMILPD_XMMdq_MEMdq_IMMb) = PERMILPD_IMM<VV128W, MV128>;)
+ IF_AVX(DEF_ISEL(VPERMILPD_YMMqq_YMMqq_IMMb) = PERMILPD_IMM<VV256W, V256>;)
+ IF_AVX(DEF_ISEL(VPERMILPD_YMMqq_MEMqq_IMMb) = PERMILPD_IMM<VV256W, MV256>;)
++
++// (V)RSQRTPS must ignore host rounding modes and leave exception flags alone.
++// Integer midpoint comparisons give a deterministic, correctly rounded normal
++// estimate, within the ISA approximation bound; no processor LUT is modeled.
++namespace {
++// Compare square * mantissa with 2^power using two 64-bit limbs. This also
++// compiles for Remill's 32-bit x86 semantics, where __int128 is unavailable.
++ALWAYS_INLINE static int CompareSqrtProduct(uint64_t square, uint32_t mantissa, unsigned power) {
++  const uint64_t first = (square & 0xffffffffu) * mantissa;
++  const uint64_t second = (square >> 32) * mantissa;
++  const uint64_t low = first + (second << 32);
++  const uint64_t high = (second >> 32) + (low < first);
++  const uint64_t target_high = uint64_t(1) << (power - 64);
++  if (high < target_high) return -1;
++  if (high > target_high || low) return 1;
++  return 0;
++}
++ALWAYS_INLINE static uint32_t ReciprocalSqrtSingleBits(uint32_t bits) {
++  const uint32_t sign = bits & 0x80000000u;
++  const uint32_t exponent = (bits >> 23) & 255u;
++  const uint32_t fraction = bits & 0x7fffffu;
++  if (exponent == 255u && fraction) return bits | 0x00400000u;
++  if (!exponent) return sign | 0x7f800000u;
++  if (sign) return 0xffc00000u;
++  if (exponent == 255u) return 0;
++  const int unbiased = static_cast<int>(exponent) - 127;
++  int output_unbiased = (unbiased & 1) ? -(unbiased + 1) / 2 : -unbiased / 2;
++  if (!(unbiased & 1) && fraction) --output_unbiased;
++  const uint64_t mantissa = 0x800000u | fraction;
++  // For normals K is 69, 70 or 71 and output exponent is [-64,63].
++  const unsigned shift = 69 - unbiased - 2 * output_unbiased;
++  uint32_t lower = 0x800000u, upper = 0x1000000u;
++  for (unsigned n = 0; n < 24; ++n) {
++    const uint32_t middle = (lower + upper + 1) >> 1;
++    const uint64_t square = static_cast<uint64_t>(middle) * middle;
++    if (CompareSqrtProduct(square, mantissa, shift) <= 0) lower = middle;
++    else upper = middle - 1;
++  }
++  const uint64_t midpoint = 2 * static_cast<uint64_t>(lower) + 1;
++  const int comparison = CompareSqrtProduct(midpoint * midpoint, mantissa, shift + 2);
++  if (comparison < 0 || (comparison == 0 && (lower & 1))) ++lower;
++  if (lower == 0x1000000u) { lower >>= 1; ++output_unbiased; }
++  return (static_cast<uint32_t>(output_unbiased + 127) << 23) | (lower & 0x7fffffu);
++}
++template <typename D, typename S>
++DEF_SEM(RSQRTPS, D dst, S src) {
++  const auto input = UReadV32(src);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i)
++    result = UInsertV32(result, i, ReciprocalSqrtSingleBits(UExtractV32(input, i)));
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(RSQRTPS_XMMps_XMMps) = RSQRTPS<V128W, V128>;
++DEF_ISEL(RSQRTPS_XMMps_MEMps) = RSQRTPS<V128W, MV128>;
++IF_AVX(DEF_ISEL(VRSQRTPS_XMMdq_XMMdq) = RSQRTPS<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VRSQRTPS_XMMdq_MEMdq) = RSQRTPS<VV128W, MV128>;)
++IF_AVX(DEF_ISEL(VRSQRTPS_YMMqq_YMMqq) = RSQRTPS<VV256W, V256>;)
++IF_AVX(DEF_ISEL(VRSQRTPS_YMMqq_MEMqq) = RSQRTPS<VV256W, MV256>;)
