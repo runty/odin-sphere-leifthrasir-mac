@@ -124,3 +124,29 @@ including NaN/signed-zero bit patterns and upper-lane canaries. Unsupported
 synchronous instruction fallbacks still stop at the exact guest PC; they never
 silently succeed. Changing semantics requires a new startup trace directory;
 `advance.py --seed-from` re-lifts the old executed PC list without copying IR.
+
+### Packed reciprocal instructions
+
+The next executed backend gap, `VRCPPS` at `0x106aa6df`, now has a qualified
+semantics patch, `remill-rcpps.patch`. It covers legacy XMM register/memory and
+AVX XMM/YMM register/memory forms. Integer arithmetic produces a deterministic
+reciprocal approximation, avoiding host floating-point modes and exceptions;
+denormals, NaNs, signed zero/infinity, tiny-result flushing and upper lanes are
+handled explicitly. The contract follows the [Intel instruction reference](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf).
+It does **not** reproduce a specific PS4/Intel approximation table bit for bit.
+
+Use a NEW isolated backend/cache; existing semantics and game IR must stay intact:
+
+```sh
+bash ios/build-backend.sh "$WORK/cpu-backends-rcpps"
+python3 ios/cpu/test-rcpps.py --root "$WORK/ios-rcpps-tests" \
+  --remill "$WORK/cpu-backends-rcpps"
+```
+
+The reference qualification passes all six forms, 8,192 input bit patterns and
+32 MXCSR control/status combinations, checking 1,572,864 output lanes separately
+in native x86 under Rosetta and arm64 AOT. Tests enforce the numerical error
+bound (including its tiny-result boundary), special values, unchanged flags and
+correct upper lanes. This is ISA-contract qualification, not exact cross-CPU
+reciprocal bits, a full-game boot, or a mobile frame. A new game corpus must
+re-lift every seeded PC using the changed semantics before further discovery.
