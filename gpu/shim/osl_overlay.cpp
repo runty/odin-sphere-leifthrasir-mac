@@ -32,6 +32,9 @@ asm(".section .rdata,\"dr\"\n"
     ".global osl_font_ttf_end\n"
     "osl_font_ttf_end:\n"
     ".text\n");
+#elif defined(__APPLE__)
+asm(".section __TEXT,__const\n.balign 16\n.globl _osl_font_ttf\n_osl_font_ttf:\n"
+    ".incbin \"" OSL_FONT_PATH "\"\n.globl _osl_font_ttf_end\n_osl_font_ttf_end:\n.text\n");
 #else
 asm(".section .rodata\n"
     ".balign 16\n"

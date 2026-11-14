@@ -13,6 +13,8 @@ xcrun clang -arch x86_64 -O2 -Wall -Wextra -Werror -I"$src/src" \
 xcrun clang -arch x86_64 -O2 -Wall -Wextra -Werror -Wl,-dead_strip -I"$src/src" \
     "$src/macos/probe-tls.c" "$src/src/runtime_memory.c" -o "$work/probe-tls"
 "$work/probe-tls"
+xcrun clang -arch x86_64 -O2 -Wall -Wextra -Werror "$src/macos/probe-loader.c" -o "$work/probe-loader"
+"$work/probe-loader"
 if [[ $# -ge 2 ]]; then
     vk=$2
     xcrun clang -arch x86_64 -Wall -Wextra -Werror -I"$vk/include" "$src/macos/probe-vulkan.c" \

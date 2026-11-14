@@ -10,7 +10,7 @@
 #include <windows.h>
 #undef near
 #else
-#include <ucontext.h>
+#include <sys/ucontext.h>
 #include <unistd.h>
 #endif
 #include <x86intrin.h>
@@ -95,7 +95,11 @@ extern "C" void oslgpu_dump_guest_writes(void* ucontext) {
     const std::uint64_t regs[] = {c->Rax, c->Rbx, c->Rcx, c->Rdx, c->Rsi, c->Rdi, c->R14, c->R15};
 #else
     const auto* uc = static_cast<const ucontext_t*>(ucontext);
+#ifdef __APPLE__
+    const auto* g = reinterpret_cast<const uint64_t*>(&uc->uc_mcontext->__ss);
+#else
     const auto* g = uc->uc_mcontext.gregs;
+#endif
     const std::uint64_t regs[] = {std::uint64_t(g[REG_RAX]), std::uint64_t(g[REG_RBX]),
                                   std::uint64_t(g[REG_RCX]), std::uint64_t(g[REG_RDX]),
                                   std::uint64_t(g[REG_RSI]), std::uint64_t(g[REG_RDI]),

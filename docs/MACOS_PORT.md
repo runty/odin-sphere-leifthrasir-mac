@@ -168,3 +168,65 @@ identity/affinity and CPU-clock adapters plus LP64 type corrections. Some
 automatic library searches selected native ARM Homebrew libraries and need
 explicit x86-64 dependencies. Next work is a linked runner and the real import
 check. Guest scene progress and a full graphics-enabled build remain pending.
+
+## Linked loader, import check and first guest boot
+
+The full x86-64 executable now links on the reference M5 Max/macOS 27.2.1.
+Its current deployment target is macOS 27.2. Darwin adapters cover register
+contexts, fault-safe frame reads, executable discovery, GPU thread IDs and
+background QoS, Mach-O embedded overlay fonts and LP64 type differences.
+A focused signal test resumes after UD2 with the expected instruction pointer
+and return register. Safe reads reject inaccessible and invalid pages.
+
+The Vulkan library links the real GNM, VideoOut and kernel services. Import
+checking now skips window/device construction and uses their actual symbol
+registries. Both normal and CPU-only import checks report **307 imports, zero
+missing**, with 241,949 relocations and 89 native module bindings. The prepared
+US base image also passes --check-game.
+
+The first bounded CPU-only boot initializes libc and Fios2, both returning zero,
+then enters the original eboot at 0x67eee0. It registers the game heap, initializes
+services and makes direct/flexible allocations. The game then opens video output.
+CPU-only execution has no presenter, so it now stops with a diagnostic and exit
+20. The initial attempt exposed a null VideoOut driver fault at that point.
+The explicit guard preserves a useful log and identifies the next required
+subsystem. A named title or battle scene remains to be reached.
+
+The full CMake test targets for ISA, synchronization and tiling pass. The tiling
+suite reports 1,584 checks with zero failures. The probe suite also passes again,
+including real US LZCNT sites, memory aliases, fibers, dynamic TLS and the Vulkan
+fence. Other game profiles in the ISA suite are skipped when their images are
+absent.
+
+### Build inputs
+
+Use macos/build.sh with five explicit external paths:
+
+```sh
+macos/build.sh "$WORK/macos-build" "$VK_PREFIX" "$DEPS_PREFIX" "$FREETYPE_BUILD" "$FREETYPE_INCLUDE"
+```
+
+The script fetches the pins in gpu/deps.txt without replacing an existing
+different dependency. VK_PREFIX supplies the x86-64 Vulkan/SDL/fmt/Zydis/xxHash
+stack. Header-only Boost, robin-map and VulkanMemoryAllocator come from Homebrew.
+DEPS_PREFIX supplies static x86-64 OpenSSL 3.5.4 and libpng 1.6.50. FreeType uses
+the x86-64 static build already tested with OpenCrown. The resulting developer
+executable currently links SDL and Vulkan through absolute paths in VK_PREFIX.
+
+For matching source archives, the SHA-256 values are:
+
+| Source | Digest |
+| --- | --- |
+| OpenSSL release openssl-3.5.4.tar.gz from github.com/openssl/openssl | 967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99 |
+| libpng codeload tag v1.6.50 from github.com/pnggroup/libpng | 71158e53cfdf2877bc99bcab33641d78df3f48e6e0daad030afe9cb8c031aa46 |
+
+Configure OpenSSL with darwin64-x86_64-cc, no-shared and no-tests, and install_sw
+into DEPS_PREFIX. Configure libpng with CMAKE_OSX_ARCHITECTURES=x86_64,
+PNG_SHARED=OFF and PNG_TESTS=OFF. Preserve the dependency sources and build logs
+for reproduction.
+
+The reused SpartanPort SDL build cannot open a desktop video device. Live
+rendering needs a Cocoa-capable SDL build, a Metal surface, and main-thread
+window/event handling. The current Darwin watchdog reports the current thread.
+Collecting every other thread's Mach register state remains outstanding.
+Guest-visible heap handles and longer execution still need the M1/M2 checks.

@@ -31,6 +31,9 @@ inline unsigned Available() {
 inline void MakeBackground() {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_IDLE);
 }
+#elif defined(__APPLE__)
+inline unsigned Available() { return std::max(1u, std::thread::hardware_concurrency()); }
+inline void MakeBackground() { pthread_set_qos_class_self_np(QOS_CLASS_BACKGROUND,0); }
 #else
 
 /// Hardware threads available to the process.

@@ -348,7 +348,7 @@ public:
             for (const ImageId image_id : *it) {
                 Image& image = slot_images[image_id];
                 // Every page of an image lists it: visit it at its first page in the range only.
-                if (page != std::max(first_page, image.info.guest_address >> Traits::PageBits)) {
+                if (page != std::max<VAddr>(first_page, image.info.guest_address >> Traits::PageBits)) {
                     continue;
                 }
                 if (!image.Overlaps(cpu_addr, size)) {

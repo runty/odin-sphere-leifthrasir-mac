@@ -8,6 +8,9 @@
 #include "core/libraries/libs.h"
 #include "core/libraries/system/userservice.h"
 #include "core/libraries/videoout/driver.h"
+#include <cstdio>
+#include <cstdlib>
+#include "runtime_log.h"
 #include "core/libraries/videoout/video_out.h"
 #include "core/libraries/videoout/videoout_error.h"
 #include "core/platform.h"
@@ -306,6 +309,11 @@ s32 PS4_SYSV_ABI sceVideoOutOpen(Libraries::UserService::OrbisUserServiceUserId 
     }
 
     auto* params = reinterpret_cast<const ServiceThreadParams*>(param);
+    if (!driver) {
+        std::fputs("STOP: guest video output requires presenter initialization; run without --cpu-only\n",stderr);
+        runtime_log_flush();
+        std::_Exit(20);
+    }
     int handle = driver->Open(params);
 
     if (handle < 0) {

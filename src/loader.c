@@ -26,16 +26,19 @@
 #include <signal.h>
 #else
 #include <sys/mman.h>
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <unistd.h>
 #include <signal.h>
-#include <ucontext.h>
+#include <sys/ucontext.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <execinfo.h>
 #include <sys/syscall.h>
 #include <sys/uio.h>
 #include <sys/utsname.h>
+#include "host_darwin.h"
 #endif
 
 typedef struct { uint64_t address, size, flags; } Segment;
@@ -118,7 +121,7 @@ static uint64_t read64(FILE *f) {
     for (int i = 7; i >= 0; --i) n = (n << 8) | b[i];
     return n;
 }
-static size_t round_page(size_t size) { return (size + page_size - 1) & ~(page_size - 1); }
+static size_t osl_round_page(size_t size) { return (size + page_size - 1) & ~(page_size - 1); }
 static void *allocate(size_t size) {
     void *low=runtime_low_map(size,PROT_READ|PROT_WRITE);
     if (low) return low;
@@ -153,7 +156,7 @@ static ABI __attribute__((noreturn)) void unresolved(uint32_t id, uintptr_t argu
     uintptr_t caller=(uintptr_t)__builtin_return_address(0)-(uintptr_t)image;
     for (uint64_t m=0;m<module_count;++m)
         if (caller>=modules[m].base && caller-modules[m].base<modules[m].size)
-            printf("Caller in linked module %" PRIu64 " (%s): +0x%" PRIxPTR "\n",m,m==0 ? "libc.prx" : "system module",caller-modules[m].base);
+            printf("Caller in linked module %" PRIu64 " (%s): +0x%" PRIxPTR "\n",m,m==0 ? "libc.prx" : "system module",(uintptr_t)(caller-modules[m].base));
     runtime_report();
     puts(entered_game ? "Original guest entry instructions executed; game initialization is incomplete." :
                         "Native libc initialization is incomplete; game entry has not run.");
@@ -162,7 +165,7 @@ static ABI __attribute__((noreturn)) void unresolved(uint32_t id, uintptr_t argu
 }
 #ifndef _WIN32
 /* enter_on_stack(entry, arg0, arg1, stack_top): call entry(arg0,arg1) on a new stack. */
-void enter_on_stack(void *entry, void *arg0, void *arg1, void *top);
+void enter_on_stack(void *entry, void *arg0, void *arg1, void *top) __asm__("enter_on_stack");
 __asm__(".text\n.globl enter_on_stack\nenter_on_stack:\n"
         " push %rbp\n mov %rsp,%rbp\n and $-16,%rcx\n mov %rcx,%rsp\n"
         " mov %rdi,%rax\n mov %rsi,%rdi\n mov %rdx,%rsi\n call *%rax\n"
@@ -419,7 +422,7 @@ static void apply_skip_intro(const OslGameBuild *build, const Segment *segments,
     const OslSkipIntroSites *sites=build ? build->skip_intro : NULL;
     uint64_t code_end=0;
     for (uint64_t i=0;sites && i<count;++i) {
-        const uint64_t end=segments[i].address+round_page(segments[i].size);
+        const uint64_t end=segments[i].address+osl_round_page(segments[i].size);
         if ((segments[i].flags&1) && sites->stubs>=segments[i].address && sites->stubs<end && end<=size) code_end=end;
     }
     char error[320]="";
@@ -449,6 +452,9 @@ static void apply_title_menu_exit(unsigned char *stubs, uint64_t stub_offset, si
     puts("Title menu Exit Game: installed");
 }
 #ifndef _WIN32
+#ifndef __APPLE__
+#define OSL_GREG(ctx,reg) (((ucontext_t *)(ctx))->uc_mcontext.gregs[reg])
+#endif
 static void fault(int sig, siginfo_t *info, void *context) {
     /* GPU page tracking (write-protected guest pages) is resolved first, except during a speculative
      * read (see vectored_fault). */
@@ -468,21 +474,21 @@ static void fault(int sig, siginfo_t *info, void *context) {
                                       REG_R8, REG_R9, REG_R10, REG_R11, REG_R12, REG_R13, REG_R14, REG_R15};
         ucontext_t *state = context;
         uint64_t gpr[16];
-        for (int i = 0; i < 16; ++i) gpr[i] = (uint64_t)state->uc_mcontext.gregs[order[i]];
-        uint64_t at = (uint64_t)state->uc_mcontext.gregs[REG_RIP], flags = (uint64_t)state->uc_mcontext.gregs[REG_EFL];
+        for (int i = 0; i < 16; ++i) gpr[i] = (uint64_t)OSL_GREG(state,order[i]);
+        uint64_t at = (uint64_t)OSL_GREG(state,REG_RIP), flags = (uint64_t)OSL_GREG(state,REG_EFL);
         size_t length = at - (uintptr_t)image < 0x20000000 ? isa_emulate((const uint8_t *)(uintptr_t)at, at, gpr, &flags) : 0;
         if (length) {
             note_isa_emulated(at - (uintptr_t)image);
-            for (int i = 0; i < 16; ++i) state->uc_mcontext.gregs[order[i]] = (greg_t)gpr[i];
-            state->uc_mcontext.gregs[REG_EFL] = (greg_t)flags;
-            state->uc_mcontext.gregs[REG_RIP] = (greg_t)(at + length);
+            for (int i = 0; i < 16; ++i) OSL_GREG(state,order[i]) = gpr[i];
+            OSL_GREG(state,REG_EFL) = flags;
+            OSL_GREG(state,REG_RIP) = (at + length);
             return;
         }
     }
     runtime_log_mark_crash();
     /* The process is terminating: dladdr/snprintf are acceptable here. */
     ucontext_t *uc = context;
-    uintptr_t rip = (uintptr_t)uc->uc_mcontext.gregs[REG_RIP];
+    uintptr_t rip = (uintptr_t)OSL_GREG(uc,REG_RIP);
     char line[512], location[384] = "unknown";
     Dl_info where;
     if (rip - (uintptr_t)image < 0x10000000)
@@ -492,7 +498,11 @@ static void fault(int sig, siginfo_t *info, void *context) {
                  (unsigned long)(rip - (uintptr_t)where.dli_fbase), where.dli_sname ? where.dli_sname : "?");
     static char header[4096];
     CrashReport crash = {0};
+#ifdef __APPLE__
+    crash.event = "Darwin fatal signal";
+#else
     crash.event = "Linux fatal signal";
+#endif
     crash.version = OSL_VERSION_STRING;
     crash.game_build = crash_game_build;
     crash.uptime_ms = monotonic_ms() - start_ms;
@@ -541,18 +551,22 @@ static void write_hex(char *out, uint64_t v) {
 }
 static void dump_frames(ucontext_t *uc) {
     char line[] = "  tid=0000000000000000 rip=0000000000000000 image-relative=0000000000000000 host-relative=0000000000000000\n";
-    uintptr_t rip=(uintptr_t)uc->uc_mcontext.gregs[REG_RIP], rbp=(uintptr_t)uc->uc_mcontext.gregs[REG_RBP];
+    uintptr_t rip=(uintptr_t)OSL_GREG(uc,REG_RIP), rbp=(uintptr_t)OSL_GREG(uc,REG_RBP);
     uint64_t tid=(uint64_t)gettid();
     /* First argument register: the lock address when a thread waits on a futex. */
     char arg[]="  tid=0000000000000000 rdi=0000000000000000\n";
-    write_hex(arg+6,tid); write_hex(arg+27,(uint64_t)uc->uc_mcontext.gregs[REG_RDI]);
+    write_hex(arg+6,tid); write_hex(arg+27,(uint64_t)OSL_GREG(uc,REG_RDI));
     { ssize_t written_=write(2,arg,sizeof(arg)-1); (void)written_; }
     for (int depth=0; depth<24; ++depth) {
         write_hex(line+6,tid); write_hex(line+27,rip); write_hex(line+59,rip-(uintptr_t)image); write_hex(line+90,rip-exe_base);
         { ssize_t written_=write(2,line,sizeof(line)-1); (void)written_; }
         uintptr_t frame[2];
+#ifdef __APPLE__
+        if (!rbp || !osl_read_frame(rbp,frame,sizeof(frame))) break;
+#else
         struct iovec local={frame,sizeof(frame)}, remote={(void *)rbp,sizeof(frame)};
         if (!rbp || process_vm_readv(getpid(),&local,1,&remote,1,0)!=(ssize_t)sizeof(frame)) break;
+#endif
         if (frame[0]<=rbp) break;
         rbp=frame[0]; rip=frame[1];
     }
@@ -564,6 +578,7 @@ static void watchdog(int sig, siginfo_t *info, void *context) {
     const char head[]="STOP: watchdog timeout; thread stacks:\n";
     { ssize_t written_=write(2,head,sizeof(head)-1); (void)written_; }
     dump_frames(context);
+#ifndef __APPLE__
     int dir=open("/proc/self/task",O_RDONLY|O_DIRECTORY);
     char buffer[4096];
     long n;
@@ -575,6 +590,9 @@ static void watchdog(int sig, siginfo_t *info, void *context) {
             if (tid>0 && tid!=self) { syscall(SYS_tgkill,getpid(),tid,SIGUSR2); usleep(20000); }
             at+=d->reclen;
         }
+#else
+    /* Other threads require Mach suspend/get-state diagnostics in a future watchdog pass. */
+#endif
     usleep(100000);
     runtime_log_flush();
     _exit(128 + sig);
@@ -662,7 +680,7 @@ int main(int argc, char **argv) {
         else printf("Game files: ready\n");
         return 0;
     }
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
     mallopt(M_ARENA_MAX,1);
@@ -877,11 +895,11 @@ int main(int argc, char **argv) {
         }
     }
     const int lzcnt_rewrite = lzcnt_compat_needed(isa_host_features()) || lzcnt_forced();
-    const size_t lzcnt_stub_bytes = lzcnt_rewrite ? round_page(lzcnt_compat_stub_bytes()) : 0;
+    const size_t lzcnt_stub_bytes = lzcnt_rewrite ? osl_round_page(lzcnt_compat_stub_bytes()) : 0;
     const int bookshelf_unlock = osl_unlock_bookshelf(settings_file);
-    const size_t bookshelf_stub_bytes = bookshelf_unlock ? round_page(OSL_BOOKSHELF_STUB_BYTES) : 0;
-    const size_t title_exit_stub_bytes = round_page(OSL_TITLE_EXIT_STUB_BYTES);
-    image = allocate(round_page(size) + lzcnt_stub_bytes + bookshelf_stub_bytes + title_exit_stub_bytes);
+    const size_t bookshelf_stub_bytes = bookshelf_unlock ? osl_round_page(OSL_BOOKSHELF_STUB_BYTES) : 0;
+    const size_t title_exit_stub_bytes = osl_round_page(OSL_TITLE_EXIT_STUB_BYTES);
+    image = allocate(osl_round_page(size) + lzcnt_stub_bytes + bookshelf_stub_bytes + title_exit_stub_bytes);
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
     fclose(f);
     if (runtime_memory_prepare()) {
@@ -892,7 +910,7 @@ int main(int argc, char **argv) {
         fail("guest memory unavailable before starting GPU or game threads");
     }
     if (!cpu_only && !oslgpu_available()) puts("GPU: no video core in this build; running CPU-side only");
-    else if (!cpu_only) {
+    else if (!cpu_only && !check_imports) {
         char title[128]="Odin Sphere Leifthrasir", serial[16]="UNKNOWN", sfo[4096];
         uint32_t attributes=0;
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
@@ -911,7 +929,7 @@ int main(int argc, char **argv) {
         hang_watchdog_start(&watchdog);
 #endif
     }
-    unsigned char *traps = allocate(round_page((import_count + 1) * 32));
+    unsigned char *traps = allocate(osl_round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);
     protect(data_traps, (import_count + 1) * page_size, 0);
     for (uint64_t i = 0; i < import_count; ++i) {
@@ -980,9 +998,9 @@ int main(int argc, char **argv) {
     printf("OSL: Aspect ratio: %s, render target %dx%d\n",aspect_ratio->name,render_target.width,render_target.height);
     if (osl_skip_intro(settings_file)) apply_skip_intro(known_build ? &game_build : NULL,segments,ns,size);
     if (bookshelf_unlock)
-        apply_unlock_bookshelf(known_build ? &game_build : NULL,image+round_page(size)+lzcnt_stub_bytes,bookshelf_stub_bytes,size);
-    apply_title_menu_exit(image+round_page(size)+lzcnt_stub_bytes+bookshelf_stub_bytes,
-                          round_page(size)+lzcnt_stub_bytes+bookshelf_stub_bytes,title_exit_stub_bytes,size);
+        apply_unlock_bookshelf(known_build ? &game_build : NULL,image+osl_round_page(size)+lzcnt_stub_bytes,bookshelf_stub_bytes,size);
+    apply_title_menu_exit(image+osl_round_page(size)+lzcnt_stub_bytes+bookshelf_stub_bytes,
+                          osl_round_page(size)+lzcnt_stub_bytes+bookshelf_stub_bytes,title_exit_stub_bytes,size);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
     /* After every other change to guest code except the LZCNT rewrite, whose ranges the stubs keep clear of. Only GPU
@@ -1003,9 +1021,9 @@ int main(int argc, char **argv) {
         if (known_build && game_build.lzcnt_offsets) {
             rewritten_build=game_build.label;
             status=lzcnt_compat_apply(image,size,game_build.lzcnt_offsets,lzcnt_shapes,LZCNT_RANGE_COUNT,
-                                      image+round_page(size),lzcnt_stub_bytes);
+                                      image+osl_round_page(size),lzcnt_stub_bytes);
         } else {
-            status=lzcnt_compat_install(image,size,entry,image+round_page(size),lzcnt_stub_bytes,&rewritten_build);
+            status=lzcnt_compat_install(image,size,entry,image+osl_round_page(size),lzcnt_stub_bytes,&rewritten_build);
         }
         if (status!=LZCNT_COMPAT_OK) {
             char message[330];
@@ -1016,15 +1034,15 @@ int main(int argc, char **argv) {
 #endif
             fail_running(message);
         }
-        protect(image + round_page(size), lzcnt_stub_bytes, 5);
+        protect(image + osl_round_page(size), lzcnt_stub_bytes, 5);
         printf("LZCNT: %zu instructions rewritten in %d ranges (%s)%s\n",lzcnt_compat_instructions(),LZCNT_RANGE_COUNT,
                rewritten_build,lzcnt_compat_needed(isa_host_features()) ? "" : ", forced");
     }
-    protect(traps, round_page((import_count + 1) * 32), 5);
-    protect(image, round_page(size), 0);
+    protect(traps, osl_round_page((import_count + 1) * 32), 5);
+    protect(image, osl_round_page(size), 0);
     int executable_entry = 0;
     for (uint64_t i = 0; i < ns; ++i) {
-        protect(image + segments[i].address, round_page(segments[i].size), (unsigned)segments[i].flags);
+        protect(image + segments[i].address, osl_round_page(segments[i].size), (unsigned)segments[i].flags);
         if ((segments[i].flags & 1) && entry >= segments[i].address && entry - segments[i].address < segments[i].size)
             executable_entry = 1;
     }

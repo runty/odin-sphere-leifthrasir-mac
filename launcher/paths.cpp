@@ -1,4 +1,7 @@
 #include "paths.h"
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -95,7 +98,14 @@ bool ExecutableDirectory(fs::path& dir) {
 #else
 bool ExecutableDirectory(fs::path& dir) {
     std::error_code ec;
+#ifdef __APPLE__
+    uint32_t size=0;
+    _NSGetExecutablePath(nullptr,&size);
+    std::string storage(size,'\0');
+    const fs::path exe = _NSGetExecutablePath(storage.data(),&size)==0 ? fs::canonical(storage.c_str(),ec) : fs::path{};
+#else
     const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+#endif
     if (ec || !exe.has_parent_path()) {
         return false;
     }
