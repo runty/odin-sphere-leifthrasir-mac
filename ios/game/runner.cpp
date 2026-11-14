@@ -54,7 +54,7 @@ struct HostMutex {
 };
 struct ThreadAttr {
     uint64_t stack = 1024 * 1024, stack_address = 0, affinity = 0x7f;
-    int priority = 700;
+    int priority = 700, detached = 0, policy = 1, inherit = 4;
 };
 
 struct FreeBytes { void operator()(uint8_t *p) const { std::free(p); } };
@@ -549,13 +549,48 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     if (!std::strcmp(name, "scePthreadAttrInit")) {
         if (!s.gpr.rdi.qword)
             return hostReturn(s, m, orbisError(22));
+        auto output=guestPointer(*m,s.gpr.rdi.qword,8,true);if(!output)return m;
+        if(session.thread_attributes.size()>=4096)return hostReturn(s,m,orbisError(12));
         const uint64_t address = allocate(session, 64);
+        if(!m->fault.empty())return m;
         session.thread_attributes[address] = ThreadAttr{};
-        store64(*m, s.gpr.rdi.qword, address);
+        std::memcpy(output,&address,8);
         return hostReturn(s, m, 0);
     }
+    if (!std::strcmp(name,"scePthreadAttrSetdetachstate") || !std::strcmp(name,"scePthreadAttrSetschedpolicy") ||
+        !std::strcmp(name,"scePthreadAttrSetschedparam") || !std::strcmp(name,"scePthreadAttrSetaffinity") ||
+        !std::strcmp(name,"scePthreadAttrSetstacksize") || !std::strcmp(name,"scePthreadAttrSetinheritsched")) {
+        if(!s.gpr.rdi.qword)return hostReturn(s,m,orbisError(22));
+        const uint64_t address=load64(*m,s.gpr.rdi.qword);if(!m->fault.empty())return m;
+        auto found=session.thread_attributes.find(address);
+        if(found==session.thread_attributes.end())return hostReturn(s,m,orbisError(22));
+        auto &attr=found->second;const int32_t value=s.gpr.rsi.dword;
+        // Retain the virtual-console scheduling policy for eventual worker
+        // creation. Recording it does not impose a PS4 scheduler on Darwin.
+        if(!std::strcmp(name,"scePthreadAttrSetdetachstate")) {
+            if(value!=0 && value!=1)return hostReturn(s,m,orbisError(22));
+            attr.detached=value;
+        } else if(!std::strcmp(name,"scePthreadAttrSetschedpolicy")) {
+            if(value<1 || value>3)return hostReturn(s,m,orbisError(22));
+            attr.policy=value;
+        } else if(!std::strcmp(name,"scePthreadAttrSetinheritsched")) {
+            if(value!=0 && value!=4)return hostReturn(s,m,orbisError(22));
+            attr.inherit=value;
+        } else if(!std::strcmp(name,"scePthreadAttrSetstacksize")) {
+            if(s.gpr.rsi.qword<16384)return hostReturn(s,m,orbisError(22));
+            attr.stack=s.gpr.rsi.qword;
+        } else if(!std::strcmp(name,"scePthreadAttrSetaffinity"))attr.affinity=s.gpr.rsi.qword;
+        else {
+            if(!s.gpr.rsi.qword)return hostReturn(s,m,orbisError(22));
+            auto input=guestPointer(*m,s.gpr.rsi.qword,4);if(!input)return m;
+            std::memcpy(&attr.priority,input,4);
+        }
+        return hostReturn(s,m,0);
+    }
     if (!std::strcmp(name, "scePthreadAttrGet")) {
+        if(!s.gpr.rsi.qword)return hostReturn(s,m,orbisError(22));
         const uint64_t address = load64(*m, s.gpr.rsi.qword);
+        if(!m->fault.empty())return m;
         auto attr = session.thread_attributes.find(address);
         if (attr == session.thread_attributes.end())
             return hostReturn(s, m, orbisError(22));
@@ -567,13 +602,16 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     }
     if (!std::strcmp(name, "scePthreadAttrGetaffinity") ||
         !std::strcmp(name, "scePthreadAttrDestroy")) {
+        if(!s.gpr.rdi.qword)return hostReturn(s,m,orbisError(22));
+        auto slot=guestPointer(*m,s.gpr.rdi.qword,8,!std::strcmp(name,"scePthreadAttrDestroy"));if(!slot)return m;
         const uint64_t address = load64(*m, s.gpr.rdi.qword);
         auto attr = session.thread_attributes.find(address);
         if (attr == session.thread_attributes.end())
             return hostReturn(s, m, orbisError(22));
-        if (!std::strcmp(name, "scePthreadAttrGetaffinity"))
+        if (!std::strcmp(name, "scePthreadAttrGetaffinity")) {
+            if(!s.gpr.rsi.qword)return hostReturn(s,m,orbisError(22));
             store64(*m, s.gpr.rsi.qword, attr->second.affinity);
-        else {
+        } else {
             session.thread_attributes.erase(attr);
             auto &regions = m->regions;
             regions.erase(std::remove_if(regions.begin(), regions.end(),
@@ -1112,6 +1150,32 @@ static bool serviceChecks() {
     require(call("scePthreadMutexUnlock",0x20000121)==0);
     require(call("scePthreadCondDestroy",0x20000101)==0 && session.conditions.count()==0);
     require(load64(session.memory,0x20000101)==0);
+    const auto attribute_count=session.thread_attributes.size();
+    call("scePthreadAttrInit",0x20000ffc);
+    require(!session.memory.fault.empty() && session.thread_attributes.size()==attribute_count);
+    require(call("scePthreadAttrInit",0)==0x80020016u && session.thread_attributes.size()==attribute_count);
+    session.stack[0x180]=0x7b;session.stack[0x189]=0x7b;
+    require(call("scePthreadAttrInit",0x20000181)==0);
+    const uint64_t attr_id=load64(session.memory,0x20000181);
+    require(session.stack[0x180]==0x7b && session.stack[0x189]==0x7b);
+    auto &thread_attr=session.thread_attributes.at(attr_id);
+    require(call("scePthreadAttrSetdetachstate",0x20000181,1)==0 && thread_attr.detached==1);
+    require(call("scePthreadAttrSetdetachstate",0x20000181,2)==0x80020016u && thread_attr.detached==1);
+    require(call("scePthreadAttrSetschedpolicy",0x20000181,3)==0 && thread_attr.policy==3);
+    require(call("scePthreadAttrSetschedpolicy",0x20000181,0)==0x80020016u && thread_attr.policy==3);
+    require(call("scePthreadAttrSetinheritsched",0x20000181,0)==0 && thread_attr.inherit==0);
+    require(call("scePthreadAttrSetinheritsched",0x20000181,1)==0x80020016u && thread_attr.inherit==0);
+    require(call("scePthreadAttrSetstacksize",0x20000181,16384)==0 && thread_attr.stack==16384);
+    require(call("scePthreadAttrSetstacksize",0x20000181,16383)==0x80020016u && thread_attr.stack==16384);
+    const int32_t priority=725;std::memcpy(session.stack.data()+0x1a1,&priority,4);
+    require(call("scePthreadAttrSetschedparam",0x20000181,0x200001a1)==0 && thread_attr.priority==priority);
+    call("scePthreadAttrSetschedparam",0x20000181,0x20000fff);
+    require(!session.memory.fault.empty() && thread_attr.priority==priority);
+    require(call("scePthreadAttrSetaffinity",0x20000181,0x5a)==0 && thread_attr.affinity==0x5a);
+    require(call("scePthreadAttrGetaffinity",0x20000181,0x200001a1)==0 && load64(session.memory,0x200001a1)==0x5a);
+    require(call("scePthreadAttrDestroy",0x20000181)==0 && session.thread_attributes.size()==attribute_count);
+    require(load64(session.memory,0x20000181)==0 && session.stack[0x180]==0x7b && session.stack[0x189]==0x7b);
+    require(call("scePthreadAttrSetdetachstate",0x20000181,0)==0x80020016u);
     active = nullptr;
     std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
     return true;

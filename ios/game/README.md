@@ -362,3 +362,17 @@ The real condition adapter and its tests are described in
 [service coverage](../services/README.md#checked-condition-variables).
 The native GPU/source ledger now also covers renderer CMake and GLSL/HLSL helper
 inputs. This does not enable translated workers or change installed mobile apps.
+
+Thread attributes now retain detach state, scheduler policy/priority,
+inheritance, stack size and affinity with the same validation as the native
+Mac provider. Complete output spans are checked before allocation/destruction,
+and the session limits live attribute objects to 4,096. These are stored
+virtual-console settings; no Darwin/PS4 scheduler equivalence is claimed.
+Nineteen additional import-dispatch boundary/canary checks pass (4,285 total).
+The native GPU-backed guest now reaches the first real `scePthreadCreate`:
+938 entries / 2,953 dispatches / 30,237 checkpoints, both initializers zero,
+two real conditions and no memory fault. Corpus:
+`d0c2a3364f8c345b1b8849229badf55a6adc9589a50eb059d33c06fd44137d28`.
+The first requested worker entry normalizes to `0x10738d70`. Worker creation is
+still an explicit missing service; a successful spawn is not fabricated.
+Both mobile SDKs compile this corpus; neither installed mobile app changes.
