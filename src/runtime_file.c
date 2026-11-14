@@ -31,42 +31,41 @@ typedef struct stat HostStat;
 #endif
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define MAX_FILES 1024
-#define MAX_MOUNTS 16
+#define MAX_MOUNTS 32 /* five base mounts plus all sixteen save slots */
 
-typedef struct { int64_t sec, nsec; } GuestTimespec;
-typedef struct {
-    uint32_t dev, ino;
-    uint16_t mode, nlink;
-    uint32_t uid, gid, rdev;
-    GuestTimespec atime, mtime, ctime;
-    int64_t size, blocks;
-    uint32_t blksize, flags, gen;
-    int32_t lspare;
-    GuestTimespec birthtime;
-} GuestStat;
-_Static_assert(sizeof(GuestStat)==120,"FreeBSD stat layout");
+#include "runtime_file_types.h"
 
 typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Listing;
-typedef struct { int used, host; Listing *dir; size_t position; char path[512]; } File;
-typedef struct { char guest[64]; char host[512]; } Mount;
+typedef struct { int used, host, writable; Listing *dir; size_t position; char path[512]; } File;
+typedef struct { char guest[64]; char host[512]; int readonly; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
 static size_t mount_count, opens, reads, writes, missing;
 static uint64_t bytes_read;
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 
-int runtime_file_mount(const char *guest,const char *host) {
+int runtime_file_mount_mode(const char *guest,const char *host,int readonly) {
+    if (!guest || !host || strlen(guest)>=64 || strlen(host)>=512) return -1;
     pthread_mutex_lock(&lock);
     for (size_t i=0;i<mount_count;++i) if (!strcmp(mounts[i].guest,guest)) {
         snprintf(mounts[i].host,sizeof(mounts[i].host),"%s",host);
+        mounts[i].readonly=readonly;
         pthread_mutex_unlock(&lock); return 0;
     }
     if (mount_count==MAX_MOUNTS || strlen(guest)>=64 || strlen(host)>=512) { pthread_mutex_unlock(&lock); return -1; }
     snprintf(mounts[mount_count].guest,64,"%s",guest);
     snprintf(mounts[mount_count].host,512,"%s",host);
+    mounts[mount_count].readonly=readonly;
     ++mount_count;
     pthread_mutex_unlock(&lock);
     return 0;
+}
+int runtime_file_mount(const char *guest,const char *host) { return runtime_file_mount_mode(guest,host,0); }
+int runtime_file_valid(int fd) {
+    if (fd>=0 && fd<3) return 1;
+    pthread_mutex_lock(&lock);
+    int valid=fd>=3 && fd<MAX_FILES && files[fd].used;
+    pthread_mutex_unlock(&lock); return valid;
 }
 void runtime_file_unmount(const char *guest) {
     pthread_mutex_lock(&lock);
@@ -122,6 +121,7 @@ static void match_case(char *path,size_t root) {
 static int translate(const char *guest,char *out,size_t size) {
     if (!guest || !*guest) return ENOENT;
     char buffer[1024];
+    if (strlen(guest)+(guest[0]=='/' ? 0 : 6)>=sizeof(buffer)) return ENAMETOOLONG;
     if (guest[0]!='/') snprintf(buffer,sizeof(buffer),"/app0/%s",guest);
     else snprintf(buffer,sizeof(buffer),"%s",guest);
     for (const char *p=buffer;(p=strstr(p,".."));p+=2)
@@ -198,7 +198,7 @@ static Listing *list_directory(const char *path) {
     closedir(d);
     return l;
 }
-static void convert_stat(const HostStat *s,GuestStat *g) {
+static void convert_stat(const HostStat *s,OslFileStat *g) {
     memset(g,0,sizeof(*g));
     g->dev=(uint32_t)s->st_dev; g->ino=(uint32_t)s->st_ino;
     g->nlink=(uint16_t)s->st_nlink;
@@ -207,20 +207,20 @@ static void convert_stat(const HostStat *s,GuestStat *g) {
     /* FreeBSD mode bits: directories rwxr-xr-x, files rw-r--r--. */
     g->mode=(uint16_t)(S_ISDIR(s->st_mode) ? 0040755 : 0100644);
     g->blocks=(s->st_size+511)/512; g->blksize=4096;
-    g->atime=(GuestTimespec){s->st_atime,0};
-    g->mtime=(GuestTimespec){s->st_mtime,0};
-    g->ctime=(GuestTimespec){s->st_ctime,0};
+    g->atime=(OslFileTimespec){s->st_atime,0};
+    g->mtime=(OslFileTimespec){s->st_mtime,0};
+    g->ctime=(OslFileTimespec){s->st_ctime,0};
 #else
     g->mode=(uint16_t)s->st_mode;
     g->blocks=s->st_blocks; g->blksize=(uint32_t)s->st_blksize;
 #ifdef __APPLE__
-    g->atime=(GuestTimespec){s->st_atimespec.tv_sec,s->st_atimespec.tv_nsec};
-    g->mtime=(GuestTimespec){s->st_mtimespec.tv_sec,s->st_mtimespec.tv_nsec};
-    g->ctime=(GuestTimespec){s->st_ctimespec.tv_sec,s->st_ctimespec.tv_nsec};
+    g->atime=(OslFileTimespec){s->st_atimespec.tv_sec,s->st_atimespec.tv_nsec};
+    g->mtime=(OslFileTimespec){s->st_mtimespec.tv_sec,s->st_mtimespec.tv_nsec};
+    g->ctime=(OslFileTimespec){s->st_ctimespec.tv_sec,s->st_ctimespec.tv_nsec};
 #else
-    g->atime=(GuestTimespec){s->st_atim.tv_sec,s->st_atim.tv_nsec};
-    g->mtime=(GuestTimespec){s->st_mtim.tv_sec,s->st_mtim.tv_nsec};
-    g->ctime=(GuestTimespec){s->st_ctim.tv_sec,s->st_ctim.tv_nsec};
+    g->atime=(OslFileTimespec){s->st_atim.tv_sec,s->st_atim.tv_nsec};
+    g->mtime=(OslFileTimespec){s->st_mtim.tv_sec,s->st_mtim.tv_nsec};
+    g->ctime=(OslFileTimespec){s->st_ctim.tv_sec,s->st_ctim.tv_nsec};
 #endif
 #endif
     g->birthtime=g->ctime;
@@ -230,15 +230,25 @@ static File *get(int fd) {
     return &files[fd];
 }
 /* Game mounts are read-only. Saves use other mounts. */
-static int game_path(const char *p) {
+int runtime_file_readonly(const char *p) {
     if (!p || !*p) return 0;
     if (*p!='/') return 1;
-    return (!strncmp(p,"/app0",5) && (!p[5] || p[5]=='/')) ||
-           (!strncmp(p,"/hostapp",8) && (!p[8] || p[8]=='/'));
+    if ((!strncmp(p,"/app0",5) && (!p[5] || p[5]=='/')) ||
+        (!strncmp(p,"/hostapp",8) && (!p[8] || p[8]=='/'))) return 1;
+    pthread_mutex_lock(&lock);
+    size_t best=0; int readonly=0;
+    for (size_t i=0;i<mount_count;++i) {
+        size_t n=strlen(mounts[i].guest);
+        if (!strncmp(p,mounts[i].guest,n) && (!p[n] || p[n]=='/') && n>best) {
+            best=n; readonly=mounts[i].readonly;
+        }
+    }
+    pthread_mutex_unlock(&lock);
+    return readonly;
 }
 /* All operations return >=0 or -(host errno); wrappers adapt the convention. */
 static int64_t do_open(const char *guest,int flags,int mode) {
-    if (game_path(guest) && (flags & (3|0x8|0x200|0x400|0x800))) return -EROFS;
+    if (runtime_file_readonly(guest) && (flags & (3|0x8|0x200|0x400|0x800))) return -EROFS;
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
@@ -283,7 +293,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     int fd=-1;
     for (int i=3;i<MAX_FILES;++i) if (!files[i].used) { fd=i; break; }
     if (fd<0) { pthread_mutex_unlock(&lock); if (host>=0) close(host); free_listing(dir); return -EMFILE; }
-    files[fd]=(File){.used=1,.host=host,.dir=dir};
+    files[fd]=(File){.used=1,.host=host,.writable=!!(flags&3),.dir=dir};
     snprintf(files[fd].path,sizeof(files[fd].path),"%s",guest);
     ++opens;
     pthread_mutex_unlock(&lock);
@@ -294,11 +304,25 @@ static int64_t do_close(int fd) {
     pthread_mutex_lock(&lock);
     File *f=get(fd);
     if (!f) { pthread_mutex_unlock(&lock); return -EBADF; }
-    if (f->host>=0) close(f->host);
+    int error=0;
+    if (f->host>=0) {
+        if (f->writable && !f->dir && fsync(f->host)) error=errno;
+        if (close(f->host) && !error) error=errno;
+    }
     free_listing(f->dir);
     *f=(File){0};
     pthread_mutex_unlock(&lock);
-    return 0;
+    return error ? -error : 0;
+}
+int runtime_file_sync_mount(const char *guest) {
+    size_t n=strlen(guest); int error=0;
+    pthread_mutex_lock(&lock);
+    for (unsigned i=3;i<MAX_FILES;++i)
+        if (files[i].used && files[i].writable && files[i].host>=0 && !files[i].dir &&
+            !strncmp(files[i].path,guest,n) && (!files[i].path[n] || files[i].path[n]=='/'))
+            if (fsync(files[i].host) && !error) error=errno;
+    pthread_mutex_unlock(&lock);
+    return error ? -error : 0;
 }
 static int host_fd(int fd) {
     if (fd>=0 && fd<3) return fd;
@@ -368,7 +392,7 @@ static int64_t do_lseek(int fd,int64_t offset,int whence) {
     int64_t r=host_lseek(f->host,offset,whence);
     return r<0 ? -errno : r;
 }
-static int64_t do_fstat(int fd,GuestStat *out) {
+static int64_t do_fstat(int fd,OslFileStat *out) {
     int h=host_fd(fd);
     HostStat s;
 #ifdef _WIN32
@@ -386,7 +410,7 @@ static int64_t do_fstat(int fd,GuestStat *out) {
     if (host_fstat(h,&s)) return -errno;
     convert_stat(&s,out); return 0;
 }
-static int64_t do_stat(const char *guest,GuestStat *out) {
+static int64_t do_stat(const char *guest,OslFileStat *out) {
     char path[1024]; HostStat s;
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
@@ -424,7 +448,7 @@ static int64_t do_getdents(int fd,char *buffer,uint64_t size,int64_t *basep) {
     return result;
 }
 static int64_t path_op(const char *guest,int op,int mode) {
-    if (game_path(guest)) return -EROFS;
+    if (runtime_file_readonly(guest)) return -EROFS;
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
@@ -432,7 +456,7 @@ static int64_t path_op(const char *guest,int op,int mode) {
     return r ? -errno : 0;
 }
 static int64_t do_rename(const char *from,const char *to) {
-    if (game_path(from) || game_path(to)) return -EROFS;
+    if (runtime_file_readonly(from) || runtime_file_readonly(to)) return -EROFS;
     char a[1024],b[1024];
     int e=translate(from,a,sizeof(a));
     if (!e) e=translate(to,b,sizeof(b));
@@ -454,7 +478,7 @@ static int64_t do_ftruncate(int fd,int64_t length) {
 #endif
 }
 static int64_t do_truncate(const char *guest,int64_t length) {
-    if (game_path(guest)) return -EROFS;
+    if (runtime_file_readonly(guest)) return -EROFS;
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
@@ -493,8 +517,8 @@ PAIR(pread,(int fd,void *b,uint64_t n,int64_t o),(fd,b,n,o))
 PAIR(write,(int fd,const void *b,uint64_t n),(fd,b,n))
 PAIR(pwrite,(int fd,const void *b,uint64_t n,int64_t o),(fd,b,n,o))
 PAIR(lseek,(int fd,int64_t o,int w),(fd,o,w))
-PAIR(fstat,(int fd,GuestStat *s),(fd,s))
-PAIR(stat,(const char *p,GuestStat *s),(p,s))
+PAIR(fstat,(int fd,OslFileStat *s),(fd,s))
+PAIR(stat,(const char *p,OslFileStat *s),(p,s))
 PAIR(getdents,(int fd,char *b,uint64_t n,int64_t *base),(fd,b,n,base))
 PAIR(rename,(const char *a,const char *b),(a,b))
 PAIR(ftruncate,(int fd,int64_t l),(fd,l))
@@ -508,7 +532,7 @@ static ABI int64_t posix_rmdir(const char *p) { return posix(path_op(p,1,0)); }
 static ABI int64_t sce_unlink(const char *p) { return sce(path_op(p,2,0)); }
 static ABI int64_t posix_unlink(const char *p) { return posix(path_op(p,2,0)); }
 static ABI int32_t sce_check_reachability(const char *p) {
-    GuestStat s; return (int32_t)sce(do_stat(p,&s));
+    OslFileStat s; return (int32_t)sce(do_stat(p,&s));
 }
 
 static const RuntimeExport exports[]={
@@ -547,3 +571,10 @@ void runtime_file_report(void) {
     printf("Runtime: files opened=%zu, reads=%zu (%llu bytes), writes=%zu, not found=%zu\n",
            opens,reads,(unsigned long long)bytes_read,writes,missing);
 }
+#ifdef OSL_AOT_CPU
+/* Only after the startup owner has stopped guest work. */
+void osl_aot_file_reset(void) {
+    for (unsigned i=3;i<MAX_FILES;++i) if (files[i].used) do_close(i);
+    pthread_mutex_lock(&lock); mount_count=0; user_root[0]=0; pthread_mutex_unlock(&lock);
+}
+#endif

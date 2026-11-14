@@ -127,3 +127,48 @@ zero, and stops at `sceSaveDataInitialize`. Touch controls, motion sensing,
 foreground input suppression/suspend handling and in-game physical controller
 acceptance remain work before a finished mobile port. The UIKit probe still
 contains no game renderer or touch overlay.
+
+## File and save storage
+
+`MobileStorage` reuses `runtime_file.c` and `runtime_savedata.c`, with the existing
+FreeBSD errno mapping extracted into `runtime_errno.c`. File stat and save ABI
+layouts are shared headers. The checked bridge copies nested guest pointers,
+directory/title records, mount points, parameters, icon buffers and search
+arrays through validated host storage. Search results retain their original
+guest pointer fields. File reads validate writable destinations before starting
+I/O; an invalid/protected destination cannot advance the descriptor.
+
+The probe configures `Guest/App0` and `Guest/MobileProfile` below its private
+Documents directory (the corresponding private image directory on the host).
+`App0` is currently empty: actual game assets still need importing. Saves are
+local, separate from Mac/player progress, and no cloud folder is selected.
+Initialization is not presented as a successful in-game save.
+
+Shared storage fixes apply to the Mac source too: metadata/icon replacement
+uses a same-directory temporary, checks write/flush/fsync/close and preserves
+the previous file on failure. Read-only save mounts reject mutations, writable
+descriptors flush on close/unmount, all sixteen save slots fit alongside base
+mounts, malformed mount aliases are rejected, and search ignores non-directory
+entries. Failed creation removes only the attempt's empty directories. Delete
+refuses mounted saves and reports host deletion failures. These checks do not
+claim that arbitrary partially failed game-file writes are transactional, or
+that power-loss recovery has been established.
+
+```sh
+python3 ios/services/test-storage.py --output "$NEW_EXTERNAL_FIXTURE" --remill "$WORK/cpu-backends"
+```
+
+Fourteen fresh child processes exercise native arm64/Rosetta creation, repeated
+reload, file-size-limit failures, permission failures and deletion, plus the
+checked guest bridge with changed guest addresses. A deterministic 1,156,096-byte
+fixture is read back and independently byte/hash checked. Failed metadata/icon
+writes preserve old hashes and leave no temporaries; failed new-slot creation
+leaves no ghost slot. Read-only mutations fail. Guest checks include misaligned
+structures, nested pointers, output canaries, protected buffers and invalid-FD
+precedence. These are storage fixtures, not Odin game-save acceptance.
+
+Host startup reaches 682 traces / 1,657 dispatches, with both initializers,
+users, pad and save initialization complete. The next missing service is
+`sceNpSetNpTitleId`. The matching libraries compile for iPhoneOS and Simulator.
+The Mac source rebuild/import checks pass; the installed Mac bundle still needs
+the updated storage core packaged and verified with a disposable copied save.

@@ -6,12 +6,14 @@
 #include "../services/memory.h"
 #include "../services/user.h"
 #include "../services/pad.h"
+#include "../services/guest_storage.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
 #include <iterator>
 #include <memory>
 #include <map>
@@ -57,6 +59,7 @@ struct Session {
     DirectMemory direct_memory;
     Memory memory;
     MobilePad pad;
+    MobileStorage storage;
     Session() {
         memory.external_pointer = DirectMemory::pointer;
         osl_aot_user_reset();
@@ -81,6 +84,7 @@ struct Session {
     uint64_t native_memset_calls = 0, native_memset_bytes = 0;
     bool users_initialized = false;
     bool pad_initialized = false;
+    bool saves_initialized = false;
     std::unordered_map<uint64_t, ThreadAttr> thread_attributes;
 };
 static thread_local Session *active;
@@ -185,6 +189,10 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
     const auto &import = imports[(pc - hle_base) / 0x1000];
     const char *name = import.symbol;
+    uint64_t storage_result=0;
+    if (GuestStorage::save(name,s,*m,session.storage,session.saves_initialized,storage_result) ||
+        GuestStorage::file(name,s,*m,session.storage,storage_result))
+        return m->fault.empty() ? hostReturn(s,m,storage_result) : m;
     if (!std::strcmp(name, "sceSysmoduleLoadModule") ||
         !std::strcmp(name, "sceSysmoduleUnloadModule")) {
         const uint16_t id = uint16_t(s.gpr.rdi.qword);
@@ -670,6 +678,8 @@ static std::string bootstrap(const char *path) {
         mapRegion(session->memory, address, bytes->data(), bytes->size());
         session->owned.push_back(std::move(bytes));
     }
+    const auto private_root=std::filesystem::absolute(std::filesystem::path(path)).parent_path();
+    session->storage.configure((private_root/"App0").string(),(private_root/"MobileProfile").string());
     std::jmp_buf recovery;
     active = session;
     session->memory.recovery = &recovery;
@@ -731,6 +741,8 @@ static std::string bootstrap(const char *path) {
         << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
         << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
         << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
+        << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
+        << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")

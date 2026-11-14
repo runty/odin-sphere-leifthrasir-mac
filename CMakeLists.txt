@@ -58,6 +58,7 @@ set(OSL_RUNTIME_SOURCES
     src/runtime_fiber.c
     src/runtime_file.c
     src/runtime_font.c
+    src/runtime_errno.c
     src/runtime_kernel.c
     src/runtime_memory.c
     src/runtime_mutex.c

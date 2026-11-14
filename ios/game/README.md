@@ -214,3 +214,15 @@ profile and map nested guest pointers through checked aligned locals before
 exposing the save APIs; initialization alone is not persistence proof. Preserve
 the existing Mac and player saves and test storage roundtrips/failures with
 disposable profiles.
+
+The storage bridge is now implemented and host-tested. It configures real local
+`App0` / `MobileProfile` roots next to the private image, translates the imported
+save/file APIs and reaches **682 traces / 1,657 dispatches** with save
+initialization complete. Actual assets are not yet in `App0`. The next gap is
+`sceNpSetNpTitleId`; game startup/rendering are still unproven.
+[Storage scope and cross-process/failure checks](../services/README.md#file-and-save-storage).
+Both mobile libraries compile and the rebuilt Mac source resolves all 307
+imports. The installed Mac `31ae7d4` bundle and device `dcd85de` baseline have
+not received these shared storage fixes yet. Package/test the updated Mac core
+using copied progress before replacing the installed app, then continue offline
+NP setup, worker/TLS/callbacks and GPU integration.

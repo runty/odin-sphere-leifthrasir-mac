@@ -15,6 +15,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <limits.h>
 #ifndef _WIN32
 #include <ftw.h>
 #endif
@@ -35,32 +37,7 @@
 #define MODE_CREATE2 32
 #define SLOTS 16
 
-typedef struct { char data[10]; char pad[6]; } TitleId;
-typedef struct { char data[32]; } DirName;
-typedef struct { char data[16]; } MountPoint;
-typedef struct {
-    char title[128], subtitle[128], detail[1024];
-    uint32_t user_param; int32_t pad;
-    int64_t mtime;
-    uint8_t reserved[32];
-} Param;
-typedef struct { int32_t user; int32_t pad; const TitleId *title; const DirName *dir; const void *fingerprint;
-                 uint64_t blocks; uint32_t mode; uint8_t reserved[32]; } Mount1;
-typedef struct { int32_t user; int32_t pad; const DirName *dir; uint64_t blocks; uint32_t mode;
-                 uint8_t reserved[32]; int32_t pad2; } Mount2;
-typedef struct { MountPoint point; uint64_t required_blocks; uint32_t unused, status; uint8_t reserved[28]; int32_t pad; } MountResult;
-typedef struct { int32_t user; int32_t pad; const TitleId *title; const DirName *dir; uint32_t unused;
-                 uint8_t reserved[32]; int32_t pad2; } Delete;
-typedef struct { int32_t user; int32_t pad; const TitleId *title; const DirName *dir; uint32_t key, order;
-                 uint8_t reserved[32]; } SearchCond;
-typedef struct { uint64_t blocks, free_blocks; uint8_t reserved[32]; } SearchInfo;
-typedef struct { uint32_t hits; int32_t pad; DirName *names; uint32_t names_capacity, set_count;
-                 Param *params; SearchInfo *infos; uint8_t reserved[12]; int32_t pad2; } SearchResult;
-typedef struct { const void *buffer; uint64_t buffer_size, data_size; uint8_t reserved[32]; } Icon;
-_Static_assert(sizeof(Param)==1328,"OrbisSaveDataParam layout");
-_Static_assert(sizeof(Mount1)==80 && sizeof(Mount2)==64,"OrbisSaveDataMount layouts");
-_Static_assert(sizeof(MountResult)==64,"OrbisSaveDataMountResult layout");
-_Static_assert(sizeof(SearchCond)==64 && sizeof(SearchResult)==56,"dir name search layouts");
+#include "runtime_savedata_types.h"
 
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static int initialized;
@@ -89,12 +66,45 @@ static int valid_name(const char *name, size_t max) {
     for (size_t i=0;i<n;++i) if (name[i]=='/' || name[i]=='\\' || (name[i]=='.' && (i==0 || name[i-1]=='.'))) return 0;
     return 1;
 }
-static void write_param(const char *meta, const Param *p) {
-    char path[700]; snprintf(path,sizeof(path),"%s/param.bin",meta);
-    FILE *f=fopen(path,"wb");
-    if (f) { Param copy=*p; copy.mtime=time(NULL); fwrite(&copy,sizeof(copy),1,f); fclose(f); }
+/* Same-directory replacement: a failed write/flush/close never truncates the
+ * previous metadata. The temporary is removed on failure. */
+static int write_atomic(const char *path,const void *bytes,uint64_t size) {
+    static unsigned sequence;
+    char temporary[800];
+    int fd=-1;
+    for (unsigned attempt=0;attempt<64;++attempt) {
+        unsigned serial=__atomic_add_fetch(&sequence,1,__ATOMIC_RELAXED);
+        if (snprintf(temporary,sizeof(temporary),"%s.tmp-%ld-%u",path,(long)getpid(),serial)>=(int)sizeof(temporary)) return -1;
+        int flags=O_WRONLY|O_CREAT|O_EXCL;
+#ifdef _WIN32
+        flags|=O_BINARY;
+#endif
+        fd=open(temporary,flags,0600);
+        if (fd>=0 || errno!=EEXIST) break;
+    }
+    if (fd<0) return -1;
+    FILE *file=fdopen(fd,"wb");
+    if (!file) { close(fd); remove(temporary); return -1; }
+    int failed=fwrite(bytes,1,(size_t)size,file)!=size;
+    if (fflush(file)) failed=1;
+    if (!failed && fsync(fileno(file))) failed=1;
+    if (fclose(file)) failed=1;
+    if (!failed) {
+#ifdef _WIN32
+        if (!MoveFileExA(temporary,path,MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) failed=1;
+#else
+        if (rename(temporary,path)) failed=1;
+#endif
+    }
+    if (failed) remove(temporary);
+    return failed ? -1 : 0;
 }
-static int read_param(const char *meta, Param *p) {
+static int write_param(const char *meta, const OslSaveParam *p) {
+    char path[700]; snprintf(path,sizeof(path),"%s/param.bin",meta);
+    OslSaveParam copy=*p; copy.mtime=time(NULL);
+    return write_atomic(path,&copy,sizeof(copy));
+}
+static int read_param(const char *meta, OslSaveParam *p) {
     char path[700]; snprintf(path,sizeof(path),"%s/param.bin",meta);
     memset(p,0,sizeof(*p));
     FILE *f=fopen(path,"rb");
@@ -105,12 +115,12 @@ static int read_param(const char *meta, Param *p) {
     return n==1 ? 0 : -1;
 }
 #ifdef _WIN32
-static void remove_tree(const char *path) { compat_remove_tree(path); }
+static int remove_tree(const char *path) { compat_remove_tree(path); struct stat st; return stat(path,&st) && errno==ENOENT ? 0 : -1; }
 #else
 static int remove_entry(const char *path, const struct stat *st, int flag, struct FTW *ftw) {
     (void)st; (void)flag; (void)ftw; return remove(path);
 }
-static void remove_tree(const char *path) { nftw(path,remove_entry,16,FTW_DEPTH|FTW_PHYS); }
+static int remove_tree(const char *path) { return nftw(path,remove_entry,16,FTW_DEPTH|FTW_PHYS); }
 #endif
 
 /* A save's param (title, subtitle, date) for the save dialog; 0 when it exists. */
@@ -119,7 +129,7 @@ int runtime_savedata_param(int32_t user, const char *dir, void *param) {
     char base[600], meta[680];
     root(user,NULL,base,sizeof(base));
     snprintf(meta,sizeof(meta),"%s/%s.sce_sys",base,dir);
-    return read_param(meta,(Param *)param);
+    return read_param(meta,(OslSaveParam *)param);
 }
 /* Host path of a save's icon0.png (the location picture in the save dialog); 0 when named. */
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) {
@@ -134,9 +144,10 @@ static ABI int32_t save_terminate(void) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     initialized=0; return 0;
 }
-static int32_t mount(int32_t user, const char *title, const DirName *dir, uint64_t blocks, uint32_t mode, MountResult *result) {
+static int32_t mount(int32_t user, const char *title, const OslSaveDirName *dir, uint64_t blocks, uint32_t mode, OslSaveMountResult *result) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     if (user<0) return ERR_INVALID_USER;
+    if (title && !valid_name(title,10)) return ERR_PARAMETER;
     if (!dir || !result || !valid_name(dir->data,sizeof(dir->data))) return ERR_PARAMETER;
     char base[600], host[640], meta[680];
     root(user,title,base,sizeof(base));
@@ -154,7 +165,13 @@ static int32_t mount(int32_t user, const char *title, const DirName *dir, uint64
     }
     if (slot<0) { pthread_mutex_unlock(&lock); return ERR_MOUNT_FULL; }
     if (!exists && (make_dirs(host) || make_dirs(meta))) { pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
-    if (!exists) { Param empty={0}; write_param(meta,&empty); }
+    if (!exists) {
+        OslSaveParam empty={0};
+        if (write_param(meta,&empty)) {
+            /* Remove only empty directories created by the failed attempt. */
+            rmdir(host); rmdir(meta); pthread_mutex_unlock(&lock); return ERR_INTERNAL;
+        }
+    }
     slots[slot].used=1;
     slots[slot].blocks=blocks;
     snprintf(slots[slot].host,sizeof(slots[slot].host),"%s",host);
@@ -164,30 +181,38 @@ static int32_t mount(int32_t user, const char *title, const DirName *dir, uint64
     snprintf(point,sizeof(point),"/savedata%d",slot&15);
     memcpy(result->point.data,point,strlen(point)+1);
     result->status=exists ? 0 : 1; /* CREATED */
-    runtime_file_mount(result->point.data,host);
+    if (runtime_file_mount_mode(result->point.data,host,!!(mode&MODE_RDONLY))) {
+        slots[slot].used=0; pthread_mutex_unlock(&lock); return ERR_INTERNAL;
+    }
     ++mounts_done;
     pthread_mutex_unlock(&lock);
     printf("Runtime: save data '%s' mounted at %s (%s%s)\n",dir->data,result->point.data,
            exists ? "existing" : "created",(mode & MODE_RDONLY) ? ", read-only" : "");
     return 0;
 }
-static ABI int32_t save_mount(const Mount1 *m, MountResult *result) {
+static ABI int32_t save_mount(const OslSaveMount1 *m, OslSaveMountResult *result) {
     if (!m) return ERR_PARAMETER;
     return mount(m->user,m->title ? m->title->data : NULL,m->dir,m->blocks,m->mode,result);
 }
-static ABI int32_t save_mount2(const Mount2 *m, MountResult *result) {
+static ABI int32_t save_mount2(const OslSaveMount2 *m, OslSaveMountResult *result) {
     if (!m) return ERR_PARAMETER;
     return mount(m->user,NULL,m->dir,m->blocks,m->mode,result);
 }
-static int slot_of(const MountPoint *point) {
+static int slot_of(const OslSaveMountPoint *point) {
     if (!point || strncmp(point->data,"/savedata",9)) return -1;
-    int slot=atoi(point->data+9);
-    return slot>=0 && slot<SLOTS && slots[slot].used ? slot : -1;
+    if (!point->data[9] || !memchr(point->data,0,sizeof(point->data))) return -1;
+    char *end=NULL;
+    long slot=strtol(point->data+9,&end,10);
+    if (!end || *end) return -1;
+    if (slot<0 || slot>=SLOTS) return -1;
+    char canonical[16]; snprintf(canonical,sizeof(canonical),"/savedata%ld",slot);
+    return !strcmp(point->data,canonical) && slots[slot].used ? (int)slot : -1;
 }
-static ABI int32_t save_umount(const MountPoint *point) {
+static ABI int32_t save_umount(const OslSaveMountPoint *point) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     pthread_mutex_lock(&lock);
     int slot=slot_of(point);
+    if (slot>=0 && runtime_file_sync_mount(point->data)) { pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
     if (slot>=0) { runtime_file_unmount(point->data); slots[slot].used=0; }
     pthread_mutex_unlock(&lock);
     return slot>=0 ? 0 : ERR_NOT_FOUND;
@@ -205,7 +230,7 @@ static uint64_t used_blocks(const char *dir) {
     closedir(d);
     return (bytes+BLOCK_SIZE-1)/BLOCK_SIZE;
 }
-static ABI int32_t save_get_mount_info(const MountPoint *point, SearchInfo *info) {
+static ABI int32_t save_get_mount_info(const OslSaveMountPoint *point, OslSaveSearchInfo *info) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     if (!info) return ERR_PARAMETER;
     pthread_mutex_lock(&lock);
@@ -217,64 +242,78 @@ static ABI int32_t save_get_mount_info(const MountPoint *point, SearchInfo *info
     info->blocks=total; info->free_blocks=total-used;
     return 0;
 }
-static ABI int32_t save_set_param(const MountPoint *point, uint32_t type, const void *buffer, uint64_t size) {
+static ABI int32_t save_set_param(const OslSaveMountPoint *point, uint32_t type, const void *buffer, uint64_t size) {
     if (!initialized) return ERR_NOT_INITIALIZED;
-    if (!buffer) return ERR_PARAMETER;
+    if (!buffer || size>INT_MAX) return ERR_PARAMETER;
     pthread_mutex_lock(&lock);
     int slot=slot_of(point);
     if (slot<0) { pthread_mutex_unlock(&lock); return ERR_NOT_MOUNTED; }
-    Param p; read_param(slots[slot].meta,&p);
+    if (runtime_file_readonly(point->data)) { pthread_mutex_unlock(&lock); return ERR_PARAMETER; }
+    OslSaveParam p; read_param(slots[slot].meta,&p);
     switch (type) {
-    case 0: if (size<sizeof(Param)) goto bad; memcpy(&p,buffer,sizeof(p)); break;     /* ALL */
+    case 0: if (size<sizeof(OslSaveParam)) goto bad; memcpy(&p,buffer,sizeof(p)); break;     /* ALL */
     case 1: snprintf(p.title,sizeof(p.title),"%.*s",(int)size,(const char *)buffer); break;
     case 2: snprintf(p.subtitle,sizeof(p.subtitle),"%.*s",(int)size,(const char *)buffer); break;
     case 3: snprintf(p.detail,sizeof(p.detail),"%.*s",(int)size,(const char *)buffer); break;
     case 4: if (size<4) goto bad; memcpy(&p.user_param,buffer,4); break;
     default: goto bad;
     }
-    write_param(slots[slot].meta,&p);
+    int failed=write_param(slots[slot].meta,&p);
     pthread_mutex_unlock(&lock);
-    return 0;
+    return failed ? ERR_INTERNAL : 0;
 bad:
     pthread_mutex_unlock(&lock);
     return ERR_PARAMETER;
 }
-static ABI int32_t save_icon(const MountPoint *point, const Icon *icon) {
+static ABI int32_t save_icon(const OslSaveMountPoint *point, const OslSaveIcon *icon) {
     if (!initialized) return ERR_NOT_INITIALIZED;
-    if (!icon || !icon->buffer) return ERR_PARAMETER;
+    if (!icon || !icon->buffer || icon->data_size>icon->buffer_size) return ERR_PARAMETER;
     pthread_mutex_lock(&lock);
     int slot=slot_of(point);
     int32_t r=ERR_NOT_MOUNTED;
     if (slot>=0) {
+        if (runtime_file_readonly(point->data)) { pthread_mutex_unlock(&lock); return ERR_PARAMETER; }
         char path[700]; snprintf(path,sizeof(path),"%s/icon0.png",slots[slot].meta);
-        FILE *f=fopen(path,"wb");
-        r=f && fwrite(icon->buffer,1,icon->data_size,f)==icon->data_size ? 0 : ERR_INTERNAL;
-        if (f) fclose(f);
+        r=write_atomic(path,icon->buffer,icon->data_size) ? ERR_INTERNAL : 0;
     }
     pthread_mutex_unlock(&lock);
     return r;
 }
-static ABI int32_t save_delete(const Delete *d) {
+static ABI int32_t save_delete(const OslSaveDelete *d) {
     if (!initialized) return ERR_NOT_INITIALIZED;
-    if (!d || !d->dir || !valid_name(d->dir->data,sizeof(d->dir->data))) return ERR_PARAMETER;
+    if (!d || !d->dir || !valid_name(d->dir->data,sizeof(d->dir->data)) ||
+        (d->title && !valid_name(d->title->data,10))) return ERR_PARAMETER;
+    if (d->user<0) return ERR_INVALID_USER;
     char base[600], host[640], meta[680];
     root(d->user,d->title ? d->title->data : NULL,base,sizeof(base));
     snprintf(host,sizeof(host),"%s/%s",base,d->dir->data);
     snprintf(meta,sizeof(meta),"%s/%s.sce_sys",base,d->dir->data);
     struct stat st;
     if (stat(host,&st)) return ERR_NOT_FOUND;
-    remove_tree(host);
-    remove_tree(meta);
+    pthread_mutex_lock(&lock);
+    for (unsigned i=0;i<SLOTS;++i) if (slots[i].used && !strcmp(slots[i].host,host)) {
+        pthread_mutex_unlock(&lock); return ERR_BAD_MOUNTED;
+    }
+    int failed=remove_tree(host);
+    if (!failed && !stat(meta,&st)) failed=remove_tree(meta);
+    pthread_mutex_unlock(&lock);
+    if (failed) return ERR_INTERNAL;
     printf("Runtime: save data '%s' deleted\n",d->dir->data);
     return 0;
 }
 /* SQL-LIKE pattern: % any run, _ one character. */
 static int like(const char *s, const char *p) {
-    if (!*p) return !*s;
-    if (*p=='%') { for (;;++s) { if (like(s,p+1)) return 1; if (!*s) return 0; } }
-    return *s && (*p=='_' || *p==*s) && like(s+1,p+1);
+    const char *star=NULL,*retry=NULL;
+    while (*s) {
+        if (*p=='_' || *p==*s) { ++s; ++p; }
+        else if (*p=='%') { star=++p; retry=s; }
+        else if (star) { p=star; s=++retry; }
+        else return 0;
+    }
+    while (*p=='%') ++p;
+    return !*p;
 }
-typedef struct { char name[32]; Param param; } Entry;
+typedef struct { char name[32]; OslSaveParam param; } Entry;
 static uint32_t sort_key, sort_order;
 static int compare(const void *a, const void *b) {
     const Entry *x=a, *y=b;
@@ -283,18 +322,31 @@ static int compare(const void *a, const void *b) {
           : strcmp(x->name,y->name);
     return sort_order ? -c : c;
 }
-static ABI int32_t save_search(const SearchCond *cond, SearchResult *result) {
+static ABI int32_t save_search(const OslSaveSearchCond *cond, OslSaveSearchResult *result) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     if (!cond || !result) return ERR_PARAMETER;
+    if (cond->user<0) return ERR_INVALID_USER;
+    if ((cond->title && !valid_name(cond->title->data,10)) ||
+        (cond->dir && !memchr(cond->dir->data,0,32))) return ERR_PARAMETER;
+    pthread_mutex_lock(&lock);
     char base[600];
     root(cond->user,cond->title ? cond->title->data : NULL,base,sizeof(base));
     Entry *entries=NULL; size_t count=0, capacity=0;
     DIR *d=opendir(base);
+    if (!d && errno!=ENOENT) { pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
     for (struct dirent *e; d && (e=readdir(d));) {
         size_t n=strlen(e->d_name);
         if (e->d_name[0]=='.' || n>=32 || (n>8 && !strcmp(e->d_name+n-8,".sce_sys"))) continue;
+        char folder[680]; struct stat st;
+        snprintf(folder,sizeof(folder),"%s/%s",base,e->d_name);
+        if (stat(folder,&st) || !S_ISDIR(st.st_mode)) continue;
         if (cond->dir && cond->dir->data[0] && !like(e->d_name,cond->dir->data)) continue;
-        if (count==capacity) { capacity=capacity ? capacity*2 : 16; entries=realloc(entries,capacity*sizeof(*entries)); }
+        if (count==capacity) {
+            capacity=capacity ? capacity*2 : 16;
+            Entry *grown=realloc(entries,capacity*sizeof(*entries));
+            if (!grown) { free(entries); closedir(d); pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
+            entries=grown;
+        }
         snprintf(entries[count].name,32,"%s",e->d_name);
         char meta[680]; snprintf(meta,sizeof(meta),"%s/%s.sce_sys",base,e->d_name);
         read_param(meta,&entries[count].param);
@@ -308,14 +360,15 @@ static ABI int32_t save_search(const SearchCond *cond, SearchResult *result) {
     for (uint32_t i=0;i<set;++i) {
         if (result->names) memcpy(result->names[i].data,entries[i].name,32);
         if (result->params) result->params[i]=entries[i].param;
-        if (result->infos) { memset(&result->infos[i],0,sizeof(SearchInfo)); result->infos[i].blocks=32768; result->infos[i].free_blocks=16384; }
+        if (result->infos) { memset(&result->infos[i],0,sizeof(OslSaveSearchInfo)); result->infos[i].blocks=32768; result->infos[i].free_blocks=16384; }
     }
     result->set_count=set;
     free(entries);
+    pthread_mutex_unlock(&lock);
     return 0;
 }
 /* SaveDataMemory: one fixed-size blob per user/title. */
-static ABI int32_t memory_setup(int32_t user, uint64_t size, const Param *param) {
+static ABI int32_t memory_setup(int32_t user, uint64_t size, const OslSaveParam *param) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     if (!size) return ERR_PARAMETER;
     char base[600], dir[640];
@@ -368,3 +421,14 @@ static const RuntimeExport exports[]={
 };
 uintptr_t runtime_savedata_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
 void runtime_savedata_report(void) { printf("Runtime: save data mounts=%zu, memory writes=%zu\n",mounts_done,memory_writes); }
+#ifdef OSL_AOT_CPU
+void osl_aot_savedata_reset(void) {
+    pthread_mutex_lock(&lock);
+    for (unsigned i=0;i<SLOTS;++i) if (slots[i].used) {
+        char point[32]; snprintf(point,sizeof(point),"/savedata%u",i);
+        runtime_file_unmount(point);
+    }
+    memset(slots,0,sizeof(slots)); initialized=0; memory_size=0; memory_path[0]=0;
+    pthread_mutex_unlock(&lock);
+}
+#endif
