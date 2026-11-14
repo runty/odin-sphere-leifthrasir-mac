@@ -44,11 +44,17 @@ extern "C" const char *osl_mobile_game_report(const char *);
 #if OSL_GAME_STARTUP
         NSString *image = [[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
         if ([NSFileManager.defaultManager fileExistsAtPath:image]) {
+            // A developer launch may compare checked virtual and identity
+            // mappings on the same physical device. Normal launches retain
+            // their platform default; neither mode enables a game renderer.
+            const char *mapping = getenv("OSL_GUEST_IDENTITY");
+            if (!mapping || (strcmp(mapping, "0") && strcmp(mapping, "1"))) {
 #if TARGET_OS_SIMULATOR
-            setenv("OSL_GUEST_IDENTITY", "0", 1);
+                setenv("OSL_GUEST_IDENTITY", "0", 1);
 #else
-            setenv("OSL_GUEST_IDENTITY", "1", 1);
+                setenv("OSL_GUEST_IDENTITY", "1", 1);
 #endif
+            }
             const char *startup = osl_mobile_game_report(image.fileSystemRepresentation);
             NSData *startupData = [NSData dataWithBytes:startup length:strlen(startup)];
             game = [NSJSONSerialization JSONObjectWithData:startupData options:0 error:NULL] ?: @{@"game_booted": @NO, @"error": @"invalid startup report"};

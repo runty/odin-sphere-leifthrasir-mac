@@ -13,15 +13,26 @@ and lazy module TLS, and a shared checked mapping table. Worker creation,
 return/exit, join/detach, deferred cancellation requests, yield, bounded sleep,
 priority/affinity bookkeeping and paired mutex/condition/event waits are wired.
 This is a partial title runtime: missing services, callbacks and translated
-blocks still stop explicitly. iPhone/iPad archives compile, while their default
-probe has no full GPU frontend and still stops earlier at VideoOut.
+blocks still stop explicitly. iPhone/iPad archives compile; their probe has
+no full game GPU frontend. Fixed-address Simulator startup reaches VideoOut,
+while fresh iPad identity-mode startup currently faults earlier, as below.
 
-Frozen native checkpoint: 1,022 entries / 3,217 total dispatches, both real
+The qualified worker corpus is 1,022 entries / 3,217 dispatches, both real
 initializers zero, four workers started/joined, no memory fault and zero guest
-frames. Checkpoints total 31,840 (31,797 parent plus worker contributions).
-Corpus `25594870c06483aaadbd3aef056a4814c3e330121794fa7526d90f7189d29b5e`.
-The next stop is an executed missing block. Both mobile SDKs export this corpus;
-that does not establish physical execution or a playable mobile app.
+frames; 31,840 total checkpoints. Corpus `25594870c06483aaadbd3aef056a4814c3e330121794fa7526d90f7189d29b5e`.
+Further host discovery reaches 1,027 entries and an explicit unsupported
+`VRCPPS` at `0x106aa6df`. Unknown instructions remain real backend gaps.
+
+Clean `1db2a41` was installed/listed on both physical devices. iPad mini A20 Pro
+launches 1 and 2 pass all 414 CPU cases and actual 64-word GPU fill/fence/readback,
+with inputs preserved. Game startup completes both initializers but faults at
+unmapped zero after 7,053 checkpoints / 1,451 dispatches in identity mode.
+Diagnostic build `054eaea` reproduces it on launch 3 and locates the stop in the
+verified libc memset helper `0x10cd0ce0`. This is an unresolved startup defect,
+not a game or frame result. iPhone foreground launch is denied while locked;
+no fresh iPhone execution is claimed. Matching Simulator launches 15 and 16
+repeat 414 cases, 1,022 entries and 2,562 dispatches at VideoOut. No mobile App0
+assets or actual game renderer are connected yet.
 
 The sections below retain earlier checkpoints and their limitations as history.
 The latest worker/clock qualification is described at the end of this file.
@@ -71,8 +82,7 @@ addresses but must preserve the normalized guest checkpoint.
 Host services currently cover process parameters, heap registration, selected
 thread attributes, real pthread mutexes and bounded read/write flexible memory.
 Atomic memory operations are serialized. Unknown services and unsupported
-protection/fixed-address cases stop. Private file/save and offline NP setup now have checked bridges. This is not
-yet a worker/TLS/fiber runtime or a connected game renderer. Extended x87 instructions remain an explicit
+protection/fixed-address cases stop. Private file/save and offline NP setup now have checked bridges. The worker/TLS foundation is implemented; guest callbacks/fibers and a connected mobile game renderer remain incomplete. Extended x87 instructions remain an explicit
 backend limitation; broad traces containing unused formatting paths can be
 narrowed to an executed basic block, never replaced by a no-op.
 

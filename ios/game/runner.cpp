@@ -1047,13 +1047,27 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
             ? failure->missing_pc-session->image_address+image_base : failure->missing_pc;
     // Expose only a normalized executable code location, never general
     // registers, stack, credentials or an arbitrary guest data value.
-    const uint64_t stopped_raw=failed_state->gpr.rip.qword;
-    uint64_t stopped_pc=0;
-    if(stopped_raw>=session->image_address && stopped_raw-session->image_address<image_size) {
-        const uint64_t offset=stopped_raw-session->image_address;
-        for(const auto &segment:segments)if((segment.flags&1) && offset>=segment.address && offset-segment.address<segment.size) {
-            stopped_pc=image_base+offset;break;
+    const auto executable_pc=[&](uint64_t raw) -> uint64_t {
+        if(raw>=session->image_address && raw-session->image_address<image_size) {
+            const uint64_t offset=raw-session->image_address;
+            for(const auto &segment:segments)if((segment.flags&1) && offset>=segment.address && offset-segment.address<segment.size)
+                return image_base+offset;
         }
+        return 0;
+    };
+    const uint64_t stopped_pc=executable_pc(failed_state->gpr.rip.qword);
+    uint64_t memset_caller_pc=0;
+    if(stopped_pc==0x10cd0ce0) {
+        // The verified C ABI helper leaves its return slot untouched on a
+        // fault. Read only that checked slot, publish only a validated code PC.
+        // Do not call guestPointer after a fault or replace its diagnosis.
+        const uint64_t slot=failed_state->gpr.rsp.qword;
+        std::shared_lock<std::shared_mutex> lock(failure->mappings->mutex);
+        for(const auto &region:failure->mappings->regions)
+            if(region.size>=8 && slot>=region.base && slot-region.base<=region.size-8) {
+                uint64_t candidate=0;std::memcpy(&candidate,region.data+(slot-region.base),8);
+                memset_caller_pc=executable_pc(candidate);break;
+            }
     }
     const double elapsed_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guest_started).count();
     std::ostringstream out;
@@ -1068,6 +1082,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"stack_address\":" << session->stack_address
         << ",\"fault_address\":" << failure->fault_address
         << ",\"stopped_pc\":" << stopped_pc
+        << ",\"memset_caller_pc\":" << memset_caller_pc
         << ",\"failed_thread\":" << failed_thread << ",\"workers_started\":" << session->workers->started()
         << ",\"workers_finished\":" << finished_workers << ",\"checkpoints_total\":" << total_checkpoints
         << ",\"error_dialog_code\":" << uint32_t(session->error_dialog_code)
