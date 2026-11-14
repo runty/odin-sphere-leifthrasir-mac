@@ -38,7 +38,14 @@ static uint64_t pool_size_bytes(void) {
 #define POOL_SIZE pool_size_bytes()
 #define FLEXIBLE_SIZE (UINT64_C(448) * 1024 * 1024)
 #define PAGE UINT64_C(16384)
+#ifdef __APPLE__
+/* Rosetta occupies part of the lower PS4 range. Use its upper half for guest mappings. */
+#define LOW_MIN UINT64_C(0x7000000000)
+#define USER_MIN UINT64_C(0x8000000000)
+#else
+#define LOW_MIN UINT64_C(0x0800000000)
 #define USER_MIN UINT64_C(0x1000000000)
+#endif
 #define USER_MAX UINT64_C(0xfc00000000)
 #define LIMIT 4096
 #define INVALID ((int32_t)UINT32_C(0x80020016))
@@ -325,13 +332,29 @@ static int pool(void) {
 }
 #else
 /* Direct memory occupies [0,POOL_SIZE) of the memfd, flexible memory [POOL_SIZE,+FLEX_SPAN). */
+#ifdef __APPLE__
+/* Darwin accepts a non-destructive address hint. Both callers require the exact result. */
+#define OSL_NOREPLACE 0
+static int open_pool(void) {
+    FILE *file=tmpfile();
+    if (!file) return -1;
+    int fd=fcntl(fileno(file),F_DUPFD_CLOEXEC,0);
+    fclose(file);
+    return fd;
+}
+#else
+#define OSL_NOREPLACE MAP_FIXED_NOREPLACE
+static int open_pool(void) { return memfd_create("osl-guest-memory",MFD_CLOEXEC); }
+#endif
 static int pool(void) {
     if (pool_fd>=0) return 0;
     runtime_memory_reserve();
-    pool_fd=memfd_create("osl-guest-memory", MFD_CLOEXEC);
-    if (pool_fd<0 || ftruncate(pool_fd,(off_t)(POOL_SIZE+FLEX_SPAN))) return -1;
-    void *view=mmap(NULL,POOL_SIZE+FLEX_SPAN,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_NORESERVE,pool_fd,0);
-    if (view==MAP_FAILED) return -1;
+    int fd=open_pool();
+    if (fd<0) return -1;
+    if (ftruncate(fd,(off_t)(POOL_SIZE+FLEX_SPAN))) { close(fd); return -1; }
+    void *view=mmap(NULL,POOL_SIZE+FLEX_SPAN,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_NORESERVE,fd,0);
+    if (view==MAP_FAILED) { close(fd); return -1; }
+    pool_fd=fd;
     backing_base=view;
     return 0;
 }
@@ -340,7 +363,7 @@ static int pool(void) {
 void runtime_memory_reserve(void) {
     static int reserved;
     if (reserved) return;
-    void *base=mmap((void *)USER_MIN,USER_MAX-USER_MIN,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|MAP_FIXED_NOREPLACE,-1,0);
+    void *base=mmap((void *)USER_MIN,USER_MAX-USER_MIN,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|OSL_NOREPLACE,-1,0);
     if (base!=(void *)USER_MIN) {
         fprintf(stderr,"STOP: cannot reserve the PS4 address range %p-%p (%s)\n",(void *)USER_MIN,(void *)USER_MAX,
                 base==MAP_FAILED ? strerror(errno) : "the kernel placed it elsewhere");
@@ -364,7 +387,12 @@ static int host_protect(uintptr_t address, uint64_t size, int prot) {
     return in_user_range(address,size) ? mprotect((void *)address,size,prot) : -1;
 }
 static void host_discard(uint64_t phys, uint64_t size) {
+#ifdef __APPLE__
+    fpunchhole_t hole={.fp_offset=(off_t)phys,.fp_length=(off_t)size};
+    if (fcntl(pool_fd,F_PUNCHHOLE,&hole)!=0) memset(backing_base+phys,0,size);
+#else
     fallocate(pool_fd,FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,(off_t)phys,(off_t)size);
+#endif
 }
 #endif
 /* Called before the GPU, audio or guest threads start, while a failure can still be reported. */
@@ -915,7 +943,6 @@ uintptr_t runtime_memory_resolve(const char *name) {
 }
 /* Host-owned memory the guest can see (image, stacks, trampolines) lives in
  * [LOW_MIN, USER_MIN): PS4 code packs pointers into 40-bit fields. */
-#define LOW_MIN UINT64_C(0x0800000000)
 static uintptr_t low_next=LOW_MIN;
 void *runtime_low_map(size_t size, int prot) {
     size=align_up(size,PAGE);
@@ -931,7 +958,7 @@ void *runtime_low_map(size_t size, int prot) {
 #else
     void *p=MAP_FAILED;
     while (low_next+size<=USER_MIN) {
-        p=mmap((void *)low_next,size,prot,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+        p=mmap((void *)low_next,size,prot,MAP_PRIVATE|MAP_ANONYMOUS|OSL_NOREPLACE,-1,0);
         if (p!=MAP_FAILED && p!=(void *)low_next) { munmap(p,size); p=MAP_FAILED; } /* kernel without MAP_FIXED_NOREPLACE */
         low_next+=size+PAGE; /* unmapped gap catches overruns */
         if (p!=MAP_FAILED) break;

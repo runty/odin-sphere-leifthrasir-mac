@@ -351,9 +351,11 @@ static void host_sets(void) {
 
 enum { PROBE_PAGE = 4096, PROBE_RSP = 4, PROBE_FLAGS = 11 };
 
-uint64_t osl_probe_in[16], osl_probe_out[16];
-const void *osl_probe_code;
-void osl_probe_run(void);
+/* Match the fixed assembler labels below on Mach-O as well as ELF/COFF. */
+uint64_t osl_probe_in[16] __asm__("osl_probe_in");
+uint64_t osl_probe_out[16] __asm__("osl_probe_out");
+const void *osl_probe_code __asm__("osl_probe_code");
+void osl_probe_run(void) __asm__("osl_probe_run");
 __asm__(".text\n.globl osl_probe_run\nosl_probe_run:\n"
         " push %rbx\n push %rbp\n push %rdi\n push %rsi\n push %r12\n push %r13\n push %r14\n push %r15\n"
         " lea osl_probe_in(%rip), %rax\n"

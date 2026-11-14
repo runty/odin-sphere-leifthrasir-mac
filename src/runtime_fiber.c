@@ -84,16 +84,23 @@ static void host_return_to_thread(HostFiber *from) { (void)from; SwitchToFiber(f
  * stores its pointer in *save and continues on `to`, a stack prepared the same way. */
 void osl_fiber_switch(void **save, void *to);
 void osl_fiber_start(void);
-__asm__(".text\n.globl osl_fiber_switch\n.type osl_fiber_switch,@function\nosl_fiber_switch:\n"
+#ifdef __APPLE__
+#define FIBER_BEGIN(name) ".globl _" #name "\n_" #name ":\n"
+#define FIBER_END(name) ""
+#else
+#define FIBER_BEGIN(name) ".globl " #name "\n.type " #name ",@function\n" #name ":\n"
+#define FIBER_END(name) ".size " #name ",.-" #name "\n"
+#endif
+__asm__(".text\n" FIBER_BEGIN(osl_fiber_switch)
         " push %rbp\n push %rbx\n push %r12\n push %r13\n push %r14\n push %r15\n"
         " sub $8,%rsp\n stmxcsr (%rsp)\n fnstcw 4(%rsp)\n"
         " mov %rsp,(%rdi)\n mov %rsi,%rsp\n"
         " ldmxcsr (%rsp)\n fldcw 4(%rsp)\n add $8,%rsp\n"
         " pop %r15\n pop %r14\n pop %r13\n pop %r12\n pop %rbx\n pop %rbp\n ret\n"
-        ".size osl_fiber_switch,.-osl_fiber_switch\n"
-        ".globl osl_fiber_start\n.type osl_fiber_start,@function\nosl_fiber_start:\n"
+        FIBER_END(osl_fiber_switch)
+        FIBER_BEGIN(osl_fiber_start)
         " mov %rbx,%rdi\n call *%r12\n ud2\n"
-        ".size osl_fiber_start,.-osl_fiber_start\n");
+        FIBER_END(osl_fiber_start));
 
 static void fiber_main(HostFiber *f) {
     f->entry(f->arg_on_initialize, f->arg_to_deliver);
