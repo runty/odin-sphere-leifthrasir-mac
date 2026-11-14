@@ -5,6 +5,7 @@
 #import <unistd.h>
 
 extern "C" const char *osl_mobile_cpu_report();
+extern "C" NSDictionary *osl_mobile_vm_report();
 #if OSL_GPU_PROBE
 extern "C" NSDictionary *osl_mobile_gpu_report();
 #endif
@@ -66,6 +67,8 @@ extern "C" const char *osl_mobile_game_report(const char *);
 #if OSL_GPU_PROBE
         graphics = osl_mobile_gpu_report();
 #endif
+        const char *vmProbe = getenv("OSL_VM_PROBE");
+        NSDictionary *virtualMemory = vmProbe && !strcmp(vmProbe, "1") ? osl_mobile_vm_report() : @{@"status": @"not requested", @"game_frames": @NO};
         struct utsname machine; uname(&machine);
         id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
 #if TARGET_OS_SIMULATOR
@@ -80,6 +83,7 @@ extern "C" const char *osl_mobile_game_report(const char *);
             @"stage": @"real-module startup experiment; full game boot pending",
             @"game_booted": @NO, @"cpu": cpu, @"machine": @(machine.machine),
             @"game_startup": game, @"graphics": graphics,
+            @"virtual_memory": virtualMemory,
             @"gpu_driver_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGPUDriver"] ?: @"none",
             @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,

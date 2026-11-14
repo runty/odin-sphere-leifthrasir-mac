@@ -547,3 +547,20 @@ address space or qualify a smaller/chunked mapping design against actual title
 requirements. Do not shrink the reported PS4 physical pool or claim unsupported
 allocations succeed. Missing VRCPPS translation can be developed independently
 in a new backend/cache without invalidating this frozen corpus.
+
+### Opt-in physical VM limits probe
+
+Developer launches may set `OSL_VM_PROBE=1`. `virtual_memory` in diagnostics then
+records anonymous reservation and sparse backing-map results after the CPU/game/
+GPU probes. It touches no pages in these test mappings, writes no sparse-file
+data, records no addresses and removes every mapping/file handle. This measures
+virtual capacity, not resident-memory/GPU workload endurance or gameplay.
+
+Actual iPad `d7f6603-dirty` launch 9 (diagnostic candidate) passes CPU 414 and GPU
+64 words. Eight GiB anonymous reservation fails ENOMEM; 4, 2 and 1 GiB reserve
+successfully below the GPU address limit. The current default 6,080 MiB sparse
+backing maps alone and with a 1 GiB window, but fails with a 2 GiB window.
+All cleanup succeeds. This is evidence for eliminating the full-pool backing
+view via bounded aliases and using a qualified smaller guest window; it is NOT
+an implemented allocator fix. The reported PS4 physical pool must remain intact,
+with allocations/mappings rejected explicitly when actual host limits are met.

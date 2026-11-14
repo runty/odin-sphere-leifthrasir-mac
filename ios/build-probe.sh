@@ -27,6 +27,7 @@ if len(p.parts)<3 or p.parts[1]!='Volumes' or not Path('/Volumes',p.parts[2]).is
 PY
 mkdir -p "$build_dir/Source"
 cp "$source_dir/ios/main.mm" "$build_dir/Source/main.mm"
+cp "$source_dir/ios/services/vm_probe.mm" "$build_dir/Source/vm_probe.mm"
 # Capability-enabled distribution needs a matching explicit provisioning profile.
 # Keep the baseline engineering probe reproducible with the cached wildcard.
 entitlements_setting=""
