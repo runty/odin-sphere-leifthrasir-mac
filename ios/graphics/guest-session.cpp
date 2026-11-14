@@ -92,9 +92,9 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
     session->running=true;
     try {
         MobileGpuServices services{session,
-            [](void *opaque,const char *name,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result){
+            [](void *opaque,const char *name,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result,GuestWaitScope wait){
                 auto &s=*static_cast<OslGuestSession *>(opaque);
-                const bool handled=NativeGpu::call(&s.gpu,name,nid,args,stack,memory,result);
+                const bool handled=NativeGpu::call(&s.gpu,name,nid,args,stack,memory,result,wait);
                 if(handled && ++s.calls==7 && s.test_gate) {
                     s.test_gate_reached=true;
                     std::fputs("OSL_GUEST_TEST_GATE_REACHED\n",stderr);std::fflush(stderr);
@@ -115,6 +115,8 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
             <<",\"attributes_set\":"<<gpu.attributes_set<<",\"buffers_registered\":"<<gpu.buffers_registered
             <<",\"gnm_init_calls\":"<<gpu.gnm_init_calls<<",\"gnm_init_words\":"<<gpu.gnm_init_words
             <<",\"gnm_shader_calls\":"<<gpu.gnm_shader_calls
+            <<",\"gnm_submission_calls\":"<<gpu.submissions.calls<<",\"gnm_batches\":"<<gpu.submissions.batches
+            <<",\"gnm_buffers\":"<<gpu.submissions.buffers<<",\"gnm_bytes\":"<<gpu.submissions.bytes<<",\"gnm_submit_done\":"<<gpu.submissions.submit_done
             <<",\"mapped_before_reset\":"<<gpu.mapped_before_reset<<",\"unmapped_after_reset\":"<<unmapped
             <<",\"guest_resources_released\":"<<released<<"},\"presented_frames\":"<<oslgpu_presented_frames()
             <<",\"test_gate_enabled\":"<<session->test_gate.load()<<",\"test_gate_reached\":"<<session->test_gate_reached.load()<<",\"game_frames\":false}";

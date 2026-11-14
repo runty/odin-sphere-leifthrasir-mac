@@ -4,6 +4,7 @@
 // joins guest workers, calls finish, then releases shared direct mappings.
 #include "../services/gpu.h"
 #include "gnm-shader-packets.h"
+#include "gnm-submissions.h"
 #include "oslgpu.h"
 #include "core/libraries/kernel/equeue.h"
 #include "core/libraries/videoout/buffer.h"
@@ -26,12 +27,15 @@ struct NativeGpu {
     unsigned queues_created=0,queues_deleted=0,events_added=0,attributes_set=0,buffers_registered=0;
     uint64_t gnm_init_calls=0,gnm_init_words=0;
     uint64_t gnm_shader_calls=0;
+    NativeGnmSubmissions submissions;
+    uint16_t registered=0;
     static bool format32(uint64_t value) {
         return value==0x80000000u || value==0x80002200u || value==0x88060000u || value==0x88000000u || value==0x88740000u;
     }
-    static bool call(void *opaque,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result) {
+    static bool call(void *opaque,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result,GuestWaitScope wait={}) {
         auto &self=*static_cast<NativeGpu *>(opaque);
         using namespace Libraries::VideoOut;
+        if(self.submissions.call(symbol,nid,args,stack,*memory,*result,self.handle,self.registered,wait))return true;
         if(nativeGnmShaderPacket(symbol,nid,args,*memory,*result)) {++self.gnm_shader_calls;return true;}
         if(!std::strcmp(symbol,"sceGnmDrawInitDefaultHardwareState200") ||
            !std::strcmp(symbol,"sceGnmDispatchInitDefaultHardwareState")) {
@@ -92,7 +96,9 @@ struct NativeGpu {
             auto reg=reinterpret_cast<int32_t (*)(int32_t,int32_t,void *const *,int32_t,const BufferAttribute *)>(oslgpu_resolve(nid));
             if(!reg){stopGuest(*memory,"native VideoOut buffer export is unavailable");return true;}
             const int32_t status=reg(self.handle,start,native.data(),count,&group.attrib);
-            *result=static_cast<uint32_t>(status);if(status>=0)self.buffers_registered+=count;return true;
+            *result=static_cast<uint32_t>(status);
+            if(status>=0){self.buffers_registered+=count;for(int32_t i=0;i<count;++i)self.registered|=uint16_t(1)<<(start+i);}
+            return true;
         }
         if (!std::strcmp(symbol,"sceKernelCreateEqueue")) {
             if (!args[0] || !args[1]) { *result=0x80020016u;return true; }

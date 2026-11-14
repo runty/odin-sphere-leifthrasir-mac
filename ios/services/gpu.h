@@ -1,12 +1,13 @@
 #pragma once
 #include "../cpu/runtime.h"
+#include "wait_scope.h"
 
 // Installed by the native frontend before a bounded guest session starts.
 // The context and function table must remain valid until the report returns.
 // Default probe builds have no renderer and retain their explicit service gap.
 struct MobileGpuServices {
     void *context;
-    bool (*call)(void *,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *,uint64_t *result);
+    bool (*call)(void *,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *,uint64_t *result,GuestWaitScope);
     void (*finish)(void *);
     // Optional frontend-owned cancellation. Its lifetime includes the whole
     // report; every guest CPU and bounded host wait observes the same flag.

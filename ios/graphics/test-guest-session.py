@@ -9,7 +9,7 @@ a=p.parse_args();repo=Path(__file__).resolve().parents[2];root=a.root.resolve();
 if len(out.parts)<3 or out.parts[1]!='Volumes' or not Path('/Volumes',out.parts[2]).is_mount() or out.exists():p.error('Use a NEW mounted external test directory')
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 state_bytes=(root/'build-state.json').read_bytes();state=json.loads(state_bytes)
-sources={name:digest(repo/name) for name in ('ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-session-test.cpp','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packets.h')}
+sources={name:digest(repo/name) for name in ('ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-session-test.cpp','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h')}
 linked_inputs={}
 def current():
  if (root/'build-state.json').read_bytes()!=state_bytes:raise RuntimeError('Discovery changed; stop it before testing')

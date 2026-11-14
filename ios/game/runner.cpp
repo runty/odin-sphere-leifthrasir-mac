@@ -301,7 +301,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         const uint64_t args[]={s.gpr.rdi.qword,s.gpr.rsi.qword,s.gpr.rdx.qword,
                                s.gpr.rcx.qword,s.gpr.r8.qword,s.gpr.r9.qword};
         uint64_t result=0;
-        if (session.gpu->call(session.gpu->context,name,import.nid,args,s.gpr.rsp.qword,m,&result)) {
+        if (session.gpu->call(session.gpu->context,name,import.nid,args,s.gpr.rsp.qword,m,&result,scope.wait())) {
             ++session.gpu_service_calls;
             return m->fault.empty() ? hostReturn(s,m,result) : m;
         }
@@ -1600,7 +1600,7 @@ static bool workerCleanupCheck() {
     // after that CPU has left its checked execution scope.
     struct FrontendStop { std::atomic<bool> stop{false},entered{false},done{false};unsigned finishes=0; } frontend;
     MobileGpuServices renderer{&frontend,
-        [](void *,const char *,const char *,const uint64_t[6],uint64_t,Memory *,uint64_t *){return false;},
+        [](void *,const char *,const char *,const uint64_t[6],uint64_t,Memory *,uint64_t *,GuestWaitScope){return false;},
         [](void *opaque){auto &f=*static_cast<FrontendStop *>(opaque);if(!f.done)std::abort();++f.finishes;},&frontend.stop};
     {
         auto owner=std::make_unique<Session>(&renderer);auto &session=*owner;
@@ -1621,7 +1621,32 @@ static bool workerCleanupCheck() {
         if(!frontend.done)throw std::logic_error("frontend stop did not interrupt running CPU");
     }
     if(frontend.finishes!=1)throw std::logic_error("frontend stop did not finish GPU ownership once");
-    std::puts("{\"worker_cleanup_checks\":3,\"failure_injected\":true,\"child_joined\":true,\"parent_mutex_released\":true,\"child_exception_released_mutex\":true,\"frontend_stop_reaches_running_cpu\":true,\"gpu_finish_after_cpu_stop\":true,\"failed\":0,\"game_frames\":false}");
+    // The real HLE dispatch must forward BOTH leases to a blocking GPU call.
+    // An independent CPU acquires session state and checked memory while that
+    // call is unlocked, then both leases are restored before guest return.
+    struct GpuLeaseProbe {Session *session=nullptr;std::atomic<bool> acquired{false};bool exercised=false;} lease_probe;
+    MobileGpuServices lease_renderer{&lease_probe,
+        [](void *opaque,const char *name,const char *,const uint64_t[6],uint64_t,Memory *,uint64_t *result,GuestWaitScope wait){
+            if(std::strcmp(name,"sceGnmSubmitDone"))return false;
+            auto &probe=*static_cast<GpuLeaseProbe *>(opaque);
+            if(!wait.context || !wait.release || !wait.acquire)throw std::logic_error("GPU wait did not receive HLE leases");
+            wait.before();
+            std::thread other([&]{std::scoped_lock lock{probe.session->services};GuestMemoryScope memory;probe.acquired=true;});
+            other.join();wait.after();probe.exercised=true;*result=0x1234;return true;
+        },[](void *){}};
+    {
+        Session session(&lease_renderer);lease_probe.session=&session;active=&session;active_worker=nullptr;
+        session.stack.resize(4096);mapRegion(session.memory,0x20000000,session.stack.data(),session.stack.size());
+        session.state.gpr.rsp.qword=0x20000ff8;store64(session.memory,0x20000ff8,0xfeedface);
+        bool found=false;
+        for(size_t i=0;i<std::size(imports);++i)if(!std::strcmp(imports[i].symbol,"sceGnmSubmitDone")){
+            hostService(session.state,hle_base+i*0x1000,&session.memory);found=true;break;
+        }
+        if(!found || !lease_probe.acquired || !lease_probe.exercised || session.state.gpr.rax.qword!=0x1234 || !session.memory.fault.empty())
+            throw std::logic_error("GPU HLE lease forwarding failed");
+    }
+    active=nullptr;active_worker=nullptr;
+    std::puts("{\"worker_cleanup_checks\":4,\"failure_injected\":true,\"child_joined\":true,\"parent_mutex_released\":true,\"child_exception_released_mutex\":true,\"frontend_stop_reaches_running_cpu\":true,\"gpu_finish_after_cpu_stop\":true,\"blocking_gpu_releases_hle_leases\":true,\"failed\":0,\"game_frames\":false}");
     return true;
 }
 int main(int argc, char **argv) {
