@@ -115,6 +115,22 @@ public:
         submit_cv.wait(lk, [this] { return num_submits == 0; });
     }
 
+    /// Host teardown barrier, with no guest frame/SubmitDone side effects.
+    /// The command processor must still be running and guest submitters joined.
+    /// A queue ticket prevents an earlier retirement phase from satisfying this
+    /// request after the last submission is decoded but before its fences retire.
+    void WaitForRetirement() {
+        std::unique_lock lk{submit_mutex};
+        const u64 ticket = ++retirement_requested;
+        command_queue.emplace([this, ticket] {
+            std::scoped_lock lock{submit_mutex};
+            retirement_seen = ticket;
+        });
+        ++num_commands;
+        submit_cv.notify_one();
+        submit_cv.wait(lk, [this, ticket] { return retirement_completed >= ticket; });
+    }
+
     /// osl: also the draw recording thread and the fences it deferred are done (see
     /// work_retired). sceGnmSubmitDone does not block the guest when this is true.
     bool IsGpuIdle() const {
@@ -274,6 +290,9 @@ private:
     std::atomic<bool> submit_done{};
     std::mutex submit_mutex;
     std::condition_variable_any submit_cv;
+    // Protected by submit_mutex. Completed only after the processor's full
+    // draw/deferred-signal retirement phase, not by a queue callback itself.
+    u64 retirement_requested{}, retirement_seen{}, retirement_completed{};
     std::queue<Common::UniqueFunction<void>> command_queue{};
     std::thread::id gpu_id;
 #if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)

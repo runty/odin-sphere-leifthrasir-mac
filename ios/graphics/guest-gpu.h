@@ -9,11 +9,13 @@
 #include "core/libraries/videoout/buffer.h"
 #include "core/libraries/gnmdriver/gnmdriver_init.h"
 #include "video_core/texture_cache/image_info.h"
+#include "video_core/amdgpu/liverpool.h"
 #include <array>
 #include <cstdlib>
 #include <cstring>
 extern "C" int runtime_memory_region(uintptr_t,uintptr_t *,uintptr_t *,int *);
 extern "C" int runtime_memory_is_mapped(uintptr_t,uint64_t);
+extern std::unique_ptr<AmdGpu::Liverpool> liverpool;
 
 struct NativeGpu {
     int32_t handle=0;
@@ -131,8 +133,12 @@ struct NativeGpu {
     }
     static void finish(void *opaque) {
         auto &self=*static_cast<NativeGpu *>(opaque);
+        // Command buffers remain guest-owned until the processor has retired
+        // their reads/draws/deferred signals, even without an opened VideoOut.
+        // Keep the processor running: mapping teardown still needs the renderer.
+        if(liverpool)liverpool->WaitForRetirement();
+        oslgpu_finish();
         if (self.handle) {
-            oslgpu_finish();
             auto close=reinterpret_cast<int32_t (*)(int32_t)>(oslgpu_resolve("uquVH4-Du78#libSceVideoOut"));
             if (!close || close(self.handle)) std::abort();
             self.handle=0; ++self.closed;
