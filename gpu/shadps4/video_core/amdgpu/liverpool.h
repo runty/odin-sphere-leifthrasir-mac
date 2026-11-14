@@ -96,6 +96,8 @@ struct Liverpool {
 public:
     explicit Liverpool();
     ~Liverpool();
+    /// Stop/join the command processor while renderer-owned dependencies still exist.
+    void StopProcessing();
 
     void SubmitGfx(std::span<const u32> dcb, std::span<const u32> ccb);
     void SubmitAsc(u32 gnm_vqid, std::span<const u32> acb);

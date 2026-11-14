@@ -89,9 +89,11 @@ Liverpool::Liverpool() : guest_markers_enabled{EmulatorSettings.IsVkGuestMarkers
     }};
 }
 
-Liverpool::~Liverpool() {
+Liverpool::~Liverpool() { StopProcessing(); }
+
+void Liverpool::StopProcessing() {
     process_thread.request_stop();
-    process_thread.join();
+    if (process_thread.joinable()) process_thread.join();
 }
 
 void Liverpool::ProcessCommands() {

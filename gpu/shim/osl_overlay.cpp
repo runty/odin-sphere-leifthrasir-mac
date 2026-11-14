@@ -414,6 +414,25 @@ void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count) 
     initialized = true;
 }
 
+extern uint32_t (*choice_input)();
+extern std::atomic<u64> presented_frames;
+void Shutdown() {
+    std::scoped_lock lock{imgui_mutex, notice_mutex};
+    if (initialized) {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui::DestroyContext();
+        initialized = false;
+    }
+    choice_textures.clear(); choice_retired.clear(); choice_pictures.clear();
+    choice_items.clear(); choice_title.clear(); choice_index = 0;
+    choice_active = false; choice_retiring = false; choice_result = -1;
+    text_entry_active = false; text_entry_prompt.clear(); text_entry_text.clear();
+    loading = false; loading_done = loading_total = 0;
+    background_done = background_total = 0;
+    startup_notices.clear(); last_present = {}; frame_ms_avg = 0;
+    choice_input = nullptr; presented_frames = 0; display_scale = 1.0f;
+}
+
 // imgui_mutex held. The backend frees a texture some frames after its last use.
 void RetireChoiceTextures() {
     for (ImTextureData* tex : choice_textures) {

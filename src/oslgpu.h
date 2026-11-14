@@ -25,6 +25,11 @@ void oslgpu_finish(void);
 int oslgpu_guest_range_mapped(uint64_t address,uint64_t size);
 #ifdef __APPLE__
 void oslgpu_run_main_loop(void);
+/* UIKit/display-link polling: 1 open, 0 absent/closed, -1 wrong thread; no idle sleep. */
+int oslgpu_poll_main_thread(void);
+/* Caller must stop/join guest CPUs and close owned queues first. Foreground main thread
+ * only, keeping the drawable alive while presentation drains; 0 done, -1 wrong thread. */
+int oslgpu_shutdown_main_thread(void);
 #endif
 /* Function for an imported NID ("NID#lib"), or 0 when the video core does not provide it. */
 uintptr_t oslgpu_resolve(const char *scoped_nid);

@@ -20,6 +20,8 @@ namespace OslOverlay {
 
 /// Present thread, once: the ImGui context and its Vulkan backend.
 void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count);
+/// After presentation threads/GPU work stop, before destroying the Vulkan device.
+void Shutdown();
 
 /// Window thread, for every SDL event: true when the save list consumed it.
 bool HandleEvent(const SDL_Event& event);

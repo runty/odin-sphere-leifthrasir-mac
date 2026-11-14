@@ -170,6 +170,11 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
 // swapchain follows the size events.
 void WindowSDL::ApplyDisplayMode(int mode) {
     display_mode = mode;
+#if defined(__APPLE__) && TARGET_OS_IOS
+    // UIWindowScene owns iOS geometry; desktop mode synchronization can wait
+    // for another run-loop turn and must not run inside a UIKit display link.
+    return;
+#endif
     const bool borderless = mode == OslGraphics::Borderless;
     if (borderless && !SDL_SetWindowFullscreenMode(window, nullptr)) {
         LOG_WARNING(Frontend, "Borderless fullscreen: {}", SDL_GetError());
@@ -316,7 +321,7 @@ bool WindowSDL::TrackControllerEvent(const SDL_Event& event) {
     }
 }
 
-bool WindowSDL::PollEvents() {
+bool WindowSDL::PollEvents(bool wait_in_background) {
     {
         std::scoped_lock lock{text_mutex};
         if (text_requested) { // SDL text input must be toggled from the window thread
@@ -415,7 +420,7 @@ bool WindowSDL::PollEvents() {
         }
     }
     UpdateCursor();
-    if (is_open) {
+    if (is_open && wait_in_background) {
         IdleInBackground(window);
     }
     return is_open;

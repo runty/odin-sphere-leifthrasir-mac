@@ -10,6 +10,9 @@
 #include <thread>
 #include <vector>
 #include <SDL3/SDL.h>
+#include "video_core/amdgpu/liverpool.h"
+#include "core/platform.h"
+#include "video_core/renderer_vulkan/vk_presenter.h"
 #include <boost/asio/io_context.hpp>
 #include "common/polyfill_thread.h"
 #include "osl_copy_pool.h"
@@ -95,6 +98,7 @@ public:
 
 void MemoryManager::SetRasterizer(Vulkan::Rasterizer* rasterizer_) {
     rasterizer = rasterizer_;
+    if (!rasterizer) { runtime_memory_set_gpu_hooks(nullptr, nullptr, nullptr); return; }
     // Existing guest mappings are replayed by the runtime when hooks are installed.
     runtime_memory_set_gpu_hooks(
         [](uintptr_t address, uint64_t size) {
@@ -204,6 +208,7 @@ extern "C" int oslgpu_guest_range_mapped(uint64_t address,uint64_t size) {
 }
 
 extern "C" int oslgpu_init(const OslGpuConfig* config) {
+    if (!config || !config->user_dir || !config->settings_file || g_window) return -1;
     OslSettings::Load(config->settings_file);
     const auto& loaded = OslSettings::Get();
     if (loaded.skip_intro) {
@@ -250,7 +255,34 @@ extern "C" int oslgpu_init(const OslGpuConfig* config) {
     return 0;
 }
 
+namespace Libraries::VideoOut { void ShutdownDriver(); }
+namespace Libraries::Kernel { void StopKernelService(); }
+extern std::unique_ptr<Vulkan::Presenter> presenter;
+extern std::unique_ptr<AmdGpu::Liverpool> liverpool;
 #ifdef __APPLE__
+extern "C" int oslgpu_poll_main_thread(void) {
+    if (!SDL_IsMainThread()) return -1;
+    return g_window && g_window->PollEvents(false) ? 1 : 0;
+}
+extern "C" int oslgpu_shutdown_main_thread(void) {
+    if (!SDL_IsMainThread()) return -1;
+    Libraries::Kernel::StopKernelService();
+    if (liverpool) { liverpool->WaitGpuIdle(); liverpool->StopProcessing(); }
+    Libraries::VideoOut::ShutdownDriver();
+    Platform::IrqC::Instance()->ResetAfterStop();
+    oslgpu_finish();
+    if (presenter) presenter->GetRasterizer().GetPipelineCache().Sync();
+    Core::Memory::Instance()->SetRasterizer(nullptr);
+    presenter.reset();
+    liverpool.reset();
+    if (g_window) {
+        delete g_window; g_window = nullptr;
+        SDL_QuitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD);
+    }
+    g_window_ready = false;
+    g_symbols.clear();
+    return 0;
+}
 extern "C" void oslgpu_run_main_loop(void) {
     while (g_window && g_window->PollEvents()) SDL_Delay(2);
     runtime_exit_clean();
@@ -320,7 +352,15 @@ static void KernelServiceThread(std::stop_token stoken) {
 }
 
 void StartKernelService() {
-    service_thread = std::jthread{KernelServiceThread};
+    if (!service_thread.joinable()) service_thread = std::jthread{KernelServiceThread};
+}
+void StopKernelService() {
+    service_thread.request_stop();
+    io_context.stop();
+    if (service_thread.joinable()) service_thread.join();
+    io_context.restart();
+    std::scoped_lock lock{m_asio_req};
+    asio_requests = 0;
 }
 
 int* PS4_SYSV_ABI __Error() {

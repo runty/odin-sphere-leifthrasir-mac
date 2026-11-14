@@ -118,7 +118,15 @@ void VideoOutDriver::SwapThread(std::stop_token token) {
     }
 }
 
-VideoOutDriver::~VideoOutDriver() = default;
+VideoOutDriver::~VideoOutDriver() {
+    // Stop producers before joining the presenter consumer. Both must finish
+    // before requests/ports/mutexes are destroyed by member teardown.
+    present_thread.request_stop();
+    if (present_thread.joinable()) present_thread.join();
+    swap_thread.request_stop();
+    swap_cv.notify_all();
+    if (swap_thread.joinable()) swap_thread.join();
+}
 
 int VideoOutDriver::Open(const ServiceThreadParams* params) {
     std::scoped_lock lock{mutex};

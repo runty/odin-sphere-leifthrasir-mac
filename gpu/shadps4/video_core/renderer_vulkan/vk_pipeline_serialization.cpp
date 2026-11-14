@@ -1605,9 +1605,14 @@ void PipelineCache::StopWarmUp() {
     }
     background->stopping = true;
     background->pool->Drain();
-    // ponytail: leaked with its parked threads (this runs at exit only): a thread that ended
-    // while the game ran crashed in ntdll (RtlWakeAllConditionVariable). Join them once the
-    // cause is known.
+#ifdef __APPLE__
+    // Mobile sessions restart inside one process. Join the drained warm-up
+    // workers and free their shader/module state while the device is alive.
+    delete background;
+#else
+    // Retain the existing other-host workaround: joining parked warm-up
+    // threads was observed to fail in Windows ntdll.
+#endif
     background = nullptr;
     OslOverlay::SetBackgroundLoading(0, 0);
 }

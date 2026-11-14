@@ -68,6 +68,7 @@ void ProcessIO(const std::stop_token& stoken) {
             }
 
             --num_requests;
+            num_requests.notify_all();
         }
     }
 }
@@ -151,6 +152,11 @@ void DataBase::Close() {
         return;
     }
 
+    // Producers have stopped before Close. Finish every accepted write before
+    // stopping the worker or switching the cache folder for another session.
+    while (const auto pending = num_requests.load(std::memory_order_acquire)) {
+        num_requests.wait(pending, std::memory_order_acquire);
+    }
     io_worker.request_stop();
     io_worker.join();
 

@@ -63,6 +63,20 @@ struct IrqController {
         ctx.persistent_handlers.erase(uid);
     }
 
+    // Session teardown only, after guest/signal producers are joined. Destroy
+    // captures outside slot locks, since their destructors may unregister.
+    void ResetAfterStop() {
+        for (auto& ctx : irq_contexts) {
+            std::unordered_map<void*, IrqHandler> persistent;
+            std::queue<IrqHandler> once;
+            {
+                std::scoped_lock lock{ctx.m_lock};
+                persistent.swap(ctx.persistent_handlers);
+                once.swap(ctx.one_time_subscribers);
+            }
+        }
+    }
+
     void Signal(InterruptId irq) {
         ASSERT_MSG(static_cast<u32>(irq) <= static_cast<u32>(InterruptId::InterruptIdMax),
                    "Unexpected IRQ signaled");
