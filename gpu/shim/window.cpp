@@ -7,6 +7,9 @@
 #include <mutex>
 #include <vector>
 #include <SDL3/SDL.h>
+#ifdef __APPLE__
+#include <SDL3/SDL_metal.h>
+#endif
 #include "common/assert.h"
 #include "osl_displays.h"
 #include "osl_window_fit.h"
@@ -67,6 +70,9 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         ExitNoWindow("Cannot initialize SDL video", SDL_GetError());
     }
+#ifdef __APPLE__
+    ASSERT_MSG(SDL_IsMainThread(),"Cocoa window creation must run on the main thread");
+#endif
     // The launcher's Window size and Monitor settings; the same display list as its Monitor row.
     const auto& settings = OslSettings::Get();
     const std::vector<osl::Display> displays = osl::ListDisplays();
@@ -86,7 +92,11 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, window_height);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
+#ifdef __APPLE__
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_METAL_BOOLEAN, true);
+#else
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, true);
+#endif
     base_title = title;
     title_shown = title;
     window = SDL_CreateWindowWithProperties(props);
@@ -101,6 +111,14 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     if (driver && !std::strcmp(driver, "windows")) {
         window_info.type = WindowSystemType::Windows;
         window_info.render_surface = SDL_GetPointerProperty(wp, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    } else
+#endif
+#ifdef __APPLE__
+    if (driver && !std::strcmp(driver,"cocoa")) {
+        metal_view=SDL_Metal_CreateView(window);
+        if (!metal_view) ExitNoWindow("Cannot create Metal view",SDL_GetError());
+        window_info.type=WindowSystemType::Metal;
+        window_info.render_surface=SDL_Metal_GetLayer(metal_view);
     } else
 #endif
     if (driver && !std::strcmp(driver, "x11")) {
@@ -154,6 +172,9 @@ void WindowSDL::ApplyDisplayMode(int mode) {
 }
 
 WindowSDL::~WindowSDL() {
+#ifdef __APPLE__
+    if (metal_view) SDL_Metal_DestroyView(metal_view);
+#endif
     SDL_ShowCursor();
     SDL_DestroyWindow(window);
 }

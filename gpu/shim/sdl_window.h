@@ -1,4 +1,4 @@
-// The game window. It is created, and its events are pumped, on the window thread (oslgpu.cpp).
+// The game window and its events stay on one thread. Cocoa uses the process main thread.
 #pragma once
 #include <atomic>
 #include <chrono>
@@ -65,6 +65,9 @@ private:
     std::string text, text_prompt, base_title;
     void UpdateTextTitle();
     SDL_Window* window{};
+#ifdef __APPLE__
+    void *metal_view{};
+#endif
     WindowSystemInfo window_info{};
 };
 

@@ -206,6 +206,10 @@ extern "C" int oslgpu_init(const OslGpuConfig* config) {
     Core::Emulator::FillElfInfo(*config);
     const std::string title = config->title ? config->title : "Odin Sphere Leifthrasir";
     const s32 width = config->width, height = config->height;
+#ifdef __APPLE__
+    g_window = new Frontend::WindowSDL(width,height,title.c_str());
+    g_window_ready = true;
+#else
     g_window_thread = std::thread([title, width, height] {
         Common::SetCurrentThreadName("osl:window");
         auto* window = new Frontend::WindowSDL(width, height, title.c_str());
@@ -226,12 +230,20 @@ extern "C" int oslgpu_init(const OslGpuConfig* config) {
         std::unique_lock lock{g_window_mutex};
         g_window_cv.wait(lock, [] { return g_window_ready; });
     }
+#endif
     Core::Loader::SymbolsResolver resolver;
     // GnmDriver creates the presenter that the VideoOut present thread uses.
     Libraries::GnmDriver::RegisterLib(&resolver);
     Libraries::VideoOut::RegisterLib(&resolver);
     return 0;
 }
+
+#ifdef __APPLE__
+extern "C" void oslgpu_run_main_loop(void) {
+    while (g_window && g_window->PollEvents()) SDL_Delay(2);
+    runtime_exit_clean();
+}
+#endif
 
 namespace Libraries::Kernel { void StartKernelService(); }
 extern "C" void oslgpu_register_kernel(void) {

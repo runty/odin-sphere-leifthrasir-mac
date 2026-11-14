@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "osl_overlay.h"
+#include "runtime_log.h"
 
 #include <algorithm>
 #include <atomic>
@@ -616,7 +617,19 @@ u64 PresentedFrames() {
 }
 
 void LogPresent() {
-    presented_frames.fetch_add(1, std::memory_order_relaxed);
+    const u64 count=presented_frames.fetch_add(1, std::memory_order_relaxed)+1;
+    if (count==1 || count%600==0)
+        std::printf("Presentation: %llu frames, %llu draws, %llu submissions\n",
+            (unsigned long long)count,(unsigned long long)OslStats::draws.load(),
+            (unsigned long long)OslStats::submissions.load());
+    static const u64 limit=[] {
+        const char *value=std::getenv("OSL_TEST_PRESENT_LIMIT");
+        return value ? std::strtoull(value,nullptr,10) : 0ull;
+    }();
+    if (limit && count>=limit) {
+        std::printf("Presentation: test frame limit reached (%llu frames)\n",(unsigned long long)count);
+        runtime_exit_clean();
+    }
 }
 
 void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {

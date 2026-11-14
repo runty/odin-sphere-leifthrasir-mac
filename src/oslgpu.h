@@ -20,6 +20,9 @@ int oslgpu_available(void);
 void oslgpu_register_kernel(void);
 /* Creates window, Vulkan device, presenter and GPU command processor; 0 on success. */
 int oslgpu_init(const OslGpuConfig *config);
+#ifdef __APPLE__
+void oslgpu_run_main_loop(void);
+#endif
 /* Function for an imported NID ("NID#lib"), or 0 when the video core does not provide it. */
 uintptr_t oslgpu_resolve(const char *scoped_nid);
 /* Called first by the loader's fault handler: 1 when a GPU page-tracking fault was handled. */

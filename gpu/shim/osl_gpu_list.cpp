@@ -16,6 +16,7 @@
 #include "sdl_window.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
+#include "osl_vulkan_loader.h"
 
 namespace {
 
@@ -29,7 +30,11 @@ std::optional<VulkanProblem> FindVulkanProblem() {
     using namespace Vulkan;
     static std::unique_ptr<vk::detail::DynamicLoader> loader;
     if (!loader || !loader->success()) {
+#ifdef __APPLE__
+        loader = std::make_unique<vk::detail::DynamicLoader>(OslVulkanLibraryPath());
+#else
         loader = std::make_unique<vk::detail::DynamicLoader>();
+#endif
     }
     if (!loader->success()) {
         return VulkanProblem{"Vulkan is not installed on this system.",

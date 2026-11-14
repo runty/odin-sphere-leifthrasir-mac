@@ -200,10 +200,10 @@ absent.
 
 ### Build inputs
 
-Use macos/build.sh with five explicit external paths:
+Use macos/build.sh with six explicit external paths:
 
 ```sh
-macos/build.sh "$WORK/macos-build" "$VK_PREFIX" "$DEPS_PREFIX" "$FREETYPE_BUILD" "$FREETYPE_INCLUDE"
+macos/build.sh "$WORK/macos-build" "$VK_PREFIX" "$DEPS_PREFIX" "$FREETYPE_BUILD" "$FREETYPE_INCLUDE" "$SDL3_CMAKE_DIR"
 ```
 
 The script fetches the pins in gpu/deps.txt without replacing an existing
@@ -230,3 +230,54 @@ rendering needs a Cocoa-capable SDL build, a Metal surface, and main-thread
 window/event handling. The current Darwin watchdog reports the current thread.
 Collecting every other thread's Mach register state remains outstanding.
 Guest-visible heap handles and longer execution still need the M1/M2 checks.
+
+
+## Cocoa and visible game frames
+
+Cocoa-capable SDL 3.4.18 now creates the window and Metal view on the process main
+thread. The Vulkan surface receives SDL's CAMetalLayer. The main thread pumps
+window events while a dedicated guest thread initializes libc/Fios2 and runs the
+eboot on its low stack. Windows/Linux retain their existing window-thread paths.
+
+The Vulkan launcher check and renderer now locate the already linked Mac loader
+through dladdr. Instance creation respects the selected ICD. This fixes the
+initial misleading Vulkan-not-installed dialog and a subsequent instance error
+caused by replacing the chosen driver path with an executable directory.
+
+Native inspection verified the no-save-data notice and animated opening graphics
+in the Cocoa game window. Logs identify the 1920x1080 source, swapchain and window.
+Generated guest shaders produce the animated images through KosmicKrisp. A later
+write to a GPU-protected page exposed Darwin's SIGBUS delivery. The fault handler
+now forwards both SIGBUS and SIGSEGV to the page tracker.
+
+Presentation counters log advancing frames, draws and submissions. Set
+OSL_FRAME_STATS=1 for timing/counter diagnostics. OSL_TEST_PRESENT_LIMIT exits
+cleanly after an explicit number of presented frames, for bounded smoke runs.
+Audio was disabled during this rendering pass, and state was disposable.
+Gameplay, PC pixel comparisons, live audio and normal save/reload still need
+their milestone checks.
+
+Build with SDL3_CMAKE_DIR pointing to the Cocoa-capable SDL build's CMake config.
+The development bundle used for native inspection stays in the external build
+tree and uses external game/dependency paths. Installation remains in M5.
+
+The corrected rendering run completed 10,000 presented frames and exited zero
+at its requested limit. At frame 9,600 the counters recorded 2,904,448 draws and
+57,520 submissions. Native screenshots showed the no-save-data notice and the
+animated opening with textured geometry, stars, wings and translucent effects.
+The native images were inspected in the test session. The regression record
+retains log counters, with game-derived data kept outside the repository.
+
+The updated build entry point takes the Cocoa SDL CMake directory as its sixth
+argument. For a bounded live render check after building:
+
+```sh
+env ROSETTA_ADVERTISE_AVX=1 VK_DRIVER_FILES="$ICD_JSON" OSL_AUDIO=none \
+    OSL_FRAME_STATS=1 OSL_TEST_PRESENT_LIMIT=10000 \
+    "$RUNNER" "$IMAGE_DIR/boot.bin" --osl-skip-launcher --timeout 240 \
+    --app0 "$APP0" --user "$FIXTURE/user" --logs "$FIXTURE/logs"
+```
+
+The earlier Vulkan availability dialog is resolved. A long gameplay session,
+title-menu/battle acceptance and save/quit/reload remain open. PC frame parity,
+resize/display changes and audible CoreAudio need separate checks.
