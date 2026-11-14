@@ -7,6 +7,7 @@
 #include "../services/user.h"
 #include "../services/pad.h"
 #include "../services/guest_storage.h"
+#include "../services/offline.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -60,6 +61,7 @@ struct Session {
     Memory memory;
     MobilePad pad;
     MobileStorage storage;
+    OfflineServices offline;
     Session() {
         memory.external_pointer = DirectMemory::pointer;
         osl_aot_user_reset();
@@ -189,6 +191,54 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
     const auto &import = imports[(pc - hle_base) / 0x1000];
     const char *name = import.symbol;
+    if (!std::strcmp(name,"sceNpSetNpTitleId"))
+        return hostReturn(s,m,session.offline.configureTitle());
+    if (!std::strcmp(name,"sceNpSetContentRestriction"))
+        return hostReturn(s,m,session.offline.restriction());
+    if (!std::strcmp(name,"sceNpGetState")) {
+        if (!s.gpr.rsi.qword) return hostReturn(s,m,OfflineServices::invalid);
+        auto output=guestPointer(*m,s.gpr.rsi.qword,4,true); if (!output) return m;
+        const int32_t state=1; std::memcpy(output,&state,4); return hostReturn(s,m,0);
+    }
+    if (!std::strcmp(name,"sceNpGetNpId") || !std::strcmp(name,"sceNpTusGetData") || !std::strcmp(name,"sceNpTusSetData"))
+        return hostReturn(s,m,OfflineServices::signed_out);
+    if (!std::strcmp(name,"sceNpTusCreateNpTitleCtx") || !std::strcmp(name,"sceNpTusCreateRequest")) {
+        const uint32_t id=!std::strcmp(name,"sceNpTusCreateNpTitleCtx") ? session.offline.context() : session.offline.request(s.gpr.rdi.dword);
+        if (!id) { stopGuest(*m,"offline handle budget exhausted",pc); return m; }
+        return hostReturn(s,m,id);
+    }
+    if (!std::strcmp(name,"sceNpTusDeleteNpTitleCtx")) {
+        session.offline.removeContext(s.gpr.rdi.dword); return hostReturn(s,m,0);
+    }
+    if (!std::strcmp(name,"sceNpTusDeleteRequest")) {
+        session.offline.requests.erase(s.gpr.rdi.dword); return hostReturn(s,m,0);
+    }
+    if (!std::strcmp(name,"sceNpRegisterStateCallback")) {
+        const uint32_t id=session.offline.callback(false,s.gpr.rdi.qword,s.gpr.rsi.qword);
+        if (!id) { stopGuest(*m,"offline callback budget exhausted",pc); return m; }
+        return hostReturn(s,m,id);
+    }
+    if (!std::strcmp(name,"sceNpUnregisterStateCallback")) {
+        session.offline.np_callbacks.erase(s.gpr.rdi.dword); return hostReturn(s,m,0);
+    }
+    if (!std::strcmp(name,"sceNpCheckCallback") || !std::strcmp(name,"sceNetCtlCheckCallback"))
+        return hostReturn(s,m,0); // No state transitions occur while offline.
+    if (!std::strcmp(name,"sceNetCtlGetInfo")) return hostReturn(s,m,0x80412108u);
+    if (!std::strcmp(name,"sceNetCtlGetState")) {
+        if (!s.gpr.rdi.qword) return hostReturn(s,m,0x80412107u);
+        auto output=guestPointer(*m,s.gpr.rdi.qword,4,true); if (!output) return m;
+        const int32_t state=0; std::memcpy(output,&state,4); return hostReturn(s,m,0);
+    }
+    if (!std::strcmp(name,"sceNetCtlRegisterCallback")) {
+        if (!s.gpr.rdx.qword) return hostReturn(s,m,0x80412107u);
+        auto output=guestPointer(*m,s.gpr.rdx.qword,4,true); if (!output) return m;
+        const uint32_t id=session.offline.callback(true,s.gpr.rdi.qword,s.gpr.rsi.qword);
+        if (!id) { stopGuest(*m,"offline callback budget exhausted",pc); return m; }
+        std::memcpy(output,&id,4); return hostReturn(s,m,0);
+    }
+    if (!std::strcmp(name,"sceNetCtlUnregisterCallback")) {
+        session.offline.net_callbacks.erase(s.gpr.rdi.dword); return hostReturn(s,m,0);
+    }
     uint64_t storage_result=0;
     if (GuestStorage::save(name,s,*m,session.storage,session.saves_initialized,storage_result) ||
         GuestStorage::file(name,s,*m,session.storage,storage_result))
@@ -743,6 +793,8 @@ static std::string bootstrap(const char *path) {
         << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
         << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
+        << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
+        << ",\"network_connected\":false,\"psn_signed_in\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
@@ -805,6 +857,47 @@ static bool serviceChecks() {
         if (!value) throw std::runtime_error("Service contract check " + std::to_string(checks + 1) + " failed");
         ++checks;
     };
+    // Immutable offline state: no guest credential pointers are dereferenced.
+    require(call("sceNpSetNpTitleId",UINT64_MAX,UINT64_MAX)==0 && session.offline.title_configured);
+    require(call("sceNpSetContentRestriction",UINT64_MAX)==0 && session.offline.restriction_updates==1);
+    require(call("sceNpGetState",1,0)==OfflineServices::invalid);
+    std::fill(session.stack.begin()+0x100,session.stack.begin()+0x130,0x7b);
+    require(call("sceNpGetState",1,0x20000101)==0);
+    int32_t offline_state=0; std::memcpy(&offline_state,session.stack.data()+0x101,4);
+    require(offline_state==1 && session.stack[0x100]==0x7b && session.stack[0x105]==0x7b);
+    require(call("sceNpGetState",1,0x20000fff)==0 && !session.memory.fault.empty());
+    require(call("sceNpGetNpId",1,UINT64_MAX)==OfflineServices::signed_out && session.memory.fault.empty());
+    require(call("sceNpTusGetData",UINT64_MAX,UINT64_MAX)==OfflineServices::signed_out);
+    require(call("sceNpTusSetData",UINT64_MAX,UINT64_MAX)==OfflineServices::signed_out);
+    const auto np_context=call("sceNpTusCreateNpTitleCtx",UINT64_MAX,UINT64_MAX);
+    require(np_context>0 && np_context<=4096 && session.offline.contexts.count(np_context)==1);
+    require(call("sceNpTusCreateRequest",np_context+1)==OfflineServices::invalid);
+    const auto request=call("sceNpTusCreateRequest",np_context);
+    require(request>0 && session.offline.requests.at(request)==np_context);
+    require(call("sceNpTusDeleteRequest",request)==0 && session.offline.requests.empty());
+    const auto child=call("sceNpTusCreateRequest",np_context);
+    require(child>0 && session.offline.requests.count(child)==1);
+    require(call("sceNpTusDeleteNpTitleCtx",np_context)==0 && session.offline.contexts.empty() && session.offline.requests.empty());
+    const auto np_callback=call("sceNpRegisterStateCallback",UINT64_MAX,0x1234);
+    require(np_callback>0 && session.offline.np_callbacks.at(np_callback).function==UINT64_MAX);
+    require(call("sceNpCheckCallback")==0 && session.memory.fault.empty());
+    require(call("sceNpUnregisterStateCallback",np_callback)==0 && session.offline.np_callbacks.empty());
+    require(call("sceNetCtlGetState",0)==0x80412107u);
+    require(call("sceNetCtlGetState",0x20000109)==0);
+    std::memcpy(&offline_state,session.stack.data()+0x109,4);
+    require(offline_state==0 && session.stack[0x108]==0x7b && session.stack[0x10d]==0x7b);
+    require(call("sceNetCtlGetInfo",1,UINT64_MAX)==0x80412108u && session.memory.fault.empty());
+    require(call("sceNetCtlRegisterCallback",UINT64_MAX,0x9876,0)==0x80412107u);
+    require(call("sceNetCtlRegisterCallback",UINT64_MAX,0x9876,0x20000111)==0);
+    uint32_t net_callback=0; std::memcpy(&net_callback,session.stack.data()+0x111,4);
+    require(net_callback>0 && session.offline.net_callbacks.at(net_callback).argument==0x9876);
+    require(session.stack[0x110]==0x7b && session.stack[0x115]==0x7b);
+    require(call("sceNetCtlCheckCallback")==0 && session.memory.fault.empty());
+    require(call("sceNetCtlUnregisterCallback",net_callback)==0 && session.offline.net_callbacks.empty());
+    require(call("sceNetCtlRegisterCallback",1,0,0x20000fff)==0 && !session.memory.fault.empty() && session.offline.net_callbacks.empty());
+    OfflineServices exhausted;
+    for(unsigned i=1;i<=4096;++i) require(exhausted.context()==i);
+    require(exhausted.context()==0 && exhausted.contexts.size()==4096);
     setenv("OSL_USER_NAME","Odin Test",1);
     require(call("sceUserServiceInitialize")==0 && session.users_initialized);
     require(call("sceUserServiceInitialize")==0);
