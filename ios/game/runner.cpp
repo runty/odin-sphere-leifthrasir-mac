@@ -1030,6 +1030,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
     session->workers->stopAndJoin();
     auto worker_snapshot=session->workers->snapshot();
     const Memory *failure=&session->memory;
+    const State *failed_state=&session->state;
     const char *missing_service=session->missing_service;
     uint64_t failed_thread=0x40000000,total_checkpoints=session->memory.checkpoints;
     unsigned finished_workers=0;
@@ -1038,12 +1039,22 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         if(worker->finished.load())++finished_workers;
         if((failure->fault.empty() || failure->fault=="guest execution interrupted") &&
            !worker->memory.fault.empty() && worker->memory.fault!="guest execution interrupted") {
-            failure=&worker->memory;missing_service=worker->missing_service;failed_thread=worker->id;
+            failure=&worker->memory;failed_state=&worker->state;missing_service=worker->missing_service;failed_thread=worker->id;
         }
     }
     const uint64_t missing =
         failure->missing_pc >= session->image_address && failure->missing_pc-session->image_address<image_size
             ? failure->missing_pc-session->image_address+image_base : failure->missing_pc;
+    // Expose only a normalized executable code location, never general
+    // registers, stack, credentials or an arbitrary guest data value.
+    const uint64_t stopped_raw=failed_state->gpr.rip.qword;
+    uint64_t stopped_pc=0;
+    if(stopped_raw>=session->image_address && stopped_raw-session->image_address<image_size) {
+        const uint64_t offset=stopped_raw-session->image_address;
+        for(const auto &segment:segments)if((segment.flags&1) && offset>=segment.address && offset-segment.address<segment.size) {
+            stopped_pc=image_base+offset;break;
+        }
+    }
     const double elapsed_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guest_started).count();
     std::ostringstream out;
     out << "{\"stage\":\"" << session->stage
@@ -1056,6 +1067,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"image_address\":" << session->image_address
         << ",\"stack_address\":" << session->stack_address
         << ",\"fault_address\":" << failure->fault_address
+        << ",\"stopped_pc\":" << stopped_pc
         << ",\"failed_thread\":" << failed_thread << ",\"workers_started\":" << session->workers->started()
         << ",\"workers_finished\":" << finished_workers << ",\"checkpoints_total\":" << total_checkpoints
         << ",\"error_dialog_code\":" << uint32_t(session->error_dialog_code)
