@@ -263,10 +263,25 @@ and nonzero drawable extent, then destroys both and releases its video lease.
 The original app key window must remain unchanged. Wrong-platform prefixes and
 changed archives are rejected before Xcode project generation.
 
-The development candidate passes on owned Simulator (1320×2868) and actual iPad
-(2316×1512), with CPU 414 and memory 19 still passing; iPad GPU readback remains
-64/64. These are actual UIKit/Metal-layer lifecycle results, not an acquired
-Vulkan surface, presented image, guest draw or game frame. `surface` diagnostics
-report main-thread/scene/driver/extent/cleanup facts and explicitly leave
-`vulkan_surface_created:false`. Next connect the bundled ICD and native renderer
-to that surface, preserving lifetime and foreground constraints.
+Clean `7c25fe7` passes twice on owned Simulator (launches 20/21,
+1320×2868) and actual iPad (launches 15/16, 2316×1512), preserving both original
+input files. CPU 414 and native memory 19 pass; iPad GPU readback remains 64/64.
+Those clean checks cover UIKit/Metal-layer lifecycle, without a Vulkan surface
+or presentation. iPhone retains the bounded-memory probe, with launch denied
+while locked; no new iPhone execution is claimed.
+
+When the bundled GPU driver is also linked, the surface probe negotiates its
+ICD directly, verifies/enables KHR surface and EXT Metal surface extensions,
+creates `VkSurfaceKHR` from the still-live SDL Metal layer, and queries surface
+capabilities, actual formats, FIFO mode and graphics/presentation queue support.
+It destroys the Vulkan surface/instance before releasing the layer/window.
+This development candidate passes on the physical iPad: five formats, FIFO,
+queue 0, three-image minimum/maximum and matching 2316×1512 extent. Original
+UIKit window and SDL cleanup still pass. Simulator builds without a GPU driver
+retain the Metal-layer-only path because its SDK lacks required Metal 4 types.
+
+Diagnostics explicitly report `presentation_tested:false` and
+`game_frames:false`. This is actual surface creation/capability qualification,
+not swapchain image acquisition, presentation, a guest draw or the full mobile
+game frontend. Next connect the native renderer while preserving main-thread
+ownership, resource lifetime and foreground constraints.
