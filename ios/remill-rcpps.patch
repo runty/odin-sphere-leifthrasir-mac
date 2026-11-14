@@ -1,10 +1,13 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
 --- a/lib/Arch/X86/Semantics/SSE.cpp
 +++ b/lib/Arch/X86/Semantics/SSE.cpp
-@@ -2397,4 +2397,41 @@
+@@ -2397,4 +2397,41 @@ DEF_ISEL(ADDSUBPD_XMMpd_XMMpd) = ADDSUBPD<V128W, V128, V128>;
  IF_AVX(DEF_ISEL(VADDSUBPD_XMMdq_XMMdq_MEMdq) = ADDSUBPD<VV128W, V128, MV128>;)
  IF_AVX(DEF_ISEL(VADDSUBPD_XMMdq_XMMdq_XMMdq) = ADDSUBPD<VV128W, V128, V128>;)
  IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_MEMqq) = ADDSUBPD<VV256W, V256, MV256>;)
--IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)+IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)
+-IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)
+\ No newline at end of file
++IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)
 +// Deterministic (V)RCPPS approximation within the ISA relative-error bound.
 +// Integer rounding avoids host FP modes/exceptions. Input denormals are signed
 +// zero, tiny results flush to signed zero, and NaNs retain payload/sign and quiet.
