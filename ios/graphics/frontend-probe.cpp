@@ -13,6 +13,7 @@ static std::atomic<bool> checked{false};
 extern "C" uint64_t runtime_process_time_counter() { return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
 extern "C" uint64_t runtime_process_time_us() { return runtime_process_time_counter()/1000; }
 extern "C" uint64_t runtime_tsc_frequency() { return 1000000000; }
+extern "C" uint64_t runtime_tsc_counter() { return runtime_process_time_counter(); }
 extern "C" void runtime_log_flush() { std::fflush(nullptr); }
 extern "C" [[noreturn]] void runtime_exit_clean() {
     std::printf("OSL_NATIVE_GPU_RESULT:{\"initialized\":%s,\"presented_frames\":%llu,\"game_frames\":false}\n",

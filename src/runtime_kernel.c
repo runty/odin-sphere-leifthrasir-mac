@@ -102,6 +102,7 @@ static ABI uint64_t tsc_frequency(void) {
 uint64_t runtime_process_time_us(void) { return process_time(); }
 uint64_t runtime_process_time_counter(void) { return process_time_counter(); }
 uint64_t runtime_tsc_frequency(void) { return tsc_frequency(); }
+uint64_t runtime_tsc_counter(void) { return read_tsc(); }
 static ABI int32_t kernel_usleep(uint32_t usec) { runtime_thread_sleep_ns((uint64_t)usec*1000); return 0; }
 static ABI int32_t posix_usleep(uint32_t usec) { runtime_thread_sleep_ns((uint64_t)usec*1000); return 0; }
 static ABI uint32_t posix_sleep(uint32_t seconds) { runtime_thread_sleep_ns((uint64_t)seconds*1000000000); return 0; }

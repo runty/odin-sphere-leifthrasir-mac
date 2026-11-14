@@ -46,35 +46,7 @@ static int new_id(void) { pthread_mutex_lock(&lock); int id=next_id++; pthread_m
 static void note(const char *what) { printf("Runtime: %s\n",what); }
 
 /* ---- SystemService ---- */
-static int launcher_language=1;
-void runtime_set_language(int ps4_language) { launcher_language=ps4_language; }
-static int language(void) { const char *v=getenv("OSL_LANGUAGE"); return v ? atoi(v) : launcher_language; }
-static ABI int32_t system_param(int32_t id,int32_t *value) {
-    if (!value) return SYSTEM_PARAMETER;
-    switch (id) {
-    case 1: *value=language(); break;           /* language (1 = English US) */
-    case 2: *value=1; break;                    /* date format DD/MM/YYYY */
-    case 3: *value=1; break;                    /* 24-hour clock */
-#ifdef _WIN32
-    case 4: *value=(int32_t)(compat_utc_offset(time(NULL))/60); break;
-#else
-    case 4: { time_t now=time(NULL); struct tm t; localtime_r(&now,&t); *value=(int32_t)(t.tm_gmtoff/60); break; }
-#endif
-    case 5: *value=0; break;                    /* summer time */
-    case 7: *value=0; break;                    /* parental level off */
-    case 1000: *value=1; break;                 /* enter button = cross */
-    default: fprintf(stderr,"STOP: unsupported system parameter %d\n",id); exit(21);
-    }
-    return 0;
-}
-static ABI int32_t system_status(unsigned char *status) {
-    if (!status) return SYSTEM_PARAMETER;
-    memset(status,0,12); /* event_num=0, no overlay, foreground, normal CPU mode */
-    return 0;
-}
 static ABI int32_t system_event(void *event) { (void)event; return SYSTEM_NO_EVENT; }
-static ABI int32_t hide_splash(void) { note("SystemService: splash screen hidden"); return 0; }
-static ABI int32_t safe_area(float *info) { if (!info) return SYSTEM_PARAMETER; *info=1.0f; return 0; } /* full screen */
 static ABI int32_t disable_music_player(void) { return 0; }
 static ABI int32_t launch_browser(void) { note("SystemService: web browser request ignored (offline)"); return 0; }
 #define LOAD_EXEC_EXIT 30
@@ -585,11 +557,10 @@ static ABI int32_t audio_in_open(void) { return AUDIO_IN_NOT_OPENED; }
 
 
 static const RuntimeExport exports[]={
-    {"sceSystemServiceParamGetInt",system_param}, {"sceSystemServiceGetStatus",system_status},
-    {"sceSystemServiceReceiveEvent",system_event}, {"sceSystemServiceHideSplashScreen",hide_splash},
+    {"sceSystemServiceReceiveEvent",system_event},
     {"sceSystemServiceLaunchWebBrowser",launch_browser}, {"sceSystemServiceLoadExec",load_exec},
     {"sceRemoteplayInitialize",ok_void}, /* only Initialize is imported: no remote play sessions */
-    {"sceSystemServiceGetDisplaySafeAreaInfo",safe_area}, {"sceSystemServiceDisableMusicPlayer",disable_music_player},
+    {"sceSystemServiceDisableMusicPlayer",disable_music_player},
     {"sceNetInit",net_init}, {"sceNetTerm",net_term}, {"sceNetErrnoLoc",net_errno_loc},
     {"sceNetPoolCreate",net_pool_create}, {"sceNetPoolDestroy",net_pool_destroy},
     {"sceNetEpollCreate",net_epoll_create}, {"sceNetEpollDestroy",net_epoll_destroy},
@@ -762,5 +733,7 @@ static const RuntimeExport exports[]={
 };
 uintptr_t runtime_services_resolve(const char *name) {
     uintptr_t user=runtime_user_resolve(name);
-    return user ? user : RUNTIME_LOOKUP(exports,name);
+    if (user) return user;
+    uintptr_t system=runtime_system_resolve(name);
+    return system ? system : RUNTIME_LOOKUP(exports,name);
 }

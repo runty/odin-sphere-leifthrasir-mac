@@ -137,3 +137,68 @@ Next connect the checked AOT guest and shared GPU mappings to this renderer,
 then port its surface/window and dependency interfaces to UIKit/iPhoneOS. The
 existing driver-only buffer readback result and this frontend initialization
 result do not establish a rendered game frame.
+
+## Checked guest connected to the native renderer
+
+`osl-aot-gpu-probe` now connects the checked arm64 AOT startup library to the
+real renderer through `MobileGpuServices`. It uses the prepared image's SDK
+version, creates SDL/Metal on the main thread, and runs the guest on a worker.
+VideoOut open, event-queue creation, flip/vblank event registration, buffer
+attributes and buffer registration have typed, checked argument adapters.
+Seven-argument attributes read the seventh SysV argument from the checked
+guest stack. Unsupported formats, layouts or buffers outside the shared native
+GPU mappings stop explicitly. Other GPU calls are still unsupported.
+
+The real guest opens VideoOut and registers three 1920×1080 buffers, two queues
+and two events. Session teardown finishes the currently supported GPU work,
+closes the port, removes owned queues, unregisters GPU mappings while their CPU
+memory is still valid, and releases the direct-memory pool and event flags.
+No guest draw/submission or mobile game frame is established. General Gnm
+submission will require full producer/presentation quiescence beyond this
+initialization-only shutdown contract.
+
+Native bridge checks cover 60 cases, including protected/misaligned/canary
+outputs, the seventh stack argument, a real vblank event, invalid layouts,
+shared buffer registration and cleanup. They also compare the renderer's TSC
+counter/frequency pair with wall time: the native arm64 nanosecond counter must
+not be paired with raw hardware-counter ticks. A small synthetic buffer can be
+presented by this test; it is explicitly not guest execution or a game frame.
+
+GPU-backed discovery requires an isolated native arm64 renderer build and an
+explicit native driver manifest:
+
+```sh
+python3 ios/game/advance.py --root "$WORK/ios-game-vpermilps" \
+    --remill "$WORK/cpu-backends" --identity --rounds 64 \
+    --gpu-build "$WORK/native-gpu-arm64" \
+    --gpu-driver-manifest "$WORK/native-gpu-arm64/kosmickrisp-native.json"
+```
+
+Set `OSL_AOT_ROOT` and `OSL_REMILL_INCLUDE` when configuring the isolated
+renderer build. Each discovery round links the exact checked startup objects,
+then records renderer, executable, driver and loader hashes. The runtime input
+ledger records App0's resolved path and eboot hash; it does not hash every
+asset. Only the native host has been provisioned with the read-only real App0
+tree. Simulator and physical probes have not imported those assets.
+
+After discovery has stopped, repeat the frozen integration checks with:
+
+```sh
+python3 ios/graphics/test-aot.py --root "$WORK/ios-game-vpermilps" \
+    --build "$WORK/native-gpu-arm64" \
+    --driver-manifest "$WORK/native-gpu-arm64/kosmickrisp-native.json" \
+    --output "$WORK/new-aot-gpu-check"
+```
+
+The script rejects changed source/build inputs and a checkpoint that changes
+during verification. Stop discovery before running it.
+Its result is native macOS evidence. The default mobile archive has no GPU
+callback provider and retains its explicit VideoOut stop; exporting a corpus
+whose host reference used the GPU does not link that frontend into UIKit.
+
+The frozen native-host checkpoint has 927 translated entries, 2,938 dispatches
+and 30,174 checkpoints. Both initializers return zero, no memory fault is
+recorded and the next missing service is `scePthreadCondInit`. Corpus:
+`56494c9841212760f7f43bd409fffa98c952d0d11daf6b06e40b51e54250941e`.
+The repeatable bridge and guest checks pass in `ios-aot-gpu-frozen-checks/`.
+This remains an initialization checkpoint with zero guest frames.

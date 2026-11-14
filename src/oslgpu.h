@@ -20,6 +20,9 @@ int oslgpu_available(void);
 void oslgpu_register_kernel(void);
 /* Creates window, Vulkan device, presenter and GPU command processor; 0 on success. */
 int oslgpu_init(const OslGpuConfig *config);
+/* Drain renderer work before releasing a stopped guest's memory mappings. */
+void oslgpu_finish(void);
+int oslgpu_guest_range_mapped(uint64_t address,uint64_t size);
 #ifdef __APPLE__
 void oslgpu_run_main_loop(void);
 #endif

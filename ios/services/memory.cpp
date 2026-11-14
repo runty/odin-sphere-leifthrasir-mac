@@ -10,6 +10,7 @@ static bool validSpan(uintptr_t address, uint64_t size) {
 }
 DirectMemory::DirectMemory() : lease(manager) {}
 DirectMemory::~DirectMemory() { osl_aot_memory_reset(); }
+void DirectMemory::reset() { osl_aot_memory_reset(); }
 uint64_t DirectMemory::allocated() { return osl_aot_memory_allocated(); }
 uint64_t DirectMemory::capacity() {
     return reinterpret_cast<uint64_t (*)()>(runtime_memory_resolve("sceKernelGetDirectMemorySize"))();

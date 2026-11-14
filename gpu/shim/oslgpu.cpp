@@ -43,6 +43,7 @@ typedef void (*RuntimeGpuRange)(uintptr_t address, uint64_t size);
 uint64_t runtime_process_time_us(void);
 uint64_t runtime_process_time_counter(void);
 uint64_t runtime_tsc_frequency(void);
+uint64_t runtime_tsc_counter(void);
 int32_t* runtime_errno(void);
 void runtime_memory_set_gpu_hooks(RuntimeGpuRange map, RuntimeGpuRange unmap, RuntimeGpuRange invalidate);
 // runtime_log.c
@@ -162,7 +163,7 @@ boost::icl::interval_set<VAddr> AddressSpace::GetUsableRegions() {
 // Kernel services the vendored libraries call directly.
 namespace Libraries::Kernel {
 u64 PS4_SYSV_ABI sceKernelGetTscFrequency() { return runtime_tsc_frequency(); }
-u64 PS4_SYSV_ABI sceKernelReadTsc() { return Common::FencedRDTSC(); }
+u64 PS4_SYSV_ABI sceKernelReadTsc() { return runtime_tsc_counter(); }
 u64 PS4_SYSV_ABI sceKernelGetProcessTime() { return runtime_process_time_us(); }
 u64 PS4_SYSV_ABI sceKernelGetProcessTimeCounter() { return runtime_process_time_counter(); }
 u64 PS4_SYSV_ABI sceKernelGetProcessTimeCounterFrequency() { return 1'000'000'000; }
@@ -189,6 +190,17 @@ bool g_window_ready;
 
 extern "C" int oslgpu_available(void) {
     return 1;
+}
+extern "C" void oslgpu_finish(void) {
+    if (auto *renderer=Core::Memory::Instance()->GetRasterizer()) {
+        renderer->Finish();
+        renderer->WaitHostCopies();
+        renderer->WaitDeferredSignals();
+    }
+}
+extern "C" int oslgpu_guest_range_mapped(uint64_t address,uint64_t size) {
+    auto *renderer=Core::Memory::Instance()->GetRasterizer();
+    return renderer && renderer->IsMapped(address,size);
 }
 
 extern "C" int oslgpu_init(const OslGpuConfig* config) {

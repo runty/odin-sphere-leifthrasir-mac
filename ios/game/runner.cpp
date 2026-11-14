@@ -9,6 +9,8 @@
 #include "../services/guest_storage.h"
 #include "../services/offline.h"
 #include "../services/eventflag.h"
+#include "../services/gpu.h"
+#include "../services/system.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -68,7 +70,9 @@ struct Session {
     struct TraceCloser { void operator()(FILE *stream) const { std::fclose(stream); } };
     std::unique_ptr<FILE,TraceCloser> dispatch_trace;
 #endif
-    Session() {
+    const MobileGpuServices *gpu=nullptr;
+    unsigned gpu_service_calls=0;
+    explicit Session(const MobileGpuServices *renderer=nullptr) : gpu(renderer) {
         memory.external_pointer = DirectMemory::pointer;
         osl_aot_user_reset();
 #ifdef OSL_GAME_CLI
@@ -77,6 +81,10 @@ struct Session {
             if (!dispatch_trace) throw std::runtime_error("Cannot open logical dispatch trace");
         }
 #endif
+    }
+    ~Session() {
+        if (gpu) gpu->finish(gpu->context);
+        direct_memory.reset();
     }
     State state{};
     std::vector<uint8_t> image, stack;
@@ -203,6 +211,18 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
     const auto &import = imports[(pc - hle_base) / 0x1000];
     const char *name = import.symbol;
+    uint64_t system_result=0;
+    if (GuestSystem::call(name,s,*m,system_result))
+        return m->fault.empty() ? hostReturn(s,m,system_result) : m;
+    if (session.gpu) {
+        const uint64_t args[]={s.gpr.rdi.qword,s.gpr.rsi.qword,s.gpr.rdx.qword,
+                               s.gpr.rcx.qword,s.gpr.r8.qword,s.gpr.r9.qword};
+        uint64_t result=0;
+        if (session.gpu->call(session.gpu->context,name,import.nid,args,s.gpr.rsp.qword,m,&result)) {
+            ++session.gpu_service_calls;
+            return m->fault.empty() ? hostReturn(s,m,result) : m;
+        }
+    }
     if (!std::strcmp(name,"sceNpSetNpTitleId"))
         return hostReturn(s,m,session.offline.configureTitle());
     if (!std::strcmp(name,"sceNpSetContentRestriction"))
@@ -686,8 +706,9 @@ static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
     return m;
 }
 
-static std::string bootstrap(const char *path) {
-    auto owner = std::make_unique<Session>();
+static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullptr) {
+    if (gpu && (!gpu->call || !gpu->finish)) throw std::runtime_error("Invalid native GPU service table");
+    auto owner = std::make_unique<Session>(gpu);
     Session *session = owner.get();
     session->memory.dispatcher = gameDispatch;
     if (!readExact(path, image_size, session->image))
@@ -695,8 +716,8 @@ static std::string bootstrap(const char *path) {
     if (!matchesHash(session->image, image_sha256_hex))
         return "{\"error\":\"incorrect image hash\"}";
     session->stack.resize(8 * 1024 * 1024);
-    session->identity =
-        std::getenv("OSL_GUEST_IDENTITY") && !std::strcmp(std::getenv("OSL_GUEST_IDENTITY"), "1");
+    session->identity = gpu ||
+        (std::getenv("OSL_GUEST_IDENTITY") && !std::strcmp(std::getenv("OSL_GUEST_IDENTITY"), "1"));
     if (session->identity) {
         session->image_address = reinterpret_cast<uint64_t>(session->image.data());
         session->stack_address = reinterpret_cast<uint64_t>(session->stack.data());
@@ -812,6 +833,8 @@ static std::string bootstrap(const char *path) {
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
         << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
         << ",\"event_flags\":" << session->event_flags.count()
+        << ",\"gpu_adapter_enabled\":" << (session->gpu ? "true" : "false")
+        << ",\"gpu_service_calls\":" << session->gpu_service_calls
         << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
         << ",\"network_connected\":false,\"psn_signed_in\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
@@ -844,6 +867,12 @@ extern "C" const char *osl_mobile_game_report(const char *path) {
     } catch (const std::exception &) {
         report = "{\"error\":\"host bootstrap failure\",\"game_booted\":false}";
     }
+    return report.c_str();
+}
+extern "C" const char *osl_mobile_game_report_with_gpu(const char *path,const MobileGpuServices *gpu) {
+    static thread_local std::string report;
+    try { report=bootstrap(path,gpu); }
+    catch (const std::exception &) { report="{\"error\":\"host GPU bootstrap failure\",\"game_booted\":false}"; }
     return report.c_str();
 }
 #ifdef OSL_GAME_CLI

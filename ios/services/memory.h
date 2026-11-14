@@ -10,6 +10,7 @@ class DirectMemory {
 public:
     DirectMemory();
     ~DirectMemory();
+    void reset(); // Called after the renderer quiesces, before guest buffers are freed.
     DirectMemory(const DirectMemory &) = delete;
     DirectMemory &operator=(const DirectMemory &) = delete;
     static uint64_t capacity();

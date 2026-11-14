@@ -9,7 +9,7 @@ from guard_ir import instrument
 from service_build import compile_services
 
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument("--sdk", choices=("iphoneos", "iphonesimulator"), default="iphoneos")
+p.add_argument("--sdk", choices=("iphoneos", "iphonesimulator", "macosx"), default="iphoneos")
 p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
 a = p.parse_args()
@@ -27,11 +27,11 @@ def check_inputs():
             if hashlib.sha256((directory / name).read_bytes()).hexdigest() != wanted:
                 p.error("The established startup corpus changed: " + name)
 check_inputs()
-out = root / ("simulator" if a.sdk == "iphonesimulator" else "ios")
+out = root / ({"iphonesimulator":"simulator","iphoneos":"ios","macosx":"mac"}[a.sdk])
 out.mkdir(exist_ok=True)
 llvm = Path("/opt/homebrew/opt/llvm/bin")
 sdk = subprocess.check_output(["xcrun", "--sdk", a.sdk, "--show-sdk-path"], text=True).strip()
-target = "arm64-apple-ios18" + ("-simulator" if a.sdk == "iphonesimulator" else "")
+target = "arm64-apple-macos15" if a.sdk == "macosx" else "arm64-apple-ios18" + ("-simulator" if a.sdk == "iphonesimulator" else "")
 objects = compile_services(repo, out / "services", target, sdk)
 
 
@@ -65,5 +65,7 @@ check_inputs() # Never publish a mixed archive if sources changed during compila
 archive.replace(out / "libodin-startup.a")
 runtime_hash = hashlib.sha256((source.parent / "cpu/runtime.h").read_bytes() + (source.parent / "cpu/runtime.cpp").read_bytes()).hexdigest()
 (out / "manifest.json").write_text(json.dumps({"corpus_sha256": state["corpus_sha256"], "runtime_sha256": runtime_hash,
-    "trace_count": len(state["ir"]), "reference": state["reference"], "full_game_booted": False}, indent=2) + "\n")
+    "trace_count": len(state["ir"]), "reference": state["reference"],
+    "reference_runner_mode":state.get("runner_mode","headless"),"gpu_frontend_linked":False,
+    "full_game_booted": False}, indent=2) + "\n")
 print(json.dumps({"archive": str(out / "libodin-startup.a"), "traces": len(state["ir"]), "game_booted": False}))

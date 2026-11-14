@@ -1134,6 +1134,15 @@ uint64_t osl_aot_memory_allocated(void) {
 }
 /* Only called after a serialized startup session has stopped all guest work. */
 void osl_aot_memory_reset(void) {
+    /* The frontend has stopped guest submissions and drained the GPU. Remove
+     * tracked GPU ranges while their CPU mappings still exist. The unmap hook
+     * may query memory, so invoke it outside the exclusive table lock. */
+    write_lock();
+    for (size_t i=0;i<vma_count;++i)
+        if (vmas[i].kind!=KIND_RESERVED)
+            queue_hook(HOOK_UNMAP,vmas[i].start,vmas[i].end-vmas[i].start);
+    write_unlock();
+    flush_hooks();
     write_lock();
     if (USER_MIN) munmap((void *)USER_MIN,USER_MAX-USER_MIN);
     if (backing_base) munmap(backing_base,POOL_SIZE+FLEX_SPAN);

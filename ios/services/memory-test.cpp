@@ -6,6 +6,16 @@
 #include <mach/mach.h>
 extern "C" uint32_t __remill_read_memory_32(Memory *, uint64_t);
 extern "C" Memory *__remill_write_memory_32(Memory *, uint64_t, uint32_t);
+extern "C" void runtime_memory_set_gpu_hooks(void (*)(uintptr_t,uint64_t),void (*)(uintptr_t,uint64_t),void (*)(uintptr_t,uint64_t));
+static uintptr_t reset_address;
+static unsigned reset_unmaps;
+static bool unmap_observed_live_mapping;
+static void reset_unmap(uintptr_t address,uint64_t size) {
+    if (address==reset_address) {
+        ++reset_unmaps;
+        unmap_observed_live_mapping=DirectMemory::pointer(address,size,false)!=nullptr;
+    }
+}
 static unsigned checks;
 static void require(bool value) {
     if (!value) throw std::runtime_error("memory contract check " + std::to_string(checks+1));
@@ -95,6 +105,20 @@ int main() {
             require(true);
             require(DirectMemory::release(physical,2*page)==0);
             require(DirectMemory::allocated()==0);
+        }
+        {
+            DirectMemory owner;
+            int64_t physical=-1;void *mapping=nullptr;
+            require(DirectMemory::allocate(0,DirectMemory::capacity(),page,page,0,&physical)==0);
+            require(DirectMemory::map(&mapping,page,3,0,physical,page)==0);
+            reset_address=reinterpret_cast<uintptr_t>(mapping);
+            runtime_memory_set_gpu_hooks(nullptr,reset_unmap,nullptr);
+            owner.reset();
+            require(reset_unmaps==1 && unmap_observed_live_mapping);
+            require(!DirectMemory::pointer(reset_address,1,false) && DirectMemory::allocated()==0);
+            owner.reset();
+            require(reset_unmaps==1); // Explicit reset followed by destruction is idempotent.
+            runtime_memory_set_gpu_hooks(nullptr,nullptr,nullptr);
         }
         std::printf("{\"memory_checks\":%u,\"failed\":0,\"game_booted\":false}\n",checks);
     } catch (const std::exception &error) {

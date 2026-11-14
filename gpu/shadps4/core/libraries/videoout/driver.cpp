@@ -121,6 +121,7 @@ void VideoOutDriver::SwapThread(std::stop_token token) {
 VideoOutDriver::~VideoOutDriver() = default;
 
 int VideoOutDriver::Open(const ServiceThreadParams* params) {
+    std::scoped_lock lock{mutex};
     if (main_port.is_open) {
         return ORBIS_VIDEO_OUT_ERROR_RESOURCE_BUSY;
     }
@@ -130,7 +131,7 @@ int VideoOutDriver::Open(const ServiceThreadParams* params) {
 }
 
 void VideoOutDriver::Close(s32 handle) {
-    std::scoped_lock lock{mutex};
+    std::scoped_lock lock{mutex,main_port.vo_mutex,main_port.port_mutex,main_port.events_mutex};
 
     // Mark as closed
     main_port.is_open = false;
@@ -591,17 +592,20 @@ void VideoOutDriver::Flip(const Request& req) {
     g_osl_presented_frames.fetch_add(1, std::memory_order_relaxed);
 
     // Trigger flip events for the port.
-    for (auto event : port->flip_events) {
-        auto equeue = Kernel::GetEqueue(event);
-        if (equeue != nullptr) {
-            equeue->TriggerEvent(
-                static_cast<u64>(OrbisVideoOutInternalEventId::Flip),
-                Kernel::OrbisKernelEvent::Filter::VideoOut,
-                reinterpret_cast<void*>(static_cast<u64>(OrbisVideoOutInternalEventId::Flip) |
-                                        (req.flip_arg << 16)));
+    {
+        std::scoped_lock events_lock{port->events_mutex};
+        for (auto event : port->flip_events) {
+            auto equeue = Kernel::GetEqueue(event);
+            if (equeue != nullptr) {
+                equeue->TriggerEvent(
+                    static_cast<u64>(OrbisVideoOutInternalEventId::Flip),
+                    Kernel::OrbisKernelEvent::Filter::VideoOut,
+                    reinterpret_cast<void*>(static_cast<u64>(OrbisVideoOutInternalEventId::Flip) |
+                                            (req.flip_arg << 16)));
+            }
         }
-    }
 
+    }
     // Reset prev flip label
     if (port->prev_index != -1) {
         port->buffer_labels[port->prev_index] = 0;
@@ -711,8 +715,10 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
         }
 
         // Check if it's time to take a request.
-        auto& vblank_status = main_port.vblank_status;
-        if (vblank_status.count % (main_port.flip_rate + 1) == 0) {
+        auto& vblank_status=main_port.vblank_status;
+        u64 vblank_count;
+        { std::scoped_lock lock{main_port.vo_mutex}; vblank_count=main_port.vblank_status.count; }
+        if (vblank_count % (main_port.flip_rate + 1) == 0) {
             const auto request = receive_request();
             if (!request) {
                 // The save list and the text entry stay live while the game draws nothing.
@@ -738,6 +744,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
         {
             // Needs lock here as can be concurrently read by `sceVideoOutGetVblankStatus`
             std::scoped_lock lock{main_port.vo_mutex};
+            std::scoped_lock events_lock{main_port.events_mutex};
 
             // Trigger flip events for the port
             for (auto event : main_port.vblank_events) {

@@ -64,6 +64,15 @@ if(APPLE AND OSL_BUILD_ARM64_GPU_PROBE)
     target_include_directories(osl-native-gpu-probe PRIVATE src gpu/shim gpu/shadps4)
     target_compile_options(osl-native-gpu-probe PRIVATE -include ${CMAKE_SOURCE_DIR}/src/host_darwin.h)
     target_link_libraries(osl-native-gpu-probe PRIVATE oslgpu)
+    set(OSL_AOT_ROOT "" CACHE PATH "External prepared AOT startup directory")
+    set(OSL_REMILL_INCLUDE "" CACHE PATH "Isolated Remill include directory")
+    if(OSL_AOT_ROOT AND OSL_REMILL_INCLUDE)
+        add_executable(osl-aot-gpu-probe EXCLUDE_FROM_ALL ios/graphics/aot-frontend.cpp ios/cpu/runtime.cpp)
+        set_target_properties(osl-aot-gpu-probe PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+        target_include_directories(osl-aot-gpu-probe PRIVATE ios/cpu ${OSL_REMILL_INCLUDE} ${OSL_AOT_ROOT} src gpu/shim gpu/shadps4)
+        target_link_libraries(osl-aot-gpu-probe PRIVATE oslgpu ${OSL_AOT_ROOT}/mac/libodin-startup.a
+            "-framework Foundation" "-framework GameController" "-framework CoreHaptics")
+    endif()
 endif()
 
 set(OSL_RUNTIME_SOURCES
@@ -86,6 +95,7 @@ set(OSL_RUNTIME_SOURCES
     src/runtime_session_log.c
     src/runtime_sema.c
     src/runtime_services.c
+    src/runtime_system.c
     src/runtime_user.c
     src/runtime_thread.c
     src/runtime_time.c)

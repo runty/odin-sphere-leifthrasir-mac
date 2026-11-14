@@ -20,6 +20,8 @@ p.add_argument("--seed-from", type=Path, help="Re-lift only the PC list from a m
 p.add_argument("--decoder-prefix", type=Path)
 p.add_argument("--identity", action="store_true", help="Experiment with checked host-identity GPU-visible addresses")
 p.add_argument("--adopt-existing-cache", action="store_true", help="Record provenance for a known task-local legacy trace cache")
+p.add_argument("--gpu-build", type=Path, help="Isolated native arm64 renderer CMake build for real GPU-backed discovery")
+p.add_argument("--gpu-driver-manifest", type=Path, help="Explicit native macOS Vulkan ICD manifest for GPU-backed discovery")
 a = p.parse_args()
 root = a.root.resolve()
 if len(root.parts) < 3 or root.parts[1] != "Volumes" or not Path("/Volumes", root.parts[2]).is_mount():
@@ -132,6 +134,27 @@ if a.seed_from:
 repo = source.parents[1]
 source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
+gpu_env = None
+if a.gpu_build:
+    if not a.identity or not a.gpu_driver_manifest:
+        p.error("GPU-backed discovery requires --identity and --gpu-driver-manifest")
+    gpu_build = a.gpu_build.resolve()
+    if len(gpu_build.parts)<3 or gpu_build.parts[1]!="Volumes" or not Path('/Volumes',gpu_build.parts[2]).is_mount():
+        p.error("GPU build requires a mounted external disk")
+    cmake_cache = (gpu_build / "CMakeCache.txt").read_text()
+    if f"CMAKE_HOME_DIRECTORY:INTERNAL={repo}" not in cmake_cache:
+        p.error("GPU build belongs to a different source tree")
+    loader = Path(re.search(r"^Vulkan_LIBRARY:FILEPATH=(.+)$",cmake_cache,re.M)[1])
+    driver_manifest = a.gpu_driver_manifest.resolve()
+    driver = Path(json.loads(driver_manifest.read_text())["ICD"]["library_path"])
+    if not driver.is_absolute(): driver = (driver_manifest.parent / driver).resolve()
+    if "arm64" not in subprocess.check_output(["lipo","-archs",driver],text=True).split():
+        p.error("GPU discovery needs a native arm64 driver")
+    gpu_env = dict(os.environ,VK_DRIVER_FILES=str(driver_manifest),VK_ICD_FILENAMES=str(driver_manifest),SDL_VULKAN_LIBRARY=str(loader))
+    source_paths += (repo / "CMakeLists.txt", repo / "src/oslgpu.h",repo / "ios/graphics/aot-frontend.cpp",repo / "ios/graphics/bridge-checks.h")
+    source_paths += tuple(path for directory in (repo / "gpu/shim",repo / "gpu/shadps4")
+                          for path in sorted(directory.rglob("*")) if path.is_file() and path.suffix in (".cpp",".h",".c",".comp",".frag",".vert"))
+    run("gpu-configure",["cmake","-S",repo,"-B",gpu_build,"-DOSL_AOT_ROOT="+str(root),"-DOSL_REMILL_INCLUDE="+str(a.remill / "remill/include")],120)
 def source_snapshot():
     return {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths}
 compiled_sources = source_snapshot()
@@ -197,17 +220,51 @@ for round in range(a.rounds):
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},
              "headers": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ("image-layout.h", "traces.h", "thunks.cpp")},
              "sources": compiled_sources}
+    command = [root / "guest-startup",root / "image.bin"]
+    prefix = "OSL_STARTUP_RESULT:"
+    if a.gpu_build:
+        # Reuse this round's exact checked arm64 objects; only the library
+        # entry and unresolved-block thunks need separate non-CLI compilation.
+        mac = root / "mac"; mac.mkdir(exist_ok=True)
+        library_objects = []
+        for label,path in (("runner",source / "runner.cpp"),("thunks",root / "thunks.cpp")):
+            obj = mac / (label + ".o")
+            run("gpu-"+label,["xcrun","clang++","-target","arm64-apple-macos15","-isysroot",sdk,"-std=c++17","-O2",
+                "-I"+str(a.remill / "remill/include"),"-I"+str(source.parent / "cpu"),"-I"+str(root),
+                "-I"+str(repo / "src"),"-I"+str(repo / "launcher"),"-c",path,"-o",obj],120)
+            library_objects.append(obj)
+        archive = mac / "libodin-startup.new.a"; archive.unlink(missing_ok=True)
+        run("gpu-archive",[llvm / "llvm-ar","rcs",archive,*library_objects,*service_objects,*objs],120)
+        check_sources()
+        archive.replace(mac / "libodin-startup.a")
+        run("gpu-build",["cmake","--build",gpu_build,"--target","osl-aot-gpu-probe","-j6"],180)
+        native = {"binary_sha256":hashlib.sha256((gpu_build / "bin/osl-aot-gpu-probe").read_bytes()).hexdigest(),
+                  "renderer_sha256":hashlib.sha256((gpu_build / "gpu/liboslgpu.a").read_bytes()).hexdigest(),
+                  "driver_sha256":hashlib.sha256(driver.read_bytes()).hexdigest(),
+                  "manifest_sha256":hashlib.sha256(driver_manifest.read_bytes()).hexdigest(),
+                  "loader_sha256":hashlib.sha256(loader.read_bytes()).hexdigest()}
+        state.update(runner_mode="native-arm64-gpu",native_gpu=native)
+        profile = gpu_build / "aot-profile"; profile.mkdir(exist_ok=True)
+        command = [gpu_build / "bin/osl-aot-gpu-probe",root / "image.bin",profile]
+        prefix = "OSL_AOT_GPU_GUEST:"
     attempt = len(list(root.glob("attempt-*.json")))
     name = "attempt-" + str(attempt).zfill(5)
-    run(name, [root / "guest-startup", root / "image.bin"], 15,
-        env=dict(os.environ, OSL_GUEST_IDENTITY="1" if a.identity else "0"))
-    records = [line.removeprefix("OSL_STARTUP_RESULT:") for line in (root / (name + ".log")).read_text().splitlines() if line.startswith("OSL_STARTUP_RESULT:")]
+    def runtime_inputs():
+        app0=(root / "App0").resolve();marker=app0 / "eboot.bin"
+        return {"app0":str(app0),"app0_eboot_sha256":hashlib.sha256(marker.read_bytes()).hexdigest() if marker.is_file() else None,
+                "asset_marker_only":True}
+    state["runtime_inputs"]=runtime_inputs()
+    run(name, command, 30 if a.gpu_build else 15,
+        env=gpu_env if a.gpu_build else dict(os.environ, OSL_GUEST_IDENTITY="1" if a.identity else "0"))
+    records = [line.removeprefix(prefix) for line in (root / (name + ".log")).read_text().splitlines() if line.startswith(prefix)]
     if len(records) != 1: raise RuntimeError("Expected one startup report in " + name + ".log")
     report = json.loads(records[0])
     check_sources()
+    if runtime_inputs()!=state["runtime_inputs"]:raise RuntimeError("Asset root changed during the startup attempt")
     report["trace_count"] = len(entries)
     state["reference"] = report
-    state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in ("image_sha256", "trace_inputs", "ir", "headers", "sources")}, sort_keys=True).encode()).hexdigest()
+    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs") + (("runner_mode","native_gpu") if a.gpu_build else ())
+    state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in corpus_keys}, sort_keys=True).encode()).hexdigest()
     atomic_json(root / "build-state.json", state)
     atomic_json(root / (name + ".json"), report)
     atomic_json(root / "latest.json", report)

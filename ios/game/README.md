@@ -328,3 +328,28 @@ signature verification, staged only in `ios-probe-eventflag-gpu/`. Physical
 devices retain `dcd85de`; no physical launch or guest frame is inferred.
 Evidence: `ios-probe-eventflag-simulator/verification.json` and
 `ios-probe-eventflag-gpu/verification-status.json` in the private build root.
+
+## Native GPU-backed discovery
+
+The [checked native renderer bridge](../graphics/README.md#checked-guest-connected-to-the-native-renderer)
+now passes real VideoOut initialization instead of returning a placeholder
+handle. The guest registers three 1080p buffers through shared direct-memory
+mappings and owns two real event queues. GPU-enabled sessions force native
+identity addresses and release GPU references before freeing CPU memory.
+Missing Gnm/worker services remain explicit; no game frame is claimed.
+
+System settings now share the Mac provider for language, date/clock/time zone,
+offline foreground status, full virtual-canvas safe area and splash hiding.
+Checked adapters use aligned temporary outputs and reject protected or partial
+guest spans. Both arm64 and Rosetta pass 74 dedicated system-service checks.
+Unknown parameter IDs stop the partial guest instead of exiting its host app.
+The full virtual canvas must eventually be placed inside UIKit's physical safe
+area; this provider does not implement mobile presentation or app lifecycle.
+
+`advance.py --gpu-build ... --gpu-driver-manifest ... --identity` records a
+`native-arm64-gpu` reference with explicit native dependency hashes. Exports
+identify that reference mode separately from `gpu_frontend_linked=false`.
+Without a GPU callback provider, a mobile/CLI consumer still stops at VideoOut
+even when its archive contains later translated blocks. `build-ios.py --sdk
+macosx` can export a native startup archive for this engineering frontend.
+Physical-device and Simulator baselines above remain independently qualified.

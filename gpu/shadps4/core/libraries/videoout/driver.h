@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+#include <atomic>
 
 namespace Vulkan {
 struct Frame;
@@ -32,11 +33,12 @@ struct VideoOutPort {
     std::vector<Kernel::OrbisKernelEqueue> vblank_events;
     std::mutex vo_mutex;
     std::mutex port_mutex;
+    std::mutex events_mutex;
     std::condition_variable vo_cv;
     std::condition_variable vblank_cv;
-    int flip_rate = 0;
-    int prev_index = -1;
-    bool is_open = false;
+    std::atomic<int> flip_rate{0};
+    std::atomic<int> prev_index{-1};
+    std::atomic<bool> is_open{false};
     bool is_hdr = false;
 
     s32 FindFreeGroup() const {
