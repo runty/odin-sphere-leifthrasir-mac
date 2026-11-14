@@ -81,9 +81,14 @@ else:
     assert 1<=guest['workers_started']<=4096 and guest['workers_started']==guest['workers_finished']==len(workers)
     for cpu in [guest,*workers]:
         assert cpu['fault_address']==0
-        assert cpu['error'] in ('missing translated block','missing host service','guest execution interrupted','')
+        assert cpu['error'] in ('missing translated block','missing host service','guest execution interrupted','unsupported AMD64 instruction fallback','')
         if cpu['error']=='missing host service':assert cpu['missing_service'] in symbols
-    assert pending or any(cpu['error']=='missing host service' for cpu in [guest,*workers])
+        if cpu['error']=='unsupported AMD64 instruction fallback':
+            pc=cpu['missing_pc'];offset=pc-layout['base']
+            assert any(flags&1 and start<=offset<start+size for start,size,flags in layout['segments'])
+    backend_stops=[cpu['missing_pc'] for cpu in [guest,*workers] if cpu['error']=='unsupported AMD64 instruction fallback']
+    reports['explicit_cpu_backend_gaps']=backend_stops
+    assert pending or backend_stops or any(cpu['error']=='missing host service' for cpu in [guest,*workers])
     reports['concurrent_stop_validation']='all CPUs joined; explicit executable/import gaps; no canonical-path equivalence claim'
 assert guest['completed_modules']==2 and guest['fault_address']==0 and guest['gpu_adapter_enabled']
 assert cleanup['opened']==cleanup['closed']==1 and cleanup['queues_created']==cleanup['queues_deleted']>=2

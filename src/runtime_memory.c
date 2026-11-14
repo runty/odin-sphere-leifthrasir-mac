@@ -391,9 +391,12 @@ void runtime_memory_reserve(void) {
 #ifdef OSL_AOT_CPU
     if (USER_MIN) return;
     const uint64_t span=UINT64_C(8)*1024*1024*1024;
-    /* Hints are non-destructive. Reject a kernel-selected address that cannot
-     * fit the GPU's 40-bit descriptors, including high Simulator allocations. */
-    for (uintptr_t hint=UINT64_C(0x1000000000); hint<UINT64_C(0x4000000000); hint+=span) {
+    /* Let Darwin choose a window first: physical iOS may reject every
+     * high desktop hint despite having lower address space available. All
+     * attempts remain non-destructive. Reject windows that cannot fit the
+     * GPU's 40-bit descriptors, including high Simulator allocations. */
+    for (unsigned attempt=0; attempt<=6; ++attempt) {
+        uintptr_t hint=attempt ? UINT64_C(0x1000000000)+(attempt-1)*span : 0;
         void *base=mmap((void *)hint,span,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
         if (base==MAP_FAILED) continue;
         uintptr_t address=(uintptr_t)base;
