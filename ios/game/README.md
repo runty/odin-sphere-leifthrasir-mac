@@ -765,3 +765,18 @@ completes exactly one attempt, exits normally, matches every generated header
 and leaves no raw IR outside its checkpoint. Evidence:
 `gnm-shader-packet-qualified/checkpoint-stop-verification.json` (1,198 entries,
 17 joined workers, missing CPU block `0x10688120`, no frame).
+
+### GPU retirement checkpoint
+
+`99a1f93` adds an explicit native command-processor retirement barrier before
+the frontend releases shared mappings, including contexts with no VideoOut.
+[Real queued-work tests and instrumentation limits](../graphics/README.md#retiring-queued-gpu-work-before-mapping-teardown).
+Checkpoint `8d8e27dad08a4f7b08069a4c625895d5151ab9dca3a2a3b830114e320ffe0e69`
+has 1,210 entries; both initializers, 17 joined workers, three buffers and strict
+renderer cleanup pass. The independent strict replay stops at executable gap
+`0x10004730`, taking 356.609 ms; concurrency may expose another valid gap.
+The game still has zero shader-adapter calls and no frame. Both mobile renderer,
+game and boundary SDK archives are refreshed; physical apps are unchanged.
+Private evidence is in `gpu-retirement-qualified/`, `ios-guest-session-retirement/`
+and `ios-game-uikit-next/checkpoint-retirement/`. Further native discovery uses
+the existing checkpoint-stop marker and the unchanged CPU backend/cache.

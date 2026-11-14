@@ -528,3 +528,36 @@ the shader adapters (`gnm_shader_calls=0`); this qualifies their marshalling,
 not their eventual use by the game. No command is submitted or frame presented.
 Remaining submissions/flip, queue waits and asynchronous mapping lifetimes need
 their own typed checked adapters and lifecycle verification.
+
+### Retiring queued GPU work before mapping teardown
+
+`99a1f93` adds a host retirement barrier to Liverpool. It queues a monotonic
+ticket and acknowledges that ticket only at the end of the processor's full
+draw/deferred-signal retirement phase. An earlier idle phase or a completed
+queue callback cannot satisfy a newer request. This neither submits a guest
+frame nor calls SubmitDone. `NativeGpu::finish` now waits for retirement and
+renderer fences before closing VideoOut/deleting queues and allowing direct
+memory reset. It also drains a context that never opened VideoOut. The command
+processor remains alive until main-thread renderer shutdown, so mapping teardown
+can still use renderer-owned services. Guest submitters must already be joined.
+
+`test-gpu-retirement.py` qualifies a frozen renderer checkpoint and pins its
+source/archive hashes to avoid mixing a new processor layout with an old native
+archive. The actual native renderer passes 61 checks under ASan and UBSan:
+twelve queued WriteData acknowledgements, cleanup held behind a blocked command
+callback with no VideoOut, four concurrent retirement waiters, preservation of
+the live mapping until retirement and release afterward. The test presents no
+frame and executes no game code. Only the inline host barrier/fixture is
+instrumented; the processor implementation, supporting HLE archive, CPU runtime,
+renderer, driver and system libraries remain uninstrumented. Private evidence:
+`gpu-retirement-qualified/{address,undefined}-pinned/`.
+
+The same 1,210-entry native checkpoint passes 109 existing bridge checks and
+normal startup/mapping cleanup, plus the separate boundary ASan bridge/lifecycle
+and five input-negative cases. Both mobile renderer archives are rebuilt with
+matching processor layouts: 149 renderer objects / 173 total archive members
+per SDK pass arm64/platform audit. The iPhoneOS SDK consumer links the signed
+ICD; Simulator has no driver link or execution claim. Both game archives and
+the separate SDK boundary archives compile. This is host/SDK evidence, not an
+updated physical app or a game-frame/submission result. Typed guest submissions,
+blocking queue waits and gameplay lifecycle are still open.
