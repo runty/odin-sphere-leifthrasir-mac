@@ -231,3 +231,29 @@ VRSQRTPS to explicit VBLENDPD `0x106aa939`. Native Mac GPU qualification passes
 60 bridge checks, four joined guest workers, three buffers, 3,164 dispatches /
 32,086 aggregate checkpoints and no fault/frame. Headless fixed/identity/corrupt
 input checks pass. This is host CPU/renderer evidence, not new mobile execution.
+
+### Packed-double blend and shuffle
+
+`remill-double-select.patch` implements the executed VBLENDPD stop at
+`0x106aa939`: six legacy/VEX XMM/YMM register/memory blend forms copy raw
+64-bit lanes, preserve FP state and honor legacy versus VEX upper-lane rules.
+It also completes the immediate SHUFPD family using its existing lane-local
+helper (legacy memory plus four VEX forms). Shuffle coverage is a related
+family extension; it was not the observed executed stop.
+
+`ios/cpu/test-double-select.py --operation blend|shuffle` independently checks
+six encodings plus six destructive aliases and all 256 immediates. Native
+Rosetta x86 and arm64 AOT match 12,288 exact 64-bit output lanes per operation,
+including NaN payloads, signed zeros, upper lanes, input preservation and
+unchanged flags/MXCSR. Reciprocal-square-root regression passes 1,572,864 lanes
+against ISA contracts; all 414 real-routine checks and both mobile SDK fixture
+archives pass. The full eleven-patch audit passes and rejects unexpected tracked
+and untracked source without changing the candidate trees. New semantics SHA:
+`4b099e2e4dfec1bf0bcc19a5e3906ebb87cfc30a91d0d51c17039f578ad15ff7`.
+Use a new backend/corpus and re-lift PC seeds rather than reusing earlier IR.
+These are host instruction tests, not new mobile game frames.
+
+The native VideoOut/event adapter is shared in `graphics/guest-gpu.h`; it retains
+checked marshalling and ordered worker/GPU/mapping cleanup. GPU discovery hashes
+that header as part of its frozen inputs. UIKit guest integration remains a
+separate step from the existing physical renderer-only check.
