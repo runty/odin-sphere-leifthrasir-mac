@@ -391,3 +391,31 @@ container independent. Renderer archives/support inputs and source hashes are
 validated before packaging. Both mobile SDK libraries/phone consumer link pass.
 The UIKit candidate is staged only, not installed or device-executed; hardware
 validation follows when it can preserve the other active game session.
+
+## Physical renderer bootstrap boundary
+
+The standalone UIKit renderer check now initializes the complete renderer on the
+physical A20 Pro: real device/swapchain/presenter, native VideoOut open/close,
+30 main-thread polls, explicit shutdown, SDL lease release and restoration of
+the original key window. CPU 414, native memory 19 and GPU readback 64 still pass.
+These engineering candidates use `ef3bed7-dirty`; no guest code or game frame is
+established by this check. Existing normal probe data remains in a separate
+container, and the standalone renderer process is force-stopped only after its
+passing report, with fresh PID/bundle-path matching and an absence recheck.
+
+The first full-device attempt terminated at a null instruction address. The
+bundled ICD does not supply the loader's instance-layer enumerator; the old
+renderer queried it even when requesting no layers. Empty layer requests now
+return without that optional API; explicit requested layers require a real
+enumerator. Required bootstrap function pointers are checked and their presence
+logged. Hardware reports `layers=false` and then completes initialization with
+the correction. No synthetic layer-enumeration success or signing bypass exists.
+Both SDK libraries/consumer linking and native normal/ASan lifecycle checks pass.
+
+UIKit still logs appearance-transition warnings when the temporary SDL window
+returns to the diagnostic view. Moving teardown outside the display-link callback
+did not remove them; the simpler checked ownership path is retained. This is an
+open UI integration issue, and gameplay/background/resume remains unqualified.
+`UIApplicationSupportsIndirectInputEvents` is now declared for SDL mouse support.
+An earlier SIGTERM only acknowledged signal delivery and left the old normal
+probe resident; teardown verification now checks actual process absence.

@@ -225,13 +225,6 @@ std::vector<const char*> GetInstanceExtensions(Frontend::WindowSystemType window
 }
 
 std::vector<const char*> GetInstanceLayers(bool enable_validation, bool enable_crash_diagnostic) {
-    const auto [properties_result, properties] = vk::enumerateInstanceLayerProperties();
-    if (properties_result != vk::Result::eSuccess) {
-        LOG_ERROR(Render_Vulkan, "Failed to query layer properties: {}",
-                  vk::to_string(properties_result));
-        return {};
-    }
-
     std::vector<const char*> layers;
     layers.reserve(2);
 
@@ -240,6 +233,18 @@ std::vector<const char*> GetInstanceLayers(bool enable_validation, bool enable_c
     }
     if (enable_crash_diagnostic) {
         layers.push_back(CRASH_DIAGNOSTIC_LAYER_NAME);
+    }
+
+    // Layer enumeration belongs to a Vulkan loader, not every directly linked
+    // ICD. No layer API is needed when the caller requested none.
+    if (layers.empty()) return layers;
+    ASSERT_MSG(VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceLayerProperties,
+               "Requested Vulkan layers require an available layer enumerator");
+    const auto [properties_result, properties] = vk::enumerateInstanceLayerProperties();
+    if (properties_result != vk::Result::eSuccess) {
+        LOG_ERROR(Render_Vulkan, "Failed to query layer properties: {}",
+                  vk::to_string(properties_result));
+        return {};
     }
 
     // Sanitize layer list
@@ -275,6 +280,15 @@ vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool e
     VULKAN_HPP_DEFAULT_DISPATCHER.init(
         dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
 #endif
+
+    LOG_INFO(Render_Vulkan, "Vulkan bootstrap entry points: create={}, extensions={}, layers={}, version={}",
+             bool(VULKAN_HPP_DEFAULT_DISPATCHER.vkCreateInstance),
+             bool(VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceExtensionProperties),
+             bool(VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceLayerProperties),
+             bool(VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceVersion));
+    ASSERT_MSG(VULKAN_HPP_DEFAULT_DISPATCHER.vkCreateInstance &&
+               VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceExtensionProperties,
+               "Required Vulkan instance entry points are unavailable");
 
     const auto [available_version_result, available_version] =
         VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceVersion

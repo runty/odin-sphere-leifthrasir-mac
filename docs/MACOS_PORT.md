@@ -510,3 +510,27 @@ against the real signed iPhoneOS driver and allocator/services, without unresolv
 symbols, but is not installed or run. UIKit session/lifecycle and actual game GPU
 callback/asset/presentation integration are still ahead. The verified iPad app
 and installed Mac remain unchanged. [Build and evidence scope](../ios/graphics/README.md#full-mobile-renderer-archive-and-consumer-link).
+
+
+### 2026-11-14 renderer ownership and physical initialization
+
+Packed reciprocal square root now passes six forms/8,192 inputs/32 MXCSR
+settings/1,572,864 output lanes against independent native/AOT ISA contracts;
+this does not match a specific CPU approximation LUT bit-for-bit. New GPU-backed
+startup advances to explicit VBLENDPD `0x106aa939`, with four joined workers,
+three buffers and no memory fault or game frame.
+
+A polled Apple renderer API and explicit teardown now join GPU/presentation/cache
+workers, reset IRQ/overlay/mapping state and drain accepted cache writes. Native
+normal and AddressSanitizer tests each pass three restart cycles and verify 192
+queued private cache records after shutdown, with normal process exit. Driver/
+system libraries are uninstrumented; leak sanitizer is disabled.
+
+A separate signed `com.wadscorp.odinsphere.renderer` UIKit check now initializes
+the full renderer on actual A20 Pro hardware, opens/closes VideoOut, completes
+30 main-thread polls and restores its original key window after shutdown. First
+attempts exposed a null loader-layer entry point in direct ICD bootstrap; the
+empty-layer path no longer calls it, with required API presence checks retained.
+Appearance-transition warnings remain when restoring the diagnostic view; the
+UI candidates are not gameplay or full lifecycle acceptance. No mobile game
+content/frame exists yet. The normal probe and original saves remain separate.
