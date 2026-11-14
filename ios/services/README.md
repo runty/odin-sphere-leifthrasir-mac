@@ -172,3 +172,42 @@ users, pad and save initialization complete. The next missing service is
 `sceNpSetNpTitleId`. The matching libraries compile for iPhoneOS and Simulator.
 The Mac source rebuild/import checks pass; the installed Mac bundle still needs
 the updated storage core packaged and verified with a disposable copied save.
+
+## Shared event flags and guarded guest waits
+
+The mobile bridge now calls the production `src/runtime_eventflag.c` for
+create/delete, set/clear, poll/wait and cancel. The CUSA05083 image imports the
+first six APIs; cancellation is also exercised independently. The shared core
+uses opaque monotonic tokens below 40 bits and a reference-counted registry.
+Invalid handles never become native object pointers; deleted generations are
+not reused. Delete removes the handle, wakes blocked waiters with ESRCH and
+frees the object after the final operation releases it, fixing the earlier
+blocked-waiter leak and concurrent deletion race.
+
+`eventflag.h` owns at most 4,096 flags per startup session and deletes them at
+session teardown. It checks guest output/name/timeout pointers before state
+changes, uses aligned locals for misaligned outputs, and rejects another
+session's or stale handles. ARM/iOS waits use the production Darwin monotonic
+relative condition wait. A blocking guest call is bounded by the checked CPU
+execution deadline: expiry of that host guard stops execution, rather than
+returning a fabricated guest timeout. An actual shorter guest timeout retains
+its normal return/output semantics. Host service scopes unwind before the
+outer guest checkpoint resumes.
+
+Run `python3 ios/services/test-eventflag.py --output "$WORK/ios-eventflag-tests"
+--remill "$WORK/cpu-backends"` for arm64/Rosetta coverage. Each architecture
+passes 4,792 checks, including single/multiple waiter wakeup, cancel, timeout,
+eight blocked waiters deleted together, 200 four-thread set/poll/delete races,
+stale/foreign handles, the session budget, teardown resource counts, protected/
+misaligned outputs and host-deadline expiry. `--arch arm64 --sanitize address`
+and `--sanitize thread` also pass. These are native worker tests; translated
+guest worker threads and TLS are still separate work. The bridge and native
+module compile against both actual mobile SDKs.
+
+The Mac runtime synchronization suite passes, and a rebuilt development runner
+presents 600 bounded frames / 50,945 draws / 3,187 submissions, mounts the copied
+save read-only and leaves both copied/original save hashes intact. This is
+startup/regression evidence; no saved-slot click-through or 30-minute gameplay
+result is inferred. Private evidence is under `ios-eventflag-tests/`,
+`ios-eventflag-{asan,tsan}/` and `ios-eventflag-mac-smoke/` below the Odin build
+root. The clean packaged Mac update has its own delivery checks.

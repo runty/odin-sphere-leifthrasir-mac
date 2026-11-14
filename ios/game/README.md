@@ -267,3 +267,35 @@ asset import, in-game save, battle, audio or mobile-frame result is inferred.
 The [native arm64 renderer initialization](../graphics/README.md#native-arm64-game-frontend-initialization)
 is a separate Mac check with zero guest draws; connect shared guest mappings
 and the CPU runtime before adapting presentation to UIKit.
+
+
+## Event flags and the renderer boundary
+
+The shared event-flag bridge progresses through twelve real flag creations to
+**859 traces / 2,568 dispatches / 28,275 checkpoints** on the arm64 Mac host.
+Both actual initializers return zero, no memory fault occurs and the next
+missing service is `sceVideoOutOpen`. Direct allocation owns 1,294,155,776
+bytes. This stop is deliberate: no dummy VideoOut handle is returned and the
+AOT guest has not yet been connected to the real presenter.
+The corpus is
+`43eadb7ca8528c099d9736565a0ab8579eed1db4dcae9f10fe74a9b53a7cde4a`.
+Fixed/repeated ASLR and copied-input rejection checks pass. The unchanged CPU
+comparison core still has its separately qualified 414-check fixture archive.
+
+Discovery now snapshots native source inputs before compilation and checks
+them again before publishing; it cannot stamp a changed source hash onto an
+older service object. The negative integration test runs the real service
+compiler in a retained private worktree, edits only that worktree's user
+service after compilation starts, and verifies failure without a published
+checkpoint or any change to the original service source. Run
+`ios/game/test-discovery-inputs.py --root "$WORK/ios-game-vpermilps" --output
+"$WORK/new-provenance-fixture" --remill "$WORK/cpu-backends"` with Python.
+Checkpoint JSON is written through a same-directory fsynced temporary file and
+atomic replacement, preserving the prior report on an interrupted write. This
+is not a transactional multi-file/power-loss durability claim.
+
+Next connect the checked guest to the native arm64 renderer, including its
+main-thread window, real VideoOut/Gnm/event calls, shared GPU mappings and
+fault handling. Then adapt that path to UIKit/iPhoneOS, worker/TLS/fiber and
+actual asset import. Simulator/physical-device execution remains independently
+qualified; the current installed physical probe is still `dcd85de`.

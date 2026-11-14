@@ -9,7 +9,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac loader/runtime | Real 307-import check, module startup, title and battle gameplay | Other profiles/hosts are unqualified |
 | Mac graphics/performance | Vulkan-on-Metal scenes; player-confirmed corrected combat; selected native-1080p busy windows reach median 60 fps | Whole-game pacing and sustained 30-minute session |
 | Mac audio/progress | Player heard clear audio and confirmed progress survived quit/relaunch | Longer interruption/failure and device-change coverage |
-| Mac app | Clean `f6f6aee` local alpha installed, relative drivers, preserved profile; packaged restart and installed 600-frame checks pass, normal launch reaches Metal launcher | Native UI capture remains unavailable; visible saved-slot loading/fresh-account click-through and 30-minute gameplay are unclaimed |
+| Mac app | Clean `c28064c` local alpha installed with shared event-flag lifetime fixes, relative drivers and preserved profile; packaged restart/600-frame checks pass, normal launch reaches Metal launcher | Native UI capture remains unavailable; visible saved-slot loading/fresh-account click-through and 30-minute gameplay are unclaimed |
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
 | Mobile baseline | Clean CPU-only build ran on iPhone; clean `dcd85de` 664-trace startup/GPU probe installs on both devices | iPhone launch denied Locked; iPad input transfer timed out; stale hardware JSON is excluded |
@@ -421,3 +421,32 @@ measurements and fallback switches](../macos/PERFORMANCE.md).
 Occasional hitches remain, and the selected optimized windows span 42.7–60.0
 fps. The M4 30-minute soak, Classic mode and other profile acceptance remain
 open. These scene measurements do not establish full-game performance.
+
+
+Shared event-flag source `e266020` fixes native deletion/waiter lifetime and
+stale-handle reuse before exposing the same code to the AOT guest. Native
+arm64/Rosetta tests each pass 4,792 checks, including eight blocked waiters
+removed together and 200 four-thread set/poll/delete races. AddressSanitizer
+and ThreadSanitizer arm64 runs pass. The full Mac synchronization suite passes,
+and the development runner presents 600 frames / 50,945 draws / 3,187
+submissions against a copied profile without changing copied or live saves.
+
+Clean Mac `c28064c` is now installed after the relocated Unicode/minimal-PATH
+bundle, seven launcher pages, concurrent-profile rejection and two 300-frame
+restart checks. The normal LaunchServices path reaches `Launcher: shown` and
+the assistant-owned test process is closed. All 166 original profile files in
+the conservative non-secret hash selection retain their bytes. Existing local
+runtime/library/configuration and the previous app backup are preserved.
+Fresh visible saved-slot selection and the deferred 30-minute session remain
+unclaimed. Evidence: `macos-eventflag-candidate-check/`,
+`ios-eventflag-mac-smoke/` and `macos-c28064c-{candidate,install}.log` in the
+private Odin build root.
+
+The corresponding mobile host now creates twelve real event flags and reaches
+859 traces / 2,568 dispatches / 28,275 checkpoints with no memory fault. Both
+initializers complete and the next missing API is `sceVideoOutOpen`; the guest
+has not been connected to the native renderer. Direct allocation owns
+1,294,155,776 bytes. Fixed and repeated ASLR checkpoints agree, and copied
+corrupt/truncated inputs are rejected. The earlier clean `0c6414d` Simulator
+and physical `dcd85de` results remain separate until a fresh export/launch is
+verified. [Shared event-flag scope](../ios/services/README.md#shared-event-flags-and-guarded-guest-waits).
