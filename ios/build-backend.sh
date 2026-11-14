@@ -17,7 +17,7 @@ mkdir -p "$root"
 if [[ ! -d $root/remill ]]; then
     git clone --no-checkout https://github.com/lifting-bits/remill.git "$root/remill"
     git -C "$root/remill" checkout --detach "$pin"
-    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps rcpps blendps; do
+    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps rcpps blendps shufps; do
         git -C "$root/remill" apply "$source_dir/remill-$name.patch"
     done
 else

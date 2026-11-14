@@ -169,3 +169,20 @@ and untracked files without changing the working tree. Positive/negative audit
 checks pass against a separate checkout. Backend semantics SHA:
 `0ba9d2c0d84b78f7bf119a1e4ab1ea2720673541176044d52766d671f64e4efd`.
 Unit qualification does not establish a new game startup or mobile frame.
+
+### Lane-local packed-single shuffles
+
+The next executed gap, `VSHUFPS` at `0x106aac36`, is implemented by
+`remill-shufps.patch`. Its immediate selects lanes independently in each
+128-bit half of a YMM register; the existing 128-bit legacy implementation is
+retained. Six legacy/VEX register/memory forms plus six destructive operand
+alias cases pass all 256 immediates, matching 24,576 output lanes exactly with
+native x86 under Rosetta. Flags, MXCSR, NaN bits, source preservation and
+legacy/VEX upper-lane rules are checked. Blend, reciprocal and VPERMILPS
+regressions pass with the same isolated backend. Complete-patch audit passes
+and rejects both unexpected tracked edits and untracked sources.
+
+New backend semantics SHA:
+`8bcacf9eed0816c35af34788513b6b4ecb11ddd565b6364a4d894cf1bd710331`.
+Use a NEW backend/corpus and re-lift PC seeds; do not reuse old IR across this
+change. Unit checks do not establish a game frame or mobile execution.

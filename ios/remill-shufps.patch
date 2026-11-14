@@ -1,0 +1,31 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2457,3 +2457,27 @@
+ IF_AVX(DEF_ISEL(VBLENDPS_XMMdq_XMMdq_MEMdq_IMMb) = BLENDPS<VV128W, V128, MV128>;)
+ IF_AVX(DEF_ISEL(VBLENDPS_YMMqq_YMMqq_YMMqq_IMMb) = BLENDPS<VV256W, V256, V256>;)
+ IF_AVX(DEF_ISEL(VBLENDPS_YMMqq_YMMqq_MEMqq_IMMb) = BLENDPS<VV256W, V256, MV256>;)
++
++// VSHUFPS applies the same immediate independently within each 128-bit lane.
++// Copy integer lane bits so NaNs and MXCSR are unaffected by the shuffle.
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(SHUFFLEPS, D dst, S1 src1, S2 src2, I8 immediate) {
++  const auto first = UReadV32(src1);
++  const auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  const auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    const auto local = i % 4;
++    const auto index = (i / 4) * 4 + ((mask >> (local * 2)) & 3);
++    const auto value = local < 2 ? UExtractV32(first, index) : UExtractV32(second, index);
++    result = UInsertV32(result, i, value);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++IF_AVX(DEF_ISEL(VSHUFPS_XMMdq_XMMdq_XMMdq_IMMb) = SHUFFLEPS<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VSHUFPS_XMMdq_XMMdq_MEMdq_IMMb) = SHUFFLEPS<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VSHUFPS_YMMqq_YMMqq_YMMqq_IMMb) = SHUFFLEPS<VV256W, V256, V256>;)
++IF_AVX(DEF_ISEL(VSHUFPS_YMMqq_YMMqq_MEMqq_IMMb) = SHUFFLEPS<VV256W, V256, MV256>;)
