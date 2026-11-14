@@ -111,7 +111,16 @@ if a.seed_from:
 
 
 repo = source.parents[1]
+source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",
+                source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
+def source_snapshot():
+    return {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths}
+compiled_sources = source_snapshot()
+def check_sources():
+    if source_snapshot() != compiled_sources:
+        raise RuntimeError("Startup sources changed during discovery; rerun before publishing a checkpoint")
 service_objects = compile_services(repo, objects / "services", "arm64-apple-macos15", sdk)
+check_sources()
 
 for round in range(a.rounds):
     entries = {}
@@ -161,14 +170,14 @@ for round in range(a.rounds):
         if int(symbol, 16) not in entries:
             thunks += f'extern "C" Memory *sub_{symbol}(State &s,uint64_t pc,Memory *m) {{ return dispatch(s,pc,m); }}\n'
     (root / "thunks.cpp").write_text(thunks)
+    check_sources()
     run("runner-build", ["xcrun", "clang++", "-arch", "arm64", "-std=c++17", "-O2", "-DOSL_GAME_CLI=1", "-I" + str(a.remill / "remill/include"),
         "-I" + str(root), "-I" + str(source.parent / "cpu"), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", *service_objects, *objs, *link_options(), "-o", root / "guest-startup"], 120)
     state = {"image_sha256": layout["image_sha256"],
              "trace_inputs": identity,
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},
              "headers": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ("image-layout.h", "traces.h", "thunks.cpp")},
-             "sources": {str(path.relative_to(source.parents[1])): hashlib.sha256(path.read_bytes()).hexdigest()
-                         for path in (source / "runner.cpp", source / "guard_ir.py", source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))}}
+             "sources": compiled_sources}
     attempt = len(list(root.glob("attempt-*.json")))
     name = "attempt-" + str(attempt).zfill(5)
     run(name, [root / "guest-startup", root / "image.bin"], 15,
@@ -176,6 +185,7 @@ for round in range(a.rounds):
     records = [line.removeprefix("OSL_STARTUP_RESULT:") for line in (root / (name + ".log")).read_text().splitlines() if line.startswith("OSL_STARTUP_RESULT:")]
     if len(records) != 1: raise RuntimeError("Expected one startup report in " + name + ".log")
     report = json.loads(records[0])
+    check_sources()
     report["trace_count"] = len(entries)
     state["reference"] = report
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in ("image_sha256", "trace_inputs", "ir", "headers", "sources")}, sort_keys=True).encode()).hexdigest()
