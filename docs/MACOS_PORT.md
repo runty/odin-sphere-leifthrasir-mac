@@ -13,7 +13,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
 | Mobile baseline | Clean CPU-only build ran on iPhone; clean `dcd85de` 664-trace startup/GPU probe installs on both devices | iPhone launch denied Locked; iPad input transfer timed out; stale hardware JSON is excluded |
-| Mobile startup/graphics | Host/clean Simulator reach 682 traces through real private storage/save initialization; iPhoneOS driver/framework builds and native submit/readback pass | Offline NP/thread/TLS startup, real asset import, physical GPU execution, captured game draw, title/battle frames and lifecycle |
+| Mobile startup/graphics | Clean `0c6414d` host/Simulator reach 751 traces through storage/offline NP; iPhoneOS app/framework builds; native arm64 game frontend initializes Metal surface/VideoOut with zero guest draws | Event flags/workers/TLS, shared GPU mappings, real asset import, UIKit presentation, physical GPU execution, captured game draw, title/battle frames and lifecycle |
 
 The first module-startup hardware result is explicitly a development build:
 244 traces, two zero-return initializers, 397 dispatches, missing logical PC

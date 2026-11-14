@@ -50,8 +50,8 @@ addresses but must preserve the normalized guest checkpoint.
 Host services currently cover process parameters, heap registration, selected
 thread attributes, real pthread mutexes and bounded read/write flexible memory.
 Atomic memory operations are serialized. Unknown services and unsupported
-protection/fixed-address cases stop. This is not yet a worker/TLS/fiber runtime,
-file/save layer or renderer. Extended x87 instructions remain an explicit
+protection/fixed-address cases stop. Private file/save and offline NP setup now have checked bridges. This is not
+yet a worker/TLS/fiber runtime or a connected game renderer. Extended x87 instructions remain an explicit
 backend limitation; broad traces containing unused formatting paths can be
 narrowed to an executed basic block, never replaced by a no-op.
 
@@ -222,13 +222,48 @@ initialization complete. Actual assets are not yet in `App0`. The next gap is
 `sceNpSetNpTitleId`; game startup/rendering are still unproven.
 [Storage scope and cross-process/failure checks](../services/README.md#file-and-save-storage).
 Both mobile libraries compile and the rebuilt Mac source resolves all 307
-imports. The installed Mac `31ae7d4` bundle and device `dcd85de` baseline have
-not received these shared storage fixes yet. Package/test the updated Mac core
-using copied progress before replacing the installed app, then continue offline
-NP setup, worker/TLS/callbacks and GPU integration.
+imports. The updated Mac `f6f6aee` is now installed after copied-profile package/restart
+checks; the physical device baseline remains `dcd85de`. See
+[Mac delivery evidence](../../docs/MACOS_PORT.md).
 
 Clean source `f6f6aee` now matches the 682-trace / 1,657-dispatch checkpoint on
 two Simulator launches (counts 9 and 10). All 414 CPU comparisons pass; private
 roots exist, save initialization completes, and no memory fault occurs. This is
 not an in-game save/reload result. The signed iPhoneOS app/framework builds and
 verifies, staged only; physical devices retain `dcd85de`.
+
+
+## Offline NP and immediate-shuffle checkpoint
+
+Clean source `0c6414d` reaches **751 traces / 2,236 dispatches / 26,718
+checkpoints** on arm64 Mac and two Simulator launches (counts 11 and 12).
+Both module initializers return zero, private storage/users/pad initialize,
+offline NP setup completes, and no memory fault occurs. The next missing API
+is `sceKernelCreateEventFlag`. Direct allocation owns 1,240,776,704 bytes.
+The startup corpus is
+`4385c7a6910d32b0b2d3ae9a1a2b1a6b3f84e22e6b058bda955a46b5f2267d28`.
+
+The new isolated trace directory re-lifts the old executed PC list after the
+VPERMILPS backend change; old generated IR remains intact. All 414 real-routine
+CPU comparisons pass. Fixed/repeated ASLR checkpoints agree; copied corrupt/
+truncated images and invalid/missing pointer tables are rejected. The exact
+unsupported shuffle was identified with local Zydis after REA refused the
+prepared PS4 format; no REA analysis result is claimed. The four immediate
+shuffle forms pass all 256 immediates against native x86 execution, including
+upper-YMM clearing and preserved flags. Other synchronous instruction fallbacks
+still fault at the exact guest PC.
+
+The offline NP/NetCtl bridge does not dereference or retain credential pointers.
+It reports signed-out/disconnected state, tracks bounded title/request/callback
+handles and refuses identity/data transfer. There are no synthetic online state
+transitions or callback executions. Its lifecycle/ownership, budget, canary and
+invalid-pointer tests bring the AOT service suite to 4,247 passing checks.
+
+The matching iPhoneOS app includes the audited GPU framework and passes strict
+signature verification in `ios-probe-offline-gpu/`. It is staged only; physical
+devices retain `dcd85de`. `ios-probe-offline-simulator/verification.json` records
+the fresh repeated execution and preserved inputs. App0 is still empty, so no
+asset import, in-game save, battle, audio or mobile-frame result is inferred.
+The [native arm64 renderer initialization](../graphics/README.md#native-arm64-game-frontend-initialization)
+is a separate Mac check with zero guest draws; connect shared guest mappings
+and the CPU runtime before adapting presentation to UIKit.
