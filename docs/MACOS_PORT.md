@@ -447,9 +447,11 @@ The corresponding mobile host now creates twelve real event flags and reaches
 initializers complete and the next missing API is `sceVideoOutOpen`; the guest
 has not been connected to the native renderer. Direct allocation owns
 1,294,155,776 bytes. Fixed and repeated ASLR runs reach the same VideoOut boundary, allocations
-and flag count, but fixed addressing uses 2,562 dispatches versus 2,568 for both
-ASLR runs. The strict equivalence check therefore fails and the six-dispatch
-difference is under investigation; the new combined input-failure suite has
-not completed. Earlier 751-trace input rejection remains separate. The earlier clean `0c6414d` Simulator
+and flag count. The raw count may be 2,562 or 2,568: three pointer-range checks
+conditionally visit two extra comparison blocks based on relative pointer
+ordering. Complete logical dispatch traces match after normalizing only the
+exact byte-pinned range-check path; all other differences still fail. The
+combined corrupted/truncated image/pointer rejection tests then pass. This is
+canonical code-target/boundary evidence, not full CPU-state equivalence. The earlier clean `0c6414d` Simulator
 and physical `dcd85de` results remain separate until a fresh export/launch is
 verified. [Shared event-flag scope](../ios/services/README.md#shared-event-flags-and-guarded-guest-waits).

@@ -279,12 +279,15 @@ bytes. This stop is deliberate: no dummy VideoOut handle is returned and the
 AOT guest has not yet been connected to the real presenter.
 The corpus is
 `43eadb7ca8528c099d9736565a0ab8579eed1db4dcae9f10fe74a9b53a7cde4a`.
-Fixed/repeated ASLR runs reach the same functional boundary, but fixed mode
-uses 2,562 dispatches while both ASLR runs use 2,568. The strict equivalence
-assertion fails; trace the six-dispatch difference before qualifying this
-checkpoint. The new combined input-rejection suite stops at that assertion,
-so its later cases are unclaimed. Earlier 751-trace rejection checks remain
-valid and separate. The unchanged CPU
+Fixed/repeated ASLR runs reach the same functional boundary. Raw dispatch
+counts can be 2,562 or 2,568 because three unsigned pointer-range checks may
+visit two extra comparison blocks when ASLR changes relative pointer ordering.
+Local Zydis decoding from the executed boundary and complete logical target
+traces identify the exact branch and common join. `test-startup.py` normalizes
+only that four-target pattern, pins its 47 instruction bytes by SHA-256, and
+requires every other dispatch target to match. This compares canonical code
+targets, not all CPU registers or memory. The resulting canonical traces and
+all copied corrupt/truncated image/pointer rejection cases pass. The unchanged CPU
 comparison core still has its separately qualified 414-check fixture archive.
 
 Discovery now snapshots native source inputs before compilation and checks
@@ -304,3 +307,13 @@ main-thread window, real VideoOut/Gnm/event calls, shared GPU mappings and
 fault handling. Then adapt that path to UIKit/iPhoneOS, worker/TLS/fiber and
 actual asset import. Simulator/physical-device execution remains independently
 qualified; the current installed physical probe is still `dcd85de`.
+
+
+The follow-up CLI target-only trace support produces current corpus
+`03005ea232b97bd8807d55a8fdc55e33c00d8777d1c38e46ca5766fc46b68c40`.
+Its AOT service suite passes 4,258 checks. The verified address-mode test records
+raw counts 2,562 / 2,562 / 2,568 and normalized range-check visits 0 / 0 / 3;
+unknown dispatch differences still fail. Evidence is in
+`ios-eventflag-address-traces/` and `ios-eventflag-startup-tests-verified/`.
+`OSL_STARTUP_DISPATCH_TRACE` is CLI-only and records normalized code targets,
+never guest register, stack or credential contents.
