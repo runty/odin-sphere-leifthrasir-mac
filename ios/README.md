@@ -66,8 +66,12 @@ signed Release app build successfully. Initial iPhone hardware execution,
 launched without LLDB, also passes 414 checks on iPhone18,2 / iOS 27.2.1
 24B156 / A19 Pro / 16 KiB pages. Its observed corpus is
 `14c2882bdef30a22965c8cadd5cf62cf27855b63ef909b59befd24fd003d7606`.
-The initial app build identifies the worktree as dirty; a committed build and
-repeat install/relaunch are the next qualification steps.
+The first app build identified the worktree as dirty. A subsequent signed build
+at `6875944` installs on both devices. A background launch on the iPhone, without
+LLDB, passes the same 414 checks and reports that exact clean revision; the
+persistent launch count advances from 1 to 2 across replacement. Foreground
+launch was denied after the phone locked, so the successful background run is
+recorded separately from Home Screen/share-sheet acceptance.
 
 The iPad install succeeds, but launch is rejected with the explicit `Locked`
 error, so no iPad routine-execution result is claimed yet. The user's hands-on
