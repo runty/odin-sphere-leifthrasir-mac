@@ -528,3 +528,22 @@ must not be reused to overwrite that app. The capability-enabled probe has NOT
 been signed or installed, and no fix is inferred from merely adding entitlements.
 The baseline probe remains buildable with the default capability flag off.
 Unattended memory-provider diagnostics and backend work can continue separately.
+
+
+The signed baseline `cccfa7e9d1838ba056f2884c642836f346ad203b` iPad launch 8
+adds a kernel-chosen reservation attempt before desktop hints. It still reports
+`virtual window reservation (errno 12)` for the 8 GiB window. CPU 414 and the
+actual 64-word GPU readback continue to pass; both original private input files
+retain their hashes. Corpus `68abd973c7b555821aad1f2a73230c09d8bc3dd14b064a33c5cf6e348e500365`
+is frozen at 1,027 host entries / 3,220 dispatches / four joined workers and an
+explicit VRCPPS backend gap. Host memory 101, fixed/identity rejection tests and
+60 real GPU bridge checks pass, including ordered cleanup and no game frames.
+A separate baseline Simulator archive compiles from the same sources.
+
+The capability-enabled build is still unsigned: no matching profile/account is
+available. Entitlements have therefore not been proven to fix this reservation.
+Next physical memory work must either validate a correctly provisioned extended
+address space or qualify a smaller/chunked mapping design against actual title
+requirements. Do not shrink the reported PS4 physical pool or claim unsupported
+allocations succeed. Missing VRCPPS translation can be developed independently
+in a new backend/cache without invalidating this frozen corpus.
