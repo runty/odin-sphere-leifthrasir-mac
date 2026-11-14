@@ -211,3 +211,30 @@ startup/regression evidence; no saved-slot click-through or 30-minute gameplay
 result is inferred. Private evidence is under `ios-eventflag-tests/`,
 `ios-eventflag-{asan,tsan}/` and `ios-eventflag-mac-smoke/` below the Odin build
 root. The clean packaged Mac update has its own delivery checks.
+
+## Checked condition variables
+
+`condition.h` supplies session-owned real pthread conditions with opaque,
+monotonically allocated guest tokens and a 4,096-object budget. Initialization,
+signal, broadcast, destroy, static lazy initialization, wait and relative timed
+wait are supported. Only default condition attributes are accepted. Waits use
+Darwin's relative timed API and preserve the associated mutex's release/relock
+contract. The shorter guest timeout returns the console's timeout code; expiry
+of the host execution budget stops the guest explicitly. Removing a condition
+with blocked waiters returns busy, and native objects stay referenced through
+active calls. The owner must outlive/join all workers before teardown.
+
+Checked ABI adapters use local aligned handle values, validate complete guest
+spans and never expose native condition pointers. The existing AOT mutex lookup
+supplies the actual paired pthread mutex. Guest dispatch itself is still serial:
+translated worker/TLS setup and concurrent lazy guest-slot initialization need
+the complete worker runtime before those workers can be enabled.
+
+`python3 ios/services/test-condition.py --output "$WORK/ios-condition-tests"
+--remill "$WORK/cpu-backends"` passes 4,156 checks on each Mac CPU, including
+real timeout/relock, four-waiter broadcast, busy deletion, 800 concurrent native
+create/notify/delete cycles, stale/foreign tokens, object budget, protected/
+misaligned/canary outputs and host-deadline stops. `--sanitizer address` and
+`--sanitizer thread` pass on arm64. Eight additional actual import-dispatch
+checks bring the AOT service suite to 4,266. These checks do not establish
+translated guest worker execution or mobile gameplay.

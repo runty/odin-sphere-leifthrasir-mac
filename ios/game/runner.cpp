@@ -11,6 +11,7 @@
 #include "../services/eventflag.h"
 #include "../services/gpu.h"
 #include "../services/system.h"
+#include "../services/condition.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -102,6 +103,7 @@ struct Session {
     bool identity = false;
     std::unordered_map<uint64_t, int> mutex_attributes;
     std::unordered_map<uint64_t, std::unique_ptr<HostMutex>> mutexes;
+    MobileConditions conditions;
     uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
     uint64_t native_memset_calls = 0, native_memset_bytes = 0;
     bool users_initialized = false;
@@ -214,6 +216,12 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     uint64_t system_result=0;
     if (GuestSystem::call(name,s,*m,system_result))
         return m->fault.empty() ? hostReturn(s,m,system_result) : m;
+    uint64_t condition_result=0;
+    if (GuestConditions::call(name,s,*m,session.conditions,[&](uint64_t id) -> pthread_mutex_t * {
+            const auto found=session.mutexes.find(id);
+            return found==session.mutexes.end() ? nullptr : &found->second->mutex;
+        },condition_result))
+        return m->fault.empty() ? hostReturn(s,m,condition_result) : m;
     if (session.gpu) {
         const uint64_t args[]={s.gpr.rdi.qword,s.gpr.rsi.qword,s.gpr.rdx.qword,
                                s.gpr.rcx.qword,s.gpr.r8.qword,s.gpr.r9.qword};
@@ -833,6 +841,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
         << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
         << ",\"event_flags\":" << session->event_flags.count()
+        << ",\"condition_variables\":" << session->conditions.count()
         << ",\"gpu_adapter_enabled\":" << (session->gpu ? "true" : "false")
         << ",\"gpu_service_calls\":" << session->gpu_service_calls
         << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
@@ -1093,6 +1102,16 @@ static bool serviceChecks() {
     require(bytes && reinterpret_cast<uint64_t>(bytes) % 16384 == 0);
     require(std::all_of(bytes, bytes + 4096, [](uint8_t byte) { return byte == 0; }));
     require(std::all_of(bytes + 4096, bytes + 16384, [](uint8_t byte) { return byte == 0; }));
+    require(call("scePthreadCondInit",0x20000101)==0 && session.conditions.count()==1);
+    const uint64_t condition=load64(session.memory,0x20000101);
+    require(condition>1 && call("scePthreadCondBroadcast",0x20000101)==0);
+    require(call("scePthreadMutexInit",0x20000121)==0);
+    require(call("scePthreadMutexLock",0x20000121)==0);
+    session.memory.deadline=std::chrono::steady_clock::now()+std::chrono::seconds(1);
+    require(call("scePthreadCondTimedwait",0x20000101,0x20000121,1000)==0x8002003cu);
+    require(call("scePthreadMutexUnlock",0x20000121)==0);
+    require(call("scePthreadCondDestroy",0x20000101)==0 && session.conditions.count()==0);
+    require(load64(session.memory,0x20000101)==0);
     active = nullptr;
     std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
     return true;

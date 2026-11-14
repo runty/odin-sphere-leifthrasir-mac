@@ -353,3 +353,12 @@ Without a GPU callback provider, a mobile/CLI consumer still stops at VideoOut
 even when its archive contains later translated blocks. `build-ios.py --sdk
 macosx` can export a native startup archive for this engineering frontend.
 Physical-device and Simulator baselines above remain independently qualified.
+
+The next native GPU-backed checkpoint passes two actual condition creations and
+reaches `scePthreadAttrSetdetachstate`: 934 translated entries / 2,949 dispatches /
+30,230 checkpoints, both initializers complete, no memory fault and no guest
+frame. Corpus `3aa148b3eed6b702e30222523f1013958be59bc6ebf79eb0dd2718921ea982e5`.
+The real condition adapter and its tests are described in
+[service coverage](../services/README.md#checked-condition-variables).
+The native GPU/source ledger now also covers renderer CMake and GLSL/HLSL helper
+inputs. This does not enable translated workers or change installed mobile apps.
