@@ -226,3 +226,9 @@ imports. The installed Mac `31ae7d4` bundle and device `dcd85de` baseline have
 not received these shared storage fixes yet. Package/test the updated Mac core
 using copied progress before replacing the installed app, then continue offline
 NP setup, worker/TLS/callbacks and GPU integration.
+
+Clean source `f6f6aee` now matches the 682-trace / 1,657-dispatch checkpoint on
+two Simulator launches (counts 9 and 10). All 414 CPU comparisons pass; private
+roots exist, save initialization completes, and no memory fault occurs. This is
+not an in-game save/reload result. The signed iPhoneOS app/framework builds and
+verifies, staged only; physical devices retain `dcd85de`.
