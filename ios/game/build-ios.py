@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 from guard_ir import instrument
+from service_build import compile_services
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--sdk", choices=("iphoneos", "iphonesimulator"), default="iphoneos")
@@ -29,12 +30,13 @@ out.mkdir(exist_ok=True)
 llvm = Path("/opt/homebrew/opt/llvm/bin")
 sdk = subprocess.check_output(["xcrun", "--sdk", a.sdk, "--show-sdk-path"], text=True).strip()
 target = "arm64-apple-ios18" + ("-simulator" if a.sdk == "iphonesimulator" else "")
-objects = []
+objects = compile_services(repo, out / "services", target, sdk)
 
 
 def run(name, command):
     with (out / (name + ".log")).open("w") as stream:
-        subprocess.run([str(x) for x in command], stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=180)
+        result = subprocess.run([str(x) for x in command], stdout=stream, stderr=subprocess.STDOUT, timeout=180)
+        if result.returncode: raise RuntimeError(str(out / (name + ".log")) + ": compilation failed")
 
 
 for name, raw_key in state["ir"].items():
@@ -52,7 +54,7 @@ for name, path in (("runner", source / "runner.cpp"), ("thunks", root / "thunks.
     obj = out / (name + ".o")
     run(name, ["xcrun", "--sdk", a.sdk, "clang++", "-target", target, "-isysroot", sdk,
         "-std=c++17", "-O2", "-I" + str(a.remill / "remill/include"), "-I" + str(source.parent / "cpu"),
-        "-I" + str(root), "-c", path, "-o", obj])
+        "-I" + str(root), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), "-c", path, "-o", obj])
     objects.append(obj)
 archive = out / "libodin-startup.new.a"
 archive.unlink(missing_ok=True)

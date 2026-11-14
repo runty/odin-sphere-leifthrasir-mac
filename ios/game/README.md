@@ -135,3 +135,27 @@ string views, so a fault does not allocate or throw through lifted code. The
 414 comparisons, atomic tests, loop guards and copied-input checks still pass.
 Trophy module startup and remaining kernel/display services are the next gaps;
 this newer host-only checkpoint has not replaced the signed 624-trace baseline.
+
+
+## Portable Trophy and lifecycle adapters
+
+The runner now links the existing portable TrophyService with an Apple crypto
+backend. [Service scope and crypto checks](../services/README.md). Trophy
+context/handle/registration/unlock-state semantics pass in the host service
+suite; state is explicitly transient until asset/profile configuration is wired.
+The offline streaming provider accepts only this image's Initialize/Terminate
+entrypoints and never starts recording, a network stream or a permission flow.
+Message-dialog residency is accepted only because this image imports no such
+API. Error/Save dialog lifecycle is implemented; missing presenters stop.
+
+Current host startup reaches **635 traces / 1,516 dispatches**, both original
+initializers return zero, and no memory fault occurs. The PS4 direct-memory
+capacity query returns the production port's 5,056 MiB value. The next gap is
+`sceKernelAllocateDirectMemory`, requesting 51 MiB. A sparse backing/alias
+adapter is required; the capacity query does not allocate or prove that pool.
+The service objects compile successfully for both iPhoneOS and Simulator.
+
+Native service messages remain in private logs. The CLI emits exactly one
+`OSL_STARTUP_RESULT:` record so diagnostic text cannot be mistaken for its JSON
+checkpoint. The UIKit API still returns JSON directly. This host checkpoint has
+not replaced the clean signed 624-trace baseline installed on devices.

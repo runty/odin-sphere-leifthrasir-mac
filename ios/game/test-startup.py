@@ -25,7 +25,9 @@ shutil.copy2(a.root / 'image-pointers.bin', pointers)
 def run(name, identity=True):
     result = subprocess.run([str(a.root / 'guest-startup'), str(image)], capture_output=True, text=True,
                             env=dict(os.environ, OSL_GUEST_IDENTITY='1' if identity else '0'), timeout=15, check=True)
-    report = json.loads(result.stdout)
+    records = [line.removeprefix("OSL_STARTUP_RESULT:") for line in result.stdout.splitlines() if line.startswith("OSL_STARTUP_RESULT:")]
+    if len(records) != 1: raise RuntimeError("Expected one startup report")
+    report = json.loads(records[0])
     (output / (name + '.json')).write_text(json.dumps(report, indent=2) + '\n')
     return report
 

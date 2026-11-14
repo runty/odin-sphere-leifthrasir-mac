@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 from guard_ir import instrument
+from service_build import compile_services, inputs as service_inputs
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
@@ -65,7 +66,12 @@ header += ",".join("{" + json.dumps(i["nid"]) + "," + json.dumps(i["symbol"]) + 
 
 def run(name, command, timeout=60, env=None):
     with (root / (name + ".log")).open("w") as out:
-        subprocess.run([str(x) for x in command], stdout=out, stderr=subprocess.STDOUT, check=True, timeout=timeout, env=env)
+        try:
+            result = subprocess.run([str(x) for x in command], stdout=out, stderr=subprocess.STDOUT, timeout=timeout, env=env)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"{name} timed out; see {root / (name + '.log')}") from None
+        if result.returncode:
+            raise RuntimeError(f"{name} failed ({result.returncode}); see {root / (name + '.log')}")
 
 
 def decode_size(code, window=False):
@@ -103,6 +109,9 @@ if a.seed_from:
         lift(pc, code, cache / name)
     print("Re-lifted seed PC list with the isolated backend", flush=True)
 
+
+repo = source.parents[1]
+service_objects = compile_services(repo, objects / "services", "arm64-apple-macos15", sdk)
 
 for round in range(a.rounds):
     entries = {}
@@ -153,18 +162,20 @@ for round in range(a.rounds):
             thunks += f'extern "C" Memory *sub_{symbol}(State &s,uint64_t pc,Memory *m) {{ return dispatch(s,pc,m); }}\n'
     (root / "thunks.cpp").write_text(thunks)
     run("runner-build", ["xcrun", "clang++", "-arch", "arm64", "-std=c++17", "-O2", "-DOSL_GAME_CLI=1", "-I" + str(a.remill / "remill/include"),
-        "-I" + str(root), "-I" + str(source.parent / "cpu"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", *objs, "-o", root / "guest-startup"], 120)
+        "-I" + str(root), "-I" + str(source.parent / "cpu"), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", *service_objects, *objs, "-o", root / "guest-startup"], 120)
     state = {"image_sha256": layout["image_sha256"],
              "trace_inputs": identity,
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},
              "headers": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ("image-layout.h", "traces.h", "thunks.cpp")},
              "sources": {str(path.relative_to(source.parents[1])): hashlib.sha256(path.read_bytes()).hexdigest()
-                         for path in (source / "runner.cpp", source / "guard_ir.py", source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp")}}
+                         for path in (source / "runner.cpp", source / "guard_ir.py", source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))}}
     attempt = len(list(root.glob("attempt-*.json")))
     name = "attempt-" + str(attempt).zfill(5)
     run(name, [root / "guest-startup", root / "image.bin"], 15,
         env=dict(os.environ, OSL_GUEST_IDENTITY="1" if a.identity else "0"))
-    report = json.loads((root / (name + ".log")).read_text())
+    records = [line.removeprefix("OSL_STARTUP_RESULT:") for line in (root / (name + ".log")).read_text().splitlines() if line.startswith("OSL_STARTUP_RESULT:")]
+    if len(records) != 1: raise RuntimeError("Expected one startup report in " + name + ".log")
+    report = json.loads(records[0])
     report["trace_count"] = len(entries)
     state["reference"] = report
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in ("image_sha256", "trace_inputs", "ir", "headers", "sources")}, sort_keys=True).encode()).hexdigest()

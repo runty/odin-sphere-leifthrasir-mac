@@ -2,6 +2,7 @@
 #include "../cpu/runtime.h"
 #include "image-layout.h"
 #include "traces.h"
+#include "trophies/trophy_service.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -57,7 +58,9 @@ struct Session {
     std::vector<AlignedBytes> gpu_allocations;
     std::map<uint16_t, unsigned> compatibility_modules;
     unsigned gesture_setup_calls = 0;
-    bool save_dialog_initialized = false, common_dialog_initialized = false;
+    bool save_dialog_initialized = false, common_dialog_initialized = false, live_streaming_initialized = false, error_dialog_initialized = false;
+    int32_t error_dialog_code = 0;
+    osl::trophies::TrophyService trophies;
     const char *stage = "prepare", *missing_service = "";
     unsigned completed_modules = 0, calls = 0;
     uint64_t heap_api = 0, next_allocation = 0x30000000;
@@ -137,6 +140,22 @@ static bool saveDialogFunction(const char *name) {
            !std::strcmp(name, "sceSaveDataDialogGetResult") ||
            !std::strcmp(name, "sceSaveDataDialogOpen");
 }
+static bool trophyFunction(const char *name) {
+    return !std::strcmp(name, "sceNpTrophyCreateContext") ||
+           !std::strcmp(name, "sceNpTrophyCreateHandle") ||
+           !std::strcmp(name, "sceNpTrophyRegisterContext") ||
+           !std::strcmp(name, "sceNpTrophyDestroyHandle") ||
+           !std::strcmp(name, "sceNpTrophyGetTrophyUnlockState") ||
+           !std::strcmp(name, "sceNpTrophyUnlockTrophy");
+}
+static bool streamingLifecycle(const char *name) {
+    return !std::strcmp(name, "sceGameLiveStreamingInitialize") ||
+           !std::strcmp(name, "sceGameLiveStreamingTerminate");
+}
+static bool errorDialogFunction(const char *name) {
+    return !std::strcmp(name, "sceErrorDialogInitialize") || !std::strcmp(name, "sceErrorDialogTerminate") ||
+           !std::strcmp(name, "sceErrorDialogUpdateStatus") || !std::strcmp(name, "sceErrorDialogOpen");
+}
 static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
     const auto &import = imports[(pc - hle_base) / 0x1000];
@@ -152,12 +171,16 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         // lifecycle methods; requests for a presenter still stop. Never accept
         // an unknown export or introduce dynamic module/symbol resolution.
         const char *library = id == 6 ? "#libSceFiber" : id == 7 ? "#libSceUlt" :
-                              id == 206 ? "#libSceSystemGesture" : id == 160 ? "#libSceSaveDataDialog" : nullptr;
+                              id == 206 ? "#libSceSystemGesture" : id == 160 ? "#libSceSaveDataDialog" : id == 173 ? "#libSceNpTrophy" : id == 129 ? "#libSceGameLiveStreaming" : id == 164 ? "#libSceMsgDialog" :
+                              id == 172 ? "#libSceErrorDialog" : nullptr;
         bool empty_provider = library != nullptr;
         for (const auto &item : imports) {
             if ((library && std::strstr(item.nid, library) &&
                  !(id == 206 && gestureSetupFunction(item.symbol)) &&
-                 !(id == 160 && saveDialogFunction(item.symbol))) ||
+                 !(id == 160 && saveDialogFunction(item.symbol)) &&
+                 !(id == 173 && trophyFunction(item.symbol)) &&
+                 !(id == 129 && streamingLifecycle(item.symbol)) &&
+                 !(id == 172 && errorDialogFunction(item.symbol))) ||
                 std::strstr(item.symbol, "Dlsym") || std::strstr(item.symbol, "LoadStartModule"))
                 empty_provider = false;
         }
@@ -223,6 +246,81 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         stopGuest(*m, "save dialog presenter unavailable", pc);
         return m;
     }
+    if (trophyFunction(name)) {
+        if (!session.compatibility_modules[173]) {
+            session.missing_service = name;
+            stopGuest(*m, "Trophy provider is not loaded", pc);
+            return m;
+        }
+        auto &service = session.trophies;
+        int32_t value = 0, result = 0;
+        if (!std::strcmp(name, "sceNpTrophyCreateContext") ||
+            !std::strcmp(name, "sceNpTrophyCreateHandle")) {
+            auto output = s.gpr.rdi.qword ? guestPointer(*m, s.gpr.rdi.qword, 4, true) : nullptr;
+            if (!m->fault.empty()) return m;
+            if (!std::strcmp(name, "sceNpTrophyCreateHandle"))
+                result = service.CreateHandle(output ? &value : nullptr);
+            else
+                result = service.CreateContext(output ? &value : nullptr, int32_t(s.gpr.rsi.qword),
+                                               uint32_t(s.gpr.rdx.qword), s.gpr.rcx.qword);
+            if (!result) std::memcpy(output, &value, 4);
+        } else if (!std::strcmp(name, "sceNpTrophyRegisterContext")) {
+            result = service.RegisterContext(int32_t(s.gpr.rdi.qword), int32_t(s.gpr.rsi.qword), s.gpr.rdx.qword);
+        } else if (!std::strcmp(name, "sceNpTrophyDestroyHandle")) {
+            result = service.DestroyHandle(int32_t(s.gpr.rdi.qword));
+        } else if (!std::strcmp(name, "sceNpTrophyUnlockTrophy")) {
+            auto output = s.gpr.rcx.qword ? guestPointer(*m, s.gpr.rcx.qword, 4, true) : nullptr;
+            if (!m->fault.empty()) return m;
+            result = service.UnlockTrophy(int32_t(s.gpr.rdi.qword), int32_t(s.gpr.rsi.qword),
+                                          int32_t(s.gpr.rdx.qword), output ? &value : nullptr);
+            if (!result) std::memcpy(output, &value, 4);
+        } else {
+            osl::trophies::FlagArray flags{};
+            uint32_t count = 0;
+            auto output = s.gpr.rdx.qword ? guestPointer(*m, s.gpr.rdx.qword, sizeof(flags), true) : nullptr;
+            auto count_output = s.gpr.rcx.qword ? guestPointer(*m, s.gpr.rcx.qword, 4, true) : nullptr;
+            if (!m->fault.empty()) return m;
+            result = service.GetUnlockState(int32_t(s.gpr.rdi.qword), int32_t(s.gpr.rsi.qword),
+                                             output ? &flags : nullptr, count_output ? &count : nullptr);
+            if (!result) { std::memcpy(output, &flags, sizeof(flags)); std::memcpy(count_output, &count, 4); }
+        }
+        return hostReturn(s, m, uint32_t(result));
+    }
+    if (streamingLifecycle(name)) {
+        if (!session.compatibility_modules[129]) {
+            session.missing_service = name;
+            stopGuest(*m, "GameLiveStreaming provider is not loaded", pc);
+            return m;
+        }
+        // This fixed profile imports only lifecycle entrypoints, not recording
+        // or broadcast operations. No capture, network stream or permission is started.
+        session.live_streaming_initialized = !std::strcmp(name, "sceGameLiveStreamingInitialize");
+        return hostReturn(s, m, 0);
+    }
+    if (errorDialogFunction(name)) {
+        if (!session.compatibility_modules[172]) {
+            session.missing_service = name; stopGuest(*m, "ErrorDialog provider is not loaded", pc); return m;
+        }
+        if (!std::strcmp(name, "sceErrorDialogInitialize")) {
+            if (session.error_dialog_initialized) return hostReturn(s, m, 0x80b80004u);
+            session.error_dialog_initialized = true; return hostReturn(s, m, 0);
+        }
+        if (!std::strcmp(name, "sceErrorDialogTerminate")) {
+            if (!session.error_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
+            session.error_dialog_initialized = false; return hostReturn(s, m, 0);
+        }
+        if (!std::strcmp(name, "sceErrorDialogUpdateStatus"))
+            return hostReturn(s, m, session.error_dialog_initialized ? 1 : 0);
+        if (!session.error_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
+        if (s.gpr.rdi.qword) {
+            auto param = guestPointer(*m, s.gpr.rdi.qword, 8);
+            if (!param) return m;
+            std::memcpy(&session.error_dialog_code, param + 4, 4);
+        }
+        session.missing_service = name; stopGuest(*m, "error dialog presenter unavailable", pc); return m;
+    }
+    if (!std::strcmp(name, "sceKernelGetDirectMemorySize"))
+        return hostReturn(s, m, uint64_t(5056) * 1024 * 1024);
     if (!std::strcmp(name, "sceKernelGetProcParam"))
         return hostReturn(s, m, session.image_address + procparam);
     if (!std::strcmp(name, "scePthreadSelf"))
@@ -506,6 +604,9 @@ static std::string bootstrap(const char *path) {
         << ",\"image_address\":" << session->image_address
         << ",\"stack_address\":" << session->stack_address
         << ",\"fault_address\":" << session->memory.fault_address
+        << ",\"error_dialog_code\":" << uint32_t(session->error_dialog_code)
+        << ",\"broadcasting\":false,\"live_streaming_initialized\":" << (session->live_streaming_initialized ? "true" : "false")
+        << ",\"trophy_persistence\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
@@ -545,11 +646,14 @@ static bool serviceChecks() {
     mapRegion(session.memory, 0x20000000, session.stack.data(), session.stack.size());
     active = &session;
     unsigned checks = 0;
-    auto call = [&](const char *name, uint64_t argument = 0) {
+    auto call = [&](const char *name, uint64_t argument = 0, uint64_t second = 0, uint64_t third = 0, uint64_t fourth = 0) {
         session.memory.fault = {};
         session.state = State{};
         session.state.gpr.rsp.qword = 0x20000ff8;
         session.state.gpr.rdi.qword = argument;
+        session.state.gpr.rsi.qword = second;
+        session.state.gpr.rdx.qword = third;
+        session.state.gpr.rcx.qword = fourth;
         store64(session.memory, session.state.gpr.rsp.qword, 0xfeedface);
         for (size_t i = 0; i < std::size(imports); ++i)
             if (!std::strcmp(imports[i].symbol, name)) {
@@ -566,8 +670,8 @@ static bool serviceChecks() {
     require(call("sceSysmoduleLoadModule", 7) == 0 && session.memory.fault.empty());
     require(call("sceSysmoduleUnloadModule", 7) == 0);
     require(call("sceSysmoduleUnloadModule", 7) == 0x805a1001u);
-    call("sceSysmoduleLoadModule", 173); // 0xad is NpTrophy, never SaveDataDialog.
-    require(session.memory.fault == "module provider unavailable");
+    require(call("sceSysmoduleLoadModule", 173) == 0 && session.memory.fault.empty());
+    require(session.compatibility_modules.find(160) == session.compatibility_modules.end());
     require(call("sceSysmoduleLoadModule", 160) == 0 && session.memory.fault.empty());
     require(call("sceSaveDataDialogInitialize") == 0);
     require(call("sceSaveDataDialogInitialize") == 0x80b80004u);
@@ -583,6 +687,30 @@ static bool serviceChecks() {
     require(session.gesture_setup_calls == 1);
     call("sceSysmoduleLoadModule", 65535);
     require(session.memory.fault == "module provider unavailable");
+    require(call("sceNpTrophyCreateContext") == 0x80551604u);
+    require(call("sceNpTrophyCreateContext", 0x20000081, 1000) == 0);
+    int32_t context = 0, handle = 0, platinum = 0;
+    std::memcpy(&context, session.stack.data() + 0x81, 4);
+    require(context == 1);
+    require(call("sceNpTrophyCreateContext", 0x20000089, 1000) == 0x80551613u);
+    require(call("sceNpTrophyCreateHandle", 0x20000085) == 0);
+    std::memcpy(&handle, session.stack.data() + 0x85, 4);
+    require(call("sceNpTrophyRegisterContext", context, handle) == 0);
+    require(call("sceNpTrophyRegisterContext", context, handle) == 0x80551610u);
+    require(call("sceNpTrophyGetTrophyUnlockState", context, handle, 0x20000100, 0x20000120) == 0);
+    uint32_t count = 0, flags = 0;
+    std::memcpy(&count, session.stack.data() + 0x120, 4);
+    require(count == 0);
+    require(call("sceNpTrophyUnlockTrophy", context, handle, 3, 0x20000124) == 0);
+    std::memcpy(&platinum, session.stack.data() + 0x124, 4);
+    require(platinum == -1);
+    require(call("sceNpTrophyGetTrophyUnlockState", context, handle, 0x20000100, 0x20000120) == 0);
+    std::memcpy(&count, session.stack.data() + 0x120, 4);
+    std::memcpy(&flags, session.stack.data() + 0x100, 4);
+    require(count == 0 && flags == 8); // Count is metadata total, unavailable in this RAM-only fixture.
+    require(call("sceNpTrophyUnlockTrophy", context, handle, 3, 0x20000124) == 0x8055160cu);
+    require(call("sceNpTrophyDestroyHandle", handle) == 0);
+    require(call("sceNpTrophyGetTrophyUnlockState", context, handle, 0x20000100, 0x20000120) == 0x80551608u);
     session.memory.fault = {};
     uint64_t allocation = allocate(session, 4096, true);
     auto bytes = guestPointer(session.memory, allocation, 4096);
@@ -598,7 +726,7 @@ int main(int argc, char **argv) {
         return 2;
     try {
         if (!std::strcmp(argv[1], "--service-check")) return serviceChecks() ? 0 : 1;
-        puts(bootstrap(argv[1]).c_str());
+        std::printf("OSL_STARTUP_RESULT:%s\n", bootstrap(argv[1]).c_str());
         return 0;
     } catch (const std::exception &e) {
         fprintf(stderr, "%s\n", e.what());
