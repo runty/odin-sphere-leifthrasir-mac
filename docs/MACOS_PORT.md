@@ -12,7 +12,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Signed local alpha installed, relative graphics dependencies, protected local state, verified local runtime library; normal app launch logs Metal launcher shown | Automated native UI capture is unavailable; fresh-account/visible click-through remain unclaimed |
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
-| Mobile baseline | Clean CPU-only build ran on iPhone; clean 624-trace startup/GPU probe installs on both devices | Both deny background launch while locked; stale returned hardware JSON is excluded |
+| Mobile baseline | Clean CPU-only build ran on iPhone; clean `dcd85de` 664-trace startup/GPU probe installs on both devices | iPhone launch denied Locked; iPad input transfer timed out; stale hardware JSON is excluded |
 | Mobile startup/graphics | Host reaches 664 traces with checked sparse direct memory and native libc fill; iPhoneOS driver/framework builds and native submit/readback passes | Full eboot startup, physical GPU execution, captured game draw, title/battle frames and offline lifecycle |
 
 The first module-startup hardware result is explicitly a development build:
@@ -32,11 +32,12 @@ omits the driver's required Metal 4 protocols; it supplies CPU/lifecycle
 evidence only. [Graphics adapters and current limits](../ios/graphics/README.md).
 Physical mobile rendering and full guest startup remain open.
 
-The next host checkpoint completes both initializers and 1,638 dispatches with
+The next host/clean Simulator checkpoint completes both initializers and 1,638 dispatches with
 1,070,596,096 direct bytes allocated, then stops at `sceUserServiceInitialize`.
 The sparse memory and checked libc adapters pass 96 memory and 88 service checks;
-fixed-address and repeated ASLR runs agree. A clean 635-trace Simulator run also
-passes 414 comparisons and preserves its input container across app replacement.
+fixed-address and repeated ASLR runs agree. Clean `dcd85de` Simulator runs pass
+414 comparisons, repeat the 664-trace result at launch counts 5 and 6, and
+preserve their input container across app replacement.
 These later results do not turn an installation on locked hardware into an
 execution result. [Current startup scope](../ios/game/README.md).
 

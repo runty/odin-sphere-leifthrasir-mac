@@ -175,5 +175,13 @@ corrupt/truncated image and pointer-table fixtures are rejected. Native memory,
 service, CPU comparison, atomic/fault and loop guard checks pass. iPhoneOS and
 Simulator exports validate their inputs again before publishing an archive, so
 an edit during compilation cannot silently publish mixed inputs. Physical
-devices still have the clean signed 624-trace baseline; newer host/Simulator
-evidence does not qualify execution on a locked device.
+devices still had the clean signed 624-trace baseline at the first host check;
+newer host/Simulator evidence does not qualify execution on a locked device.
+
+Clean `dcd85de` Simulator execution now repeats the 664-trace checkpoint twice
+(launch counts 5 and 6), with 414 CPU checks passing, preserved private input,
+both initializers returning zero and no memory fault. The signed iPhoneOS build
+includes the same audited Metal driver/framework and installs on both devices.
+iPhone input copy succeeds but launch is denied Locked. The iPad input transfer
+times out after installation, so launch is skipped and its new inputs are not
+qualified. No fresh physical CPU or GPU execution is inferred from those installs.
