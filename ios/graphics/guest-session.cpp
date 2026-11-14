@@ -3,6 +3,7 @@
 #include "guest-gpu.h"
 #include "image-layout.h"
 #include <CommonCrypto/CommonDigest.h>
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <fstream>
@@ -10,6 +11,7 @@
 #include <signal.h>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 extern "C" uint64_t osl_aot_memory_allocated();
@@ -18,6 +20,7 @@ struct OslGuestSession {
     NativeGpu gpu;
     std::atomic<bool> stop{false},running{false},started{false};
     std::atomic<unsigned> calls{0};
+    std::atomic<bool> test_gate{false},test_gate_reached{false};
     bool faults=false;
     std::string report;
 };
@@ -92,7 +95,11 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
             [](void *opaque,const char *name,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result){
                 auto &s=*static_cast<OslGuestSession *>(opaque);
                 const bool handled=NativeGpu::call(&s.gpu,name,nid,args,stack,memory,result);
-                if(handled)++s.calls;
+                if(handled && ++s.calls==7 && s.test_gate) {
+                    s.test_gate_reached=true;
+                    const auto end=std::min(memory->deadline,std::chrono::steady_clock::now()+std::chrono::seconds(1));
+                    while(!s.stop && std::chrono::steady_clock::now()<end)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
                 return handled;
             },[](void *opaque){NativeGpu::finish(&static_cast<OslGuestSession *>(opaque)->gpu);},&session->stop};
         const std::string guest=osl_mobile_game_report_with_gpu(path,&services);
@@ -107,13 +114,17 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
             <<",\"attributes_set\":"<<gpu.attributes_set<<",\"buffers_registered\":"<<gpu.buffers_registered
             <<",\"mapped_before_reset\":"<<gpu.mapped_before_reset<<",\"unmapped_after_reset\":"<<unmapped
             <<",\"guest_resources_released\":"<<released<<"},\"presented_frames\":"<<oslgpu_presented_frames()
-            <<",\"game_frames\":false}";
+            <<",\"test_gate_enabled\":"<<session->test_gate.load()<<",\"test_gate_reached\":"<<session->test_gate_reached.load()<<",\"game_frames\":false}";
         session->report=out.str();
     } catch(...) {session->report="{\"error\":\"Native guest frontend failure\",\"game_frames\":false}";}
     session->running=false;return session->report.c_str();
 }
 extern "C" void osl_guest_session_request_stop(OslGuestSession *session) {if(session)session->stop=true;}
 extern "C" unsigned osl_guest_session_gpu_calls(OslGuestSession *session) {return session ? session->calls.load() : 0;}
+extern "C" int osl_guest_session_test_gate_after_buffers(OslGuestSession *session) {
+    if(!session || session->started)return 0;
+    session->test_gate=true;return 1;
+}
 extern "C" int osl_guest_session_destroy(OslGuestSession *session) {
     if(!session || session->running || session->faults)return 0;
     delete session;return 1;

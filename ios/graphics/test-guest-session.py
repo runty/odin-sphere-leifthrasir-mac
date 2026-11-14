@@ -59,6 +59,7 @@ for mode in ('normal','pre-stop','live-stop'):
  else:
   assert guest['completed_modules']==2 and cleanup['opened']==1 and cleanup['buffers_registered']==3
   assert cleanup['mapped_before_reset'] and cleanup['unmapped_after_reset']
+  if mode=='live-stop':assert result['test_gate_enabled'] and result['test_gate_reached']
   if mode=='live-stop' and guest['error']!='guest execution interrupted':
    # Main-thread polling can deliver cancellation after the CPU has already
    # stopped, while the native report/cleanup is still running. Preserve that

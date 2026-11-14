@@ -43,6 +43,8 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic) BOOL faultsInstalled;
 @property(nonatomic) BOOL stopAfterBuffers;
 @property(nonatomic) BOOL diagnosticStopRequested;
+@property(nonatomic) BOOL testGate;
+@property(nonatomic) BOOL testGateReported;
 @end
 static OdinRendererSession *activeSession;
 @implementation OdinRendererSession
@@ -95,6 +97,7 @@ static OdinRendererSession *activeSession;
         @"fault_handlers_restored":@(faultsRestored),@"guest_context_released":@(contextReleased),@"guest_worker_joined":@(!self.workerRunning),
         @"guest_requested":@(self.image!=nil),@"guest_session":self.guestReport?:@{},@"presented_frames":@(presented),
         @"diagnostic_stop_requested":@(self.diagnosticStopRequested),
+        @"diagnostic_gate_requested":@(self.testGate),
         @"game_executed":@(executed),@"game_frames":@NO,@"stage":@"stopped"} mutableCopy];
     if(self.pendingError)report[@"error"]=self.pendingError;
     [self persist:report];
@@ -106,6 +109,10 @@ static OdinRendererSession *activeSession;
     if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){[self finish:@"App left foreground during bounded renderer session"];return;}
     if(oslgpu_poll_main_thread()!=1){[self finish:@"Renderer window closed during polling"];return;}
     ++self.polls;
+    if(self.image && self.testGate && !self.testGateReported && osl_guest_session_gpu_calls(guestContext)>=7){
+        self.testGateReported=YES;
+        [self persist:@{@"stage":@"guest buffers registered; diagnostic cancellation gate",@"game_frames":@NO}];
+    }
     if(self.image && self.stopAfterBuffers && osl_guest_session_gpu_calls(guestContext)>=7){
         self.diagnosticStopRequested=YES;
         [self finish:@"Requested bounded guest stop after GPU callbacks"];return;
@@ -142,6 +149,8 @@ static OdinRendererSession *activeSession;
     // here; the bounded runner retains its own execution deadline/checkpoints.
     const char *stop=getenv("OSL_GUEST_STOP_AFTER_GPU_CALLS");
     self.stopAfterBuffers=stop && !std::strcmp(stop,"7");
+    const char *gate=getenv("OSL_GUEST_TEST_GATE");
+    self.testGate=gate && !std::strcmp(gate,"after-buffers");
     __weak OdinRendererSession *weakSelf=self;
     self.inactiveObserver=[NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){(void)note;[weakSelf finish:@"App resigned active during bounded renderer session"];}];
     self.activeObserver=[NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){(void)note;if(weakSelf.pendingFinish)[weakSelf finish:nil];}];
@@ -151,6 +160,7 @@ static OdinRendererSession *activeSession;
     guestContext=osl_guest_session_create();
     if(!guestContext || !osl_guest_session_faults_begin(guestContext)){[self finish:@"Cannot acquire renderer fault handling"];return;}
     self.faultsInstalled=YES;
+    if(self.image && self.testGate && !osl_guest_session_test_gate_after_buffers(guestContext)){[self finish:@"Cannot configure diagnostic cancellation gate"];return;}
     [self persist:@{@"stage":@"starting renderer",@"guest_requested":@(self.image!=nil),@"sdk":@(self.sdk),@"game_frames":@NO}];
     SDL_SetMainReady();oslgpu_register_kernel();
     NSString *settings=[self.profile stringByAppendingPathComponent:@"osl.ini"];

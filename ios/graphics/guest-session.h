@@ -15,6 +15,9 @@ int osl_guest_session_faults_end(OslGuestSession *);
 const char *osl_guest_session_run(OslGuestSession *,const char *image);
 void osl_guest_session_request_stop(OslGuestSession *);
 unsigned osl_guest_session_gpu_calls(OslGuestSession *);
+/* Developer fixture only: pause at seven real callbacks for at most one second,
+ * bounded by the guest deadline, so a scene transition can cancel a live guest. */
+int osl_guest_session_test_gate_after_buffers(OslGuestSession *);
 /* Only after the worker is joined and fault ownership has ended. */
 int osl_guest_session_destroy(OslGuestSession *);
 #ifdef __cplusplus

@@ -42,6 +42,7 @@ int main(int argc,char **argv){
     oslgpu_register_kernel();const std::string profile=argv[2],settings=profile+"/osl.ini";
     OslGpuConfig config{"Odin guest ownership check","CUSA05083",profile.c_str(),settings.c_str(),sdk,0,960,540};
     require(oslgpu_init(&config)==0);
+    if(mode=="live-stop")require(osl_guest_session_test_gate_after_buffers(guest));
     if(mode=="pre-stop")osl_guest_session_request_stop(guest);
     std::atomic<bool> done{false};std::string report;
     std::thread worker([&]{report=osl_guest_session_run(guest,argv[1]);done=true;});
