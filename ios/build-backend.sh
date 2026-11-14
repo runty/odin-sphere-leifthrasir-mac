@@ -17,15 +17,14 @@ mkdir -p "$root"
 if [[ ! -d $root/remill ]]; then
     git clone --no-checkout https://github.com/lifting-bits/remill.git "$root/remill"
     git -C "$root/remill" checkout --detach "$pin"
-    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps rcpps; do
+    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps rcpps blendps; do
         git -C "$root/remill" apply "$source_dir/remill-$name.patch"
     done
 else
     [[ $(git -C "$root/remill" rev-parse HEAD) == "$pin" ]] || { echo 'Unexpected backend revision; leaving it untouched' >&2; exit 1; }
-    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps rcpps; do
-        git -C "$root/remill" apply --reverse --check "$source_dir/remill-$name.patch"
-    done
+
 fi
+python3 "$source_dir/audit-backend.py" --backend "$root/remill"
 cmake -G Ninja -S "$root/remill/dependencies" -B "$root/remill-deps" -DUSE_EXTERNAL_LLVM=ON \
     "-DCMAKE_PREFIX_PATH=$llvm" "-DCMAKE_INSTALL_PREFIX=$root/remill-install"
 cmake --build "$root/remill-deps" --parallel 8

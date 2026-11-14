@@ -1,0 +1,29 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2435,3 +2435,25 @@ IF_AVX(DEF_ISEL(VRCPPS_XMMdq_XMMdq) = RCPPS<VV128W, V128>;)
+ IF_AVX(DEF_ISEL(VRCPPS_XMMdq_MEMdq) = RCPPS<VV128W, MV128>;)
+ IF_AVX(DEF_ISEL(VRCPPS_YMMqq_YMMqq) = RCPPS<VV256W, V256>;)
+ IF_AVX(DEF_ISEL(VRCPPS_YMMqq_MEMqq) = RCPPS<VV256W, MV256>;)
++
++// (V)BLENDPS selects complete 32-bit lanes. This is a bit operation: NaN
++// payloads and signed zeros are copied unchanged, without FP exceptions/flags.
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(BLENDPS, D dst, S1 src1, S2 src2, I8 immediate) {
++  const auto first = UReadV32(src1);
++  const auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  const auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i)
++    result = UInsertV32(result, i, (mask & (1u << i)) ? UExtractV32(second, i) : UExtractV32(first, i));
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(BLENDPS_XMMdq_XMMdq_IMMb) = BLENDPS<V128W, V128, V128>;
++DEF_ISEL(BLENDPS_XMMdq_MEMdq_IMMb) = BLENDPS<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VBLENDPS_XMMdq_XMMdq_XMMdq_IMMb) = BLENDPS<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VBLENDPS_XMMdq_XMMdq_MEMdq_IMMb) = BLENDPS<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VBLENDPS_YMMqq_YMMqq_YMMqq_IMMb) = BLENDPS<VV256W, V256, V256>;)
++IF_AVX(DEF_ISEL(VBLENDPS_YMMqq_YMMqq_MEMqq_IMMb) = BLENDPS<VV256W, V256, MV256>;)

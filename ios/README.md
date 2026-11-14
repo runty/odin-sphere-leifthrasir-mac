@@ -150,3 +150,22 @@ bound (including its tiny-result boundary), special values, unchanged flags and
 correct upper lanes. This is ISA-contract qualification, not exact cross-CPU
 reciprocal bits, a full-game boot, or a mobile frame. A new game corpus must
 re-lift every seeded PC using the changed semantics before further discovery.
+
+### Immediate packed-single blends
+
+The executed `VBLENDPS` gap at `0x106aa713` is implemented by
+`remill-blendps.patch`: six legacy/AVX, XMM/YMM, register/memory forms select
+32-bit lanes without floating-point arithmetic. `ios/cpu/test-blendps.py`
+checks every immediate, distinct source/destination patterns, NaN/signed-zero
+bits, preserved sources/flags/MXCSR and legacy/VEX upper lanes. All 12,288 output
+lanes match native x86 under Rosetta exactly. Reciprocal, VPERMILPS and the 414
+real-routine checks also pass with the new backend.
+
+Use a NEW backend and game corpus after this semantics change. The builder's
+`audit-backend.py` compares the complete ordered patch set through a temporary
+Git index rather than trying to reverse each patch in isolation; stacked
+end-of-file patches depend on one another. It rejects unexpected tracked edits
+and untracked files without changing the working tree. Positive/negative audit
+checks pass against a separate checkout. Backend semantics SHA:
+`0ba9d2c0d84b78f7bf119a1e4ab1ea2720673541176044d52766d671f64e4efd`.
+Unit qualification does not establish a new game startup or mobile frame.
