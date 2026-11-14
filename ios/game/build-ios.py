@@ -21,6 +21,15 @@ repo = source.parents[1]
 state = json.loads((root / "build-state.json").read_text())
 if state["reference"].get("completed_modules") != 2:
     p.error("First establish both actual module initializers on the Mac")
+backend = a.remill.resolve()
+expected_backend = state["trace_inputs"]
+actual_backend = {
+    "remill_commit": subprocess.check_output(["git", "-C", str(backend / "remill"), "rev-parse", "HEAD"], text=True).strip(),
+    "lifter_sha256": hashlib.sha256((backend / "remill-build/bin/lift/remill-lift-23").read_bytes()).hexdigest(),
+    "semantics_sha256": hashlib.sha256((backend / "remill-build/lib/Arch/X86/Runtime/amd64_avx.bc").read_bytes()).hexdigest(),
+}
+if any(actual_backend[key] != expected_backend[key] for key in actual_backend):
+    p.error("Backend differs from the established corpus; use its matching backend without reusing IR")
 def check_inputs():
     for group, directory in (("sources", repo), ("headers", root), ("ir", root / "traces")):
         for name, wanted in state[group].items():
@@ -65,6 +74,7 @@ check_inputs() # Never publish a mixed archive if sources changed during compila
 archive.replace(out / "libodin-startup.a")
 runtime_hash = hashlib.sha256((source.parent / "cpu/runtime.h").read_bytes() + (source.parent / "cpu/runtime.cpp").read_bytes()).hexdigest()
 (out / "manifest.json").write_text(json.dumps({"corpus_sha256": state["corpus_sha256"], "runtime_sha256": runtime_hash,
+    "trace_inputs": expected_backend,
     "trace_count": len(state["ir"]), "reference": state["reference"],
     "reference_runner_mode":state.get("runner_mode","headless"),"gpu_frontend_linked":False,
     "full_game_booted": False}, indent=2) + "\n")

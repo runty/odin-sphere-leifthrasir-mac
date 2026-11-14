@@ -613,3 +613,14 @@ the original frozen directory. Host startup reaches VideoOut at 1,027 entries /
 8 GiB window and zero permanent backing-view bytes, without a memory fault.
 This does not establish mobile GPU submission or game frames. New reciprocal
 coverage continues separately in `ios-game-rcpps/`.
+
+### Backend provenance when building SDK archives
+
+`build-ios.py` requires the Remill commit, lifter binary and semantics binary
+to match the frozen trace ledger before it creates output. Its manifest carries
+those inputs into packaging. `build-probe.sh` then requires the CPU fixtures
+and game library to match all three backend fields as well as the checked
+runtime. Archives made before this metadata was recorded need rebuilding with
+their original matching backend. A rejection does not rewrite an existing
+archive. This prevents a passing diagnostic from silently qualifying a game
+library built with different instruction semantics.

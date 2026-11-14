@@ -59,6 +59,11 @@ import json,sys
 cpu,game=[json.load(open(p)) for p in sys.argv[1:]]
 if cpu['runtime_sha256']!=game['runtime_sha256']:
     raise SystemExit('CPU and game startup libraries use different checked runtimes; rebuild them together')
+backend=game.get('trace_inputs')
+if not backend:
+    raise SystemExit('Game archive has no backend provenance; rebuild it with ios/game/build-ios.py')
+if any(cpu.get(key)!=backend.get(key) for key in ('remill_commit','lifter_sha256','semantics_sha256')):
+    raise SystemExit('CPU fixtures and game startup libraries use different backends; rebuild them together')
 PY
     cp "$4/$archive_platform/libodin-startup.a" "$build_dir/Source/libodin-startup.a"
     cp "$source_dir/ios/services/memory_probe.mm" "$build_dir/Source/memory_probe.mm"
