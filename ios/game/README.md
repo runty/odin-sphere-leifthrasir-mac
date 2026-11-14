@@ -564,3 +564,12 @@ All cleanup succeeds. This is evidence for eliminating the full-pool backing
 view via bounded aliases and using a qualified smaller guest window; it is NOT
 an implemented allocator fix. The reported PS4 physical pool must remain intact,
 with allocations/mappings rejected explicitly when actual host limits are met.
+
+
+Clean signed `1a2bba4` repeats the VM measurements on iPad launch 10, with CPU
+414 and GPU 64-word checks passing. Default launch 11 omits the VM diagnostics
+as intended and passes both check sets. Actual game startup is still blocked by
+the 8 GiB allocator window. New-backend corpus `01c7d8a3` now has 1,076 entries /
+652 dispatches, both initializers zero and no memory fault, rebuilding narrower
+seed coverage; it has not yet regained the older VideoOut/four-worker checkpoint.
+The game reciprocal path and mobile gameplay remain unverified.
