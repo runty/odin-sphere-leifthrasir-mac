@@ -360,17 +360,27 @@ static int open_pool(void) {
 #define OSL_NOREPLACE MAP_FIXED_NOREPLACE
 static int open_pool(void) { return memfd_create("osl-guest-memory",MFD_CLOEXEC); }
 #endif
+static int pool_failure(const char *stage, int error) {
+#ifdef OSL_AOT_CPU
+    static unsigned reported;
+    if (reported++<3)
+        fprintf(stderr,"Runtime: AOT memory pool unavailable at %s (errno %d)\n",stage,error);
+#else
+    (void)stage; (void)error;
+#endif
+    return -1;
+}
 static int pool(void) {
     if (pool_fd>=0) return 0;
     runtime_memory_reserve();
 #ifdef OSL_AOT_CPU
-    if (!USER_MIN) return -1;
+    if (!USER_MIN) return pool_failure("virtual window reservation",errno);
 #endif
     int fd=open_pool();
-    if (fd<0) return -1;
-    if (ftruncate(fd,(off_t)(POOL_SIZE+FLEX_SPAN))) { close(fd); return -1; }
+    if (fd<0) return pool_failure("sparse file creation",errno);
+    if (ftruncate(fd,(off_t)(POOL_SIZE+FLEX_SPAN))) { int error=errno; close(fd); return pool_failure("sparse file sizing",error); }
     void *view=mmap(NULL,POOL_SIZE+FLEX_SPAN,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_NORESERVE,fd,0);
-    if (view==MAP_FAILED) { close(fd); return -1; }
+    if (view==MAP_FAILED) { int error=errno; close(fd); return pool_failure("backing view mapping",error); }
     pool_fd=fd;
     backing_base=view;
     return 0;

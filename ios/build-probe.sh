@@ -27,6 +27,13 @@ if len(p.parts)<3 or p.parts[1]!='Volumes' or not Path('/Volumes',p.parts[2]).is
 PY
 mkdir -p "$build_dir/Source"
 cp "$source_dir/ios/main.mm" "$build_dir/Source/main.mm"
+# Capability-enabled distribution needs a matching explicit provisioning profile.
+# Keep the baseline engineering probe reproducible with the cached wildcard.
+entitlements_setting=""
+if [[ ${OSL_PROBE_EXTENDED_MEMORY:-0} == 1 ]]; then
+    cp "$source_dir/ios/OdinSphere.entitlements" "$build_dir/OdinSphere.entitlements"
+    entitlements_setting='        CODE_SIGN_ENTITLEMENTS: OdinSphere.entitlements'
+fi
 iconset="$build_dir/Source/Assets.xcassets/AppIcon.appiconset"
 mkdir -p "$iconset"
 sips -z 1024 1024 "$source_dir/packaging/icons/app-icon-256.png" --out "$iconset/Icon.png" >/dev/null
@@ -110,6 +117,7 @@ $gpu_dependency
         ARCHS: arm64
         TARGETED_DEVICE_FAMILY: '1,2'
         CLANG_ENABLE_OBJC_ARC: YES
+$entitlements_setting
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
         GCC_PREPROCESSOR_DEFINITIONS: 'OSL_GAME_STARTUP=$game_enabled OSL_GPU_PROBE=$gpu_enabled'
         HEADER_SEARCH_PATHS: '\$(PROJECT_DIR)/Source/Headers'

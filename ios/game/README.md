@@ -28,8 +28,12 @@ launches 1 and 2 pass all 414 CPU cases and actual 64-word GPU fill/fence/readba
 with inputs preserved. Game startup completes both initializers but faults at
 unmapped zero after 7,053 checkpoints / 1,451 dispatches in identity mode.
 Diagnostic build `054eaea` reproduces it on launch 3 and locates the stop in the
-verified libc memset helper `0x10cd0ce0`. This is an unresolved startup defect,
-not a game or frame result. iPhone foreground launch is denied while locked;
+verified libc memset helper `0x10cd0ce0`. Clean `1ca1f12` reproduces it in BOTH
+identity and fixed-address modes (launches 4 and 5), caller `0x1068c366`.
+A bounded console launch 6 confirms real direct-pool allocation failures
+`0x8002000c` at `runtime_memory.c:598`, before the null memset. This points to
+physical memory-provider setup, rather than solely address rebasing. It remains
+an unresolved startup defect, not a game or frame result. iPhone foreground launch is denied while locked;
 no fresh iPhone execution is claimed. Matching Simulator launches 15 and 16
 repeat 414 cases, 1,022 entries and 2,562 dispatches at VideoOut. No mobile App0
 assets or actual game renderer are connected yet.
@@ -504,3 +508,23 @@ Qualification in the private Odin build root:
 --sanitizer address|thread` rebuilds all portable providers against a frozen
 source/IR/object ledger. Stop discovery first. The real assets remain read-only
 on the host only; physical/Simulator installed baselines are independent.
+
+
+### Mobile memory capabilities and provisioning
+
+`OSL_PROBE_EXTENDED_MEMORY=1 bash ios/build-probe.sh ...` requests
+`com.apple.developer.kernel.extended-virtual-addressing` and
+`com.apple.developer.kernel.increased-memory-limit` from the checked-in
+`ios/OdinSphere.entitlements`. These are normal Apple capabilities, not JIT
+or unsigned-code permissions. See Apple's [extended virtual addressing](https://developer.apple.com/documentation/BundleResources/Entitlements/com.apple.developer.kernel.extended-virtual-addressing)
+and [memory limit](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.kernel.increased-memory-limit)
+documentation. Additional physical memory is device dependent; callers must
+still handle allocation failures.
+
+The current cached wildcard provisioning profile lacks both capabilities;
+Xcode reports No Accounts when asked to create a matching profile. Of 36 cached
+profiles, one has both memory capabilities but belongs to another bundle, so it
+must not be reused to overwrite that app. The capability-enabled probe has NOT
+been signed or installed, and no fix is inferred from merely adding entitlements.
+The baseline probe remains buildable with the default capability flag off.
+Unattended memory-provider diagnostics and backend work can continue separately.
