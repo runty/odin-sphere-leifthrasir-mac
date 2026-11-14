@@ -14,7 +14,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mobile CPU | Original eboot/libc/Fios2 routines pass 414 comparisons; fresh iPad repeats them. Packed reciprocal/square-root semantics pass six forms / 1,572,864 lanes per CPU path against ISA contracts; packed-double blend/shuffle each match 12,288 native output lanes | Wider SIMD/ABI, callbacks/fibers, full title CPU budget and fresh updated iPhone execution |
 | Mobile baseline | Clean `1376d6a` installed/listed on both devices after Documents backups; iPad launches 12/13 pass CPU 414, native memory 19 and actual GPU readback 64 words | iPhone current launch denied Locked; older physical execution is historical, not a fresh result |
 | Mobile memory/startup | Bounded backing aliases remove the full-pool view, preserve physical accounting and adapt 8/4/2 GiB windows. Actual iPad allocates 1,294,155,776 sparse-pool bytes in a 4 GiB window and reaches VideoOut without the former fault; inputs survive relaunch | Full resident-memory/GPU workload and lifecycle qualification; mobile assets remain unimported |
-| Mobile graphics/workers | Native arm64 host corpus joins four guest workers and registers three 1080p buffers. Separate clean iPad check initializes/stops the full renderer twice, with real UIKit/SDL surface and driver readback | Connect actual guest GPU callbacks/assets to the UIKit renderer; validate real Gnm submissions/draw, title/battle frames, input/audio/saves and lifecycle |
+| Mobile graphics/workers | Native arm64 host corpus joins four guest workers and registers three 1080p buffers. Clean iPad startup now connects the actual guest to the full UIKit renderer, joins four workers, registers three 1080p buffers and tears down cleanly; controlled foreground-change cancellation and copied assets are verified | Extend executed CPU/Gnm paths to real submissions/draw, title/battle frames, input/audio/new in-game saves and gameplay lifecycle |
 
 Earlier bring-up checkpoints below are retained as history; the table above
 is current. The first module-startup hardware result is explicitly a development build:
@@ -544,3 +544,15 @@ fresh exact bundle-path/PID match and verified absence; no Odin physical test
 remains active after this checkpoint. Latest bootstrap host GPU corpus `584862ba`
 repeats strict 60-case and cleanup qualification, stopping at VBLENDPD. No game
 frame/mobile save acceptance is claimed, and UIKit appearance warnings remain.
+
+### UIKit guest integration
+
+Clean iPad startup `d3d876f` now runs the actual guest with SDK `0x03008041`,
+four joined workers, three registered buffers and full queue/mapping/window/
+signal ownership cleanup. Controlled cancellation across a real Settings
+foreground transition also passes, with an explicit diagnostic gate and the
+same PID after reactivation. Assets are imported and 33 selected files match
+by round-trip hashes. There are still zero presented game frames; CPU startup
+stops at a missing translated block. These are bounded startup checks, not
+full gameplay or new in-game save/resume acceptance. The Mac remains `af52e09`.
+[Scope and reproducible bridge build](../ios/graphics/README.md#uikit-guest-connection--2026-11-14).

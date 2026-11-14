@@ -420,3 +420,78 @@ open UI integration issue, and gameplay/background/resume remains unqualified.
 `UIApplicationSupportsIndirectInputEvents` is now declared for SDL mouse support.
 An earlier SIGTERM only acknowledged signal delivery and left the old normal
 probe resident; teardown verification now checks actual process absence.
+
+## UIKit guest connection — 2026-11-14
+
+The separately signed `com.wadscorp.odinsphere.startup` app now executes the
+actual guest with the real iPad A20 Pro renderer. Clean `0dea990` cold launches
+1/2 complete both module initializers, start/join four game-created workers,
+register three 1080p buffers and release two native queues and all tracked GPU
+mappings. Clean `d3d876f` repeats normal startup on launch 7, without a test gate
+or injected stop. CPU 414, memory 19, GPU readback 64 and real surface checks
+remain green. This establishes guest-to-renderer integration, **not game frames**:
+presentation stays at zero and execution stops at missing translated block
+`0x106af238`. Mobile game input/audio/save loading and actual draws remain open.
+
+`guest-session.cpp` owns the shared checked VideoOut adapter and optional
+frontend cancellation flag. UIKit validates the full image/relocation hashes
+before reading the actual procparam SDK (`0x03008041`), initializes on main and
+runs guest execution on an owned C++ thread. After the guest report, main joins
+that thread before stopping the renderer, restoring previous SIGSEGV/SIGBUS
+handlers and deleting its context. Guest cleanup itself joins child CPUs, drains
+GPU work, closes queues and releases mappings in that order. A scene transition
+requests cooperative cancellation; if inactive, renderer teardown waits for a
+foreground return. Expiring background time ends its task lease after requesting
+stop. This is a bounded startup lifecycle, not gameplay pause/resume.
+
+Actual iPad launch 3 passes cancellation after buffer registration. Launch 6
+uses an explicitly injected diagnostic pause at seven real GPU callbacks, then
+activates Settings. The same process acknowledges guest join in the background,
+returns to the foreground and completes renderer/window/signal cleanup. This
+controlled case has three buffers and no child guest threads yet; the owned
+frontend thread is joined. Normal cold launches independently cover four child
+workers. The gate is at most one second and respects the guest deadline; it
+is never enabled by default and its timing is not performance evidence.
+
+Native real-renderer fixtures cover normal/pre-stop/live-stop sessions, rejected
+reuse/wrong-thread ownership, prior-handler chaining/restoration and five image/
+pointer validation cases. Boundary/fixture AddressSanitizer also passes; renderer,
+game archive and driver/system libraries are uninstrumented in that test. Separate
+actual HLE/core ASan and TSan pass 4,322 service checks and three exception/stop
+fixtures, including an external flag interrupting a running checked worker. Guest IR
+is uninstrumented. UIKit appearance-transition warnings persist on restoration,
+although key-window identity and resource-release checks pass.
+
+Build the separately audited SDK boundary before packaging a renderer session:
+
+```sh
+python3 ios/graphics/build-guest-session.py --root "$WORK/ios-guest-session" \
+  --game "$STARTUP_CORPUS" --remill "$BACKEND" \
+  --renderer "$WORK/ios-renderer" --dependencies "$WORK/ios-renderer-deps" \
+  --headers "$WORK/ios-graphics/Headers" --sdk iphoneos
+OSL_PROBE_RENDERER_ROOT="$WORK/ios-renderer" \
+OSL_PROBE_GUEST_ROOT="$WORK/ios-guest-session" \
+OSL_PROBE_SDL_PREFIX="$WORK/ios-sdl/prefix-iphoneos" \
+OSL_PROBE_BUNDLE_ID=com.wadscorp.odinsphere.startup \
+OSL_PROBE_DISPLAY_NAME='Odin Sphere Startup' \
+  bash ios/build-probe.sh "$WORK/ios-uikit-app" "$DEVELOPMENT_TEAM" \
+    "$CPU_FIXTURES" "$STARTUP_CORPUS" "$WORK/ios-graphics"
+```
+
+Without `Documents/Guest/image.bin` this still runs the renderer-only check.
+With the validated image and adjacent `image-pointers.bin`, it starts the actual
+bounded guest. `Documents/Guest/App0` is its read-only game root; progress uses
+its separate `Guest/MobileProfile`. Private assets were copied into the actual
+iPad container and round-tripped: 33 selected files / 3,588,577,051 bytes match
+the source SHA inventory; one keystone control file is excluded by the key-path
+rule. Neither this transfer nor a matching input hash proves an in-game save.
+The existing Mac app and earlier probe containers remain separate.
+
+Developer diagnostics only: `OSL_GUEST_STOP_AFTER_GPU_CALLS=7` requests a stop
+from a display-link poll; `OSL_GUEST_TEST_GATE=after-buffers` enables the bounded
+pause for controlled scene-transition testing. Live console markers observe the
+pause and the background join without adding file-transfer latency. The earlier
+ungated scene attempt completed too quickly, and an initial file-based observer
+timed out; neither is counted as background acceptance. Both SDK boundary
+archives compile, and the default non-renderer Simulator app still builds. No
+fresh physical iPhone execution or Simulator Metal 4 driver run is claimed.

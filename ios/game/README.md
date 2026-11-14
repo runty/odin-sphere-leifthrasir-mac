@@ -653,3 +653,22 @@ the qualified CPU fixture backend. A complete default Simulator diagnostic app
 also builds and passes bundle signature verification with the new packaging
 provenance checks. These outputs are staged, not installed or executed; the
 archive manifest still marks `gpu_frontend_linked=false` and no full-game boot.
+
+### Frontend cancellation and actual UIKit execution
+
+Corpus `6cb0f60193353d971a5091216f51cc7d267d0ea79951b8b2a050208e8ab01898`
+refreshes 1,059 entries after the optional frontend stop flag is shared by the
+primary and child CPUs. Real native GPU 60, HLE/core ASan/TSan 4,322 and three
+cleanup/stop fixtures pass; both SDK archives build with matching provenance.
+The actual iPad startup app now links the separate audited GPU frontend and
+executes this corpus: two zero-return initializers, four joined child workers,
+three video buffers, missing block `0x106af238`, no fault or presented frame.
+The library manifest's `gpu_frontend_linked=false` describes that archive by
+itself; the app links the frontend separately and reports the real adapter active.
+
+Normal cold launch/relaunch, explicit buffer-boundary stop and controlled actual
+foreground-change cleanup are verified. The scene test cancels the guest and
+finishes teardown after reactivation; it does not resume gameplay. App0 assets
+are now present on iPad with round-trip SHA checks for all 33 selected files,
+excluding one keystone under the key-path rule. iPhone retains the older probe.
+[Full integration scope](../graphics/README.md#uikit-guest-connection--2026-11-14).
