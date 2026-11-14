@@ -9,11 +9,11 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac loader/runtime | Real 307-import check, module startup, title and battle gameplay | Other profiles/hosts are unqualified |
 | Mac graphics/performance | Vulkan-on-Metal scenes; player-confirmed corrected combat; selected native-1080p busy windows reach median 60 fps | Whole-game pacing and sustained 30-minute session |
 | Mac audio/progress | Player heard clear audio and confirmed progress survived quit/relaunch | Longer interruption/failure and device-change coverage |
-| Mac app | Signed local alpha installed, relative graphics dependencies, protected local state, verified local runtime library; normal app launch logs Metal launcher shown | Automated native UI capture is unavailable; fresh-account/visible click-through remain unclaimed |
+| Mac app | Clean `f6f6aee` local alpha installed, relative drivers, preserved profile; packaged restart and installed 600-frame checks pass, normal launch reaches Metal launcher | Native UI capture remains unavailable; visible saved-slot loading/fresh-account click-through and 30-minute gameplay are unclaimed |
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
 | Mobile baseline | Clean CPU-only build ran on iPhone; clean `dcd85de` 664-trace startup/GPU probe installs on both devices | iPhone launch denied Locked; iPad input transfer timed out; stale hardware JSON is excluded |
-| Mobile startup/graphics | Host/clean Simulator reach 680 traces through shared users and GameController initialization; sparse memory/libc fill, iPhoneOS driver/framework builds and native submit/readback pass | Save/file/thread startup, physical GPU execution, captured game draw, title/battle frames and offline lifecycle |
+| Mobile startup/graphics | Host/clean Simulator reach 682 traces through real private storage/save initialization; iPhoneOS driver/framework builds and native submit/readback pass | Offline NP/thread/TLS startup, real asset import, physical GPU execution, captured game draw, title/battle frames and lifecycle |
 
 The first module-startup hardware result is explicitly a development build:
 244 traces, two zero-return initializers, 397 dispatches, missing logical PC
@@ -49,6 +49,19 @@ and repeats startup at 680 traces / 1,655 dispatches in the clean Simulator
 complete, and the next missing service is `sceSaveDataInitialize`. Its signed
 iPhoneOS app/framework is staged; physical devices retain `dcd85de`. No physical
 input/haptics or new hardware execution is claimed by those automatic checks.
+
+Shared storage `f6f6aee` now passes cross-process native arm64/Rosetta and checked
+guest fixtures, including metadata write/permission failures and read-only
+mounts. Clean Simulator launches 9 and 10 reach 682 traces / 1,657 dispatches,
+create their private roots and complete save initialization, then stop at
+`sceNpSetNpTitleId`. The signed device app is staged; hardware retains `dcd85de`.
+The same source is now installed on Mac after clean pinned build, relocated
+bundle/seven-page/restart checks and an installed 600-frame run. The copied
+existing save mounts read-only, its bytes remain intact, and all 302 checked
+files in the original profile retain their hashes. Secret/signing files were
+excluded from those checks. Normal launch logs a fresh Metal launcher shown;
+native capture still reports `cgWindowNotFound`. No visible-slot load or longer
+gameplay acceptance is inferred from these bounded checks.
 
 
 ## Unattended completion order
