@@ -79,9 +79,9 @@ int main(int argc,char **argv) {
         std::printf("OSL_AOT_GPU_RESULT:{\"opened\":%u,\"closed\":%u,\"mapped_before_reset\":%s,"
                     "\"unmapped_after_reset\":%s,\"guest_resources_released\":%s,\"sdk\":%u,"
                     "\"presented_frames\":%llu,\"queues_created\":%u,\"queues_deleted\":%u,\"events_added\":%u,"
-                    "\"attributes_set\":%u,\"buffers_registered\":%u,\"gnm_init_calls\":%llu,\"gnm_init_words\":%llu,\"game_frames\":false,\"discovery_only\":%s}\n",context.opened,context.closed,
+                    "\"attributes_set\":%u,\"buffers_registered\":%u,\"gnm_init_calls\":%llu,\"gnm_init_words\":%llu,\"gnm_shader_calls\":%llu,\"game_frames\":false,\"discovery_only\":%s}\n",context.opened,context.closed,
                     context.mapped_before_reset?"true":"false",unmapped?"true":"false",released?"true":"false",
-                    static_cast<uint32_t>(sdk),(unsigned long long)oslgpu_presented_frames(),context.queues_created,context.queues_deleted,context.events_added,context.attributes_set,context.buffers_registered,(unsigned long long)context.gnm_init_calls,(unsigned long long)context.gnm_init_words,discovery_only?"true":"false");
+                    static_cast<uint32_t>(sdk),(unsigned long long)oslgpu_presented_frames(),context.queues_created,context.queues_deleted,context.events_added,context.attributes_set,context.buffers_registered,(unsigned long long)context.gnm_init_calls,(unsigned long long)context.gnm_init_words,(unsigned long long)context.gnm_shader_calls,discovery_only?"true":"false");
         runtime_log_flush();
         SDL_Event quit{}; quit.type=SDL_EVENT_QUIT; SDL_PushEvent(&quit);
     });

@@ -16,7 +16,7 @@ if digest(deps_path)!=renderer['dependency_manifest_sha256']:p.error('Renderer d
 backend=state['trace_inputs']
 if subprocess.check_output(['git','-C',a.remill/'remill','rev-parse','HEAD'],text=True).strip()!=backend['remill_commit']:p.error('Backend revision mismatch')
 if digest(a.remill/'remill-build/bin/lift/remill-lift-23')!=backend['lifter_sha256'] or digest(a.remill/'remill-build/lib/Arch/X86/Runtime/amd64_avx.bc')!=backend['semantics_sha256']:p.error('Backend binary mismatch')
-sources={name:digest(repo/name) for name in ('ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-gpu.h','ios/services/gpu.h','ios/cpu/runtime.h','src/host_darwin.h','src/oslgpu.h')}
+sources={name:digest(repo/name) for name in ('ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packets.h','ios/services/gpu.h','ios/cpu/runtime.h','src/host_darwin.h','src/oslgpu.h')}
 layout_hash=digest(game/'image-layout.h');abi_hash=digest(a.remill/'remill/include/remill/Arch/X86/Runtime/State.h')
 def current():
  if state_path.read_bytes()!=state_bytes or renderer_path.read_bytes()!=renderer_bytes or deps_path.read_bytes()!=deps_bytes:raise RuntimeError('Input checkpoint changed during build')

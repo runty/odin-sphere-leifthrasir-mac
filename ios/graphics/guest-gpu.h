@@ -3,6 +3,7 @@
 // UIKit frontends. Own this context until the guest report returns: Session
 // joins guest workers, calls finish, then releases shared direct mappings.
 #include "../services/gpu.h"
+#include "gnm-shader-packets.h"
 #include "oslgpu.h"
 #include "core/libraries/kernel/equeue.h"
 #include "core/libraries/videoout/buffer.h"
@@ -22,12 +23,14 @@ struct NativeGpu {
     std::array<int64_t,64> queues{};
     unsigned queues_created=0,queues_deleted=0,events_added=0,attributes_set=0,buffers_registered=0;
     uint64_t gnm_init_calls=0,gnm_init_words=0;
+    uint64_t gnm_shader_calls=0;
     static bool format32(uint64_t value) {
         return value==0x80000000u || value==0x80002200u || value==0x88060000u || value==0x88000000u || value==0x88740000u;
     }
     static bool call(void *opaque,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result) {
         auto &self=*static_cast<NativeGpu *>(opaque);
         using namespace Libraries::VideoOut;
+        if(nativeGnmShaderPacket(symbol,nid,args,*memory,*result)) {++self.gnm_shader_calls;return true;}
         if(!std::strcmp(symbol,"sceGnmDrawInitDefaultHardwareState200") ||
            !std::strcmp(symbol,"sceGnmDispatchInitDefaultHardwareState")) {
             constexpr size_t words=Libraries::GnmDriver::HwInitPacketSize;
