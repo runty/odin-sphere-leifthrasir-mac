@@ -147,7 +147,15 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
                    && device.channels==2;
         SDL_AudioSpec spec={p->is_float ? SDL_AUDIO_F32 : SDL_AUDIO_S16, p->downmix ? 2 : p->channels, 48000};
         p->stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,NULL,NULL);
-        if (p->stream) SDL_ResumeAudioStreamDevice(p->stream);
+        if (p->stream) {
+            SDL_AudioDeviceID output=SDL_GetAudioStreamDevice(p->stream);
+            if (SDL_GetAudioDeviceFormat(output,&device,&device_frames))
+                printf("Runtime: audio output port %d: %d Hz, %d ch, %s, %d frames (%.2f ms)\n",
+                       id,device.freq,device.channels,SDL_GetAudioFormatName(device.format),device_frames,
+                       device.freq>0 ? 1000.0*device_frames/device.freq : 0.0);
+            else fprintf(stderr,"Runtime: audio output format unavailable (%s)\n",SDL_GetError());
+            SDL_ResumeAudioStreamDevice(p->stream);
+        }
         else fprintf(stderr,"Runtime: SDL audio stream failed (%s); port %d uses the timer sink\n",SDL_GetError(),id);
     }
     p->stats=getenv("OSL_AUDIO_STATS")!=NULL;

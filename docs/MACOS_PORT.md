@@ -281,3 +281,25 @@ env ROSETTA_ADVERTISE_AVX=1 VK_DRIVER_FILES="$ICD_JSON" OSL_AUDIO=none \
 The earlier Vulkan availability dialog is resolved. A long gameplay session,
 title-menu/battle acceptance and save/quit/reload remain open. PC frame parity,
 resize/display changes and audible CoreAudio need separate checks.
+
+## Live gameplay and CoreAudio
+
+The next disposable-profile session uses a 960x540 window, the US base image,
+and the same Cocoa/Metal build. Native inspection reached Gwendolyn's opening
+story scene, and the player subsequently confirmed that playing through works.
+The player also confirmed that game audio sounds good. These observations do
+not yet establish the full Refined/Classic, equipment, controller or save criteria
+in M4.
+
+For this audio run, leave OSL_AUDIO unset and set OSL_AUDIO_STATS=1 and
+SDL_AUDIO_DEVICE_SAMPLE_FRAMES=256. The guest opens 48 kHz, eight-channel float
+audio in 256-frame blocks; the existing mixer downmixes it to stereo. The initial
+48 five-second queue reports show one startup starvation and none thereafter,
+with 938 blocks per interval and a largest submit gap of 27.51 ms. A pre-device
+stereo capture of 330.976 seconds contains no non-finite samples. It is separate
+from the player's listening check and cannot detect output-device glitches.
+
+Audio startup now logs the opened SDL output device's actual sample rate,
+channels, format, frame count and period. This distinguishes the output period
+from the guest's block size and the requested SDL hint. Output changes and
+interruptions still need testing. Keep raw captures and save data outside Git.
