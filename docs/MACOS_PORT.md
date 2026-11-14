@@ -303,3 +303,23 @@ Audio startup now logs the opened SDL output device's actual sample rate,
 channels, format, frame count and period. This distinguishes the output period
 from the guest's block size and the requested SDL hint. Output changes and
 interruptions still need testing. Keep raw captures and save data outside Git.
+
+The full first audio session exits with code 0 after the player quits. Its 122
+five-second audio reports retain the single startup starvation and zero later
+starvations. The last presentation counter is 26,400 frames and 11,754,107 draws;
+submission instrumentation was disabled in that run. On the next process,
+the opened CoreAudio output reports **48000 Hz, stereo SDL_AUDIO_F32LE, 256
+frames (5.33 ms)**. Native inspection also reaches the opening combat tutorial,
+with enemies, attack effects and the pause menu showing Valkyrie, Prologue,
+Act 2, Storming Battlefields, Normal difficulty.
+
+The first session did not change the initial profile's save bytes or timestamps.
+A backup was taken before the second launch. The second session writes new
+SAVEDATA00 contents and exits zero. After a third process launch, the player
+confirms that the save worked, then quits; that process also exits zero. The
+1,156,096-byte game save retains the same SHA-256 across the third process.
+The latest profile, earlier copies and hash manifests stay in the private test
+directory. This establishes one player-confirmed save/reload, not the full M4
+repeat-reload and storage-failure checks. Larger window/fullscreen changes in
+the second session also show frame-time spikes, so 60 fps gameplay acceptance
+remains open.
