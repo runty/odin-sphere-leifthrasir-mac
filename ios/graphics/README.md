@@ -611,3 +611,53 @@ against the matching renderer; physical apps are unchanged. Evidence:
 CPU discovery continues toward the game's first use of these adapters. Flip-wait
 packets, bounded Equeue waits and further VideoOut services remain to be connected
 as encountered; visible mobile game frames and gameplay acceptance remain open.
+
+### DWORD packet alignment and guarded presentation synchronization
+
+`51fc298` fixes WriteData's C++ alignment for serialized PM4 streams. Its u64
+address union previously imposed eight-byte alignment, while a packet following
+an odd number of dwords starts on a four-byte boundary. Four-byte packing keeps
+all serialized offsets/sizes unchanged; static assertions pin alignment, address
+offset and payload offset. A byte-exact/canary test at a four-byte offset passes
+UBSan on arm64 and Rosetta. The previous layout fails the same test on both CPUs.
+Evidence: `presentation-qualified/layout-{arm64,x86_64}/` and `layout-baseline/`.
+
+`a2ef8e2` adds checked InsertWaitFlipDone packets, native IsUserPaEnabled queries
+and guarded VideoOutWaitVblank. Flip waits require the exact seven-dword capacity,
+an owned port, an index within the 16 native labels and checked writable output.
+Aligned scratch also supports unaligned guest output. A label does not need a
+registered display buffer yet. Performance queries return the backend's retail
+capability result; no profiling facility is implemented.
+
+The original native vblank export retains its condition-variable wait. The
+host-only guarded entry observes cancellation/deadlines at five-millisecond
+intervals while waiting on that same condition variable, preserving notification-
+driven wakeups. Its guard only observes host state under the port mutex. The
+frontend releases both HLE leases via the shared `NativeGpuWait` scope, restores
+them after native return and reports interruption outside native locks, without
+returning host EINTR as a guest result. No guest Equeue-wait adapter is inferred:
+this image directly imports VideoOutWaitVblank, with no direct WaitEqueue import.
+
+The native ASan/UBSan presentation fixture passes 99 checks in the recorded runs:
+exact packet bytes/bounds/canaries, legacy and guarded vblank counter advances,
+a guard firing after an actual parked CV interval (5.765 / 6.006 ms in initial
+aligned runs), state/memory leases acquired by another CPU, cancellation/deadline
+handling with caller bytes/result preserved, and a real queued flip-wait packet.
+For the last case, a prepared diagnostic presentation is delayed; GPU retirement
+remains blocked until presentation releases the current buffer label, then the
+following WriteData acknowledgement completes. Two diagnostic buffers are
+presented. Native CPU flips must be prepared before blocking the command thread,
+since their preparation itself queues on that thread. Initial fixture ordering
+was corrected to respect this dependency.
+
+Only adapter/inline barrier/fixture code is instrumented in those GPU runs;
+native vblank/processor/renderer bodies, supporting HLE/CPU runtime, driver and
+system libraries remain uninstrumented. The separate layout test instruments
+the packet accesses on both host architectures. Batch/flip 245 checks still pass
+under both sanitizers; bridge 109 and boundary ASan lifecycle/input negatives pass.
+Both mobile renderers are rebuilt and all 173 object platform audits per SDK
+pass; iPhoneOS consumer links the signed ICD, Simulator has no driver execution
+claim. Matching game/boundary archives compile. Private evidence:
+`presentation-qualified/`, `ios-guest-session-presentation/`, and
+`ios-game-uikit-next/checkpoint-presentation/`. Actual game calls/frames and
+physical apps are unchanged; further executed-path discovery remains active.

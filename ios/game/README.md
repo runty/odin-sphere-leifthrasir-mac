@@ -798,3 +798,21 @@ Bridge 109, shader 305, separate boundary ASan lifecycle/five input negatives,
 4,336 service checks and four worker cleanup fixtures pass. The separate boundary
 normal path still reaches an earlier gap before child CPUs start. Instrumentation
 limits remain explicit in each report. Physical apps/saves are unchanged.
+
+### Presentation synchronization checkpoint
+
+`51fc298` fixes DWORD alignment of serialized WriteData packets without changing
+their bytes. `a2ef8e2` adds checked flip-wait packets and guarded native vblank
+waiting, plus the backend performance-capability query. The imported synchronization
+path uses VideoOutWaitVblank; no direct WaitEqueue import appears in this image.
+[Native synchronization and layout evidence](../graphics/README.md#dword-packet-alignment-and-guarded-presentation-synchronization).
+
+Qualified checkpoint `1a6a2ecae21120fae8590f8573ed63e9b6ff5682b04943febde523f60d8fc19d`
+has 1,243 entries. Strict native startup again completes both initializers,
+joins 17 workers, registers three buffers and releases mappings/queues. It stops
+at executable CPU gap `0x106bedd0` in 612.855 ms, with zero game vblank/flip-wait/
+submission calls or frames. Concurrent replay timing/path remains diagnostic.
+The 99-check presentation fixture uses two fixed diagnostic buffers; actual game
+use remains unverified. Both SDK renderer/game/boundary archives compile with
+matching layouts and manifests. Source/state/SDK metadata is preserved in
+`ios-game-uikit-next/checkpoint-presentation/`; physical apps/saves are unchanged.
