@@ -624,3 +624,25 @@ runtime. Archives made before this metadata was recorded need rebuilding with
 their original matching backend. A rejection does not rewrite an existing
 archive. This prevents a passing diagnostic from silently qualifying a game
 library built with different instruction semantics.
+
+### Packed-double host checkpoint
+
+The isolated eleven-patch backend re-lifts all 1,039 seed PCs at 65,536-byte
+windows and advances through the previous VBLENDPD stop. Twenty bounded native
+GPU discovery attempts establish 1,058 entries and then stop at the next missing
+translated block, `0x107d50a0`; this is an executed path still to extend, not a
+newly identified unsupported instruction. Frozen corpus:
+`ab9deb922fdb359e39534f205141355b49567f785e581820e2d9a9a90adffd68`.
+
+Strict qualification repeats all 60 GPU bridge checks, both zero-return module
+initializers, four joined guest workers, three registered 1080p buffers, two
+created/deleted queues, GPU mapping release and zero presented game frames.
+Concurrent dispatch/checkpoint totals vary; the check validates every stopped
+CPU against executable/import boundaries rather than claiming identical thread
+schedules. Headless fixed/identity/corrupt-image/pointer checks also pass.
+
+UIKit guest integration must read the SDK from the validated private image's
+procparam, as the native frontend does. This US base image contains `0x03008041`;
+the renderer-only diagnostic's fixed SDK must not be reused as game metadata.
+The shared VideoOut adapter does not yet connect the UIKit session to guest
+execution. Physical apps and the installed Mac remain unchanged.
