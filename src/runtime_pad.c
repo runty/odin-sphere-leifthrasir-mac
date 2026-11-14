@@ -15,6 +15,9 @@
 #include <time.h>
 #include <SDL3/SDL.h>
 #include <sys/stat.h>
+#ifdef __APPLE__
+#define st_mtim st_mtimespec
+#endif
 
 #define ERR_INVALID_ARG ((int32_t)0x80920001)
 #define ERR_INVALID_HANDLE ((int32_t)0x80920003)

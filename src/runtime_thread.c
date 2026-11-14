@@ -20,7 +20,9 @@
 #else
 #include <sys/syscall.h>
 #include <sys/mman.h>
+#ifndef __APPLE__
 #include <asm/prctl.h>
+#endif
 #endif
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define ATTR_MAGIC UINT32_C(0x41545452)
@@ -98,6 +100,9 @@ static void reap_detached(void) {
 #endif
 
 void runtime_set_main_tls(const void *data,uint64_t filesz,uint64_t memsz,uint64_t align) {
+#ifdef __APPLE__
+    if (memsz) { fputs("STOP: Darwin static guest TLS requires a segment-load adapter for this profile\n",stderr); exit(21); }
+#endif
     tls_template=data; tls_filesz=filesz; tls_memsz=memsz; tls_align=align ? align : 16;
 }
 static uint64_t tls_offset(void) { return (tls_memsz+tls_align-1)&~(tls_align-1); }
@@ -116,6 +121,10 @@ static void set_gs(void *base) {
     if (!TlsSetValue(tls_slot,base)) { fprintf(stderr,"STOP: TlsSetValue failed (%lu)\n",GetLastError()); exit(21); }
 }
 #define tls_block_alloc(size) _aligned_malloc(size,64)
+#elif defined(__APPLE__)
+/* Supported profile has no static segment-register TLS loads. Dynamic TLS uses the HLE service. */
+static void set_gs(void *base) { (void)base; }
+#define tls_block_alloc(size) runtime_low_map(size,PROT_READ|PROT_WRITE)
 #else
 static void set_gs(void *base) {
     if (syscall(SYS_arch_prctl,ARCH_SET_GS,(unsigned long)base)) { perror("STOP: arch_prctl(ARCH_SET_GS)"); exit(21); }
@@ -296,7 +305,11 @@ static ABI int32_t attr_set_guard(ThreadAttr **slot,uint64_t size) {
 static void set_host_name(const char *name) {
     char host[16]={0};
     memcpy(host,name,strnlen(name,sizeof(host)-1));
+#ifdef __APPLE__
+    pthread_setname_np(host);
+#else
     pthread_setname_np(pthread_self(),host);
+#endif
 #ifdef _WIN32
     /* winpthreads keeps its own name: the full one for debuggers, profilers and crash dumps. */
     wchar_t wide[64]={0};

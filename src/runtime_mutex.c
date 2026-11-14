@@ -139,8 +139,24 @@ static ABI int32_t mutex_timedlock(GuestMutex **mutex, uint32_t usec) {
     int32_t e = ensure_mutex(mutex);
     if (e) return e;
     struct timespec end;
+#ifdef __APPLE__
+    if (clock_gettime(CLOCK_MONOTONIC,&end)) return orbis_error(errno);
+    uint64_t ns=(uint64_t)end.tv_nsec+(uint64_t)usec*1000;
+    end.tv_sec+=(time_t)(ns/1000000000);
+    end.tv_nsec=(long)(ns%1000000000);
+    do {
+        e=pthread_mutex_trylock(&(*mutex)->native);
+        if (e!=EBUSY) break;
+        struct timespec now,delay={0,1000000};
+        if (clock_gettime(CLOCK_MONOTONIC,&now)) { e=errno; break; }
+        if (now.tv_sec>end.tv_sec || (now.tv_sec==end.tv_sec && now.tv_nsec>=end.tv_nsec)) { e=ETIMEDOUT; break; }
+        nanosleep(&delay,NULL);
+    } while (1);
+    e=timed_error(e);
+#else
     if (deadline_after(&end, usec)) return orbis_error(EINVAL);
     e = timed_error(pthread_mutex_timedlock(&(*mutex)->native, &end));
+#endif
     if (!e) ++locks;
     return e;
 }

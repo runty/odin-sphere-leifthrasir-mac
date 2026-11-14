@@ -3,7 +3,12 @@
  * guest rwlocks, mutexes, event flags and threads through their libkernel entry points. A deadlock fails the test after a
  * timeout and ends the process. */
 #include "../src/runtime_memory.c"
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#define malloc_usable_size malloc_size
+#else
 #include <malloc.h>
+#endif
 
 static int failures;
 #define CHECK(cond)                                                     \

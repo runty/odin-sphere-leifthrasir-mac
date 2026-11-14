@@ -49,7 +49,7 @@ Mac work totals **15.5–35 active developer days** from the current probe build
 
 ## M1 · Build and run the real Darwin loader
 
-**Deliverable.** An x86-64 command-line runner that validates the prepared game and reports an import inventory. Build with Apple Clang. Preserve per-platform CMake choices for Windows and Linux. The existing object inventory has 13 passing and eight failing runtime translation units. Start with a repeatable CPU target independent of launcher UI initialization. Explicitly list the libraries and symbols still needed when graphics is disabled. [CMake](../CMakeLists.txt) · [Loader](../src/loader.c) · [Threads](../src/runtime_thread.c) · [Memory](../src/runtime_memory.c)
+**Deliverable.** An x86-64 command-line runner that validates the prepared game and reports an import inventory. Build with Apple Clang. Preserve per-platform CMake choices for Windows and Linux. The initial object inventory had 13 passing and eight failing runtime translation units. All 21 production runtime units now compile for Darwin, and the upstream synchronization suite passes. Start with a repeatable CPU target independent of launcher UI initialization. Explicitly list the libraries and symbols still needed when graphics is disabled. [CMake](../CMakeLists.txt) · [Loader](../src/loader.c) · [Threads](../src/runtime_thread.c) · [Memory](../src/runtime_memory.c)
 
 - [x] Validate low memory aliases and reuse, a yield/resume round trip, and dynamic libc/Fios2 TLS isolation on two host workers in the Mac probes.
 - [ ] Establish a clean build with pinned SDL3, FreeType and the required launcher/core dependencies. Check every linked architecture using `file` and `otool -L`. Supply font path definitions from CMake and adapt the embedded font section and labels for Mach-O.
@@ -131,3 +131,40 @@ For each check, attach the commit, build command, dependency manifest, host/devi
 | Game is playable | Battle, input/audio and twice-reloaded normal save | Keep last complete slot and record where progress diverges |
 | App is installable | Fresh-account Finder launch and replacement preserving state | Inspect dependency/ICD paths, signature and writable folders |
 | Mobile is feasible | Correct signed CPU routines and representative shader draw on each device | Report first unsupported operation and updated effort before full gameplay work |
+
+
+## Darwin runtime build progress
+
+The M1 runtime build compiles all 21 production runtime sources into an x86-64
+archive with warnings treated as errors. It embeds the two Noto font payloads in
+Mach-O sections, adapts stat timestamps, monotonic audio sleeps, monotonic timed
+mutex/semaphore waits, secure random bytes, CPU-time queries and pthread names.
+The upstream synchronization executable links these production thread and wait
+services and passes its mutex, semaphore, eventflag, join and cancellation cases.
+The original ISA/memory/fiber/TLS/Vulkan probe command also passes again.
+
+Build the runtime archive and run its synchronization tests with:
+
+```sh
+macos/build-runtime.sh "$WORK/darwin-runtime" "$SDL_PREFIX" "$FREETYPE_INCLUDE"
+```
+
+SDL_PREFIX supplies the SDL3 headers. FREETYPE_INCLUDE contains ft2build.h.
+The fonts are embedded directly from third_party/fonts. Outputs and the test
+executable stay in the external directory. Keep the script's build log with the
+dependency versions used. The test archive has no dependency on ARM Homebrew
+libraries.
+
+The observed US image has empty main/static TLS. The Darwin thread adapter
+rejects nonempty static guest TLS, and the existing dynamic service supplies
+libc/Fios2 TLS. Validate that profile property at the eventual loader entry
+before enabling other builds. Auditing all heap handles returned to the guest
+remains part of M1.
+
+The full-project configure experiment also exposed Darwin changes in the loader
+and video core. The loader needs Mach context registers, fault-safe reads and a
+replacement for /proc thread enumeration. GPU compilation needs thread
+identity/affinity and CPU-clock adapters plus LP64 type corrections. Some
+automatic library searches selected native ARM Homebrew libraries and need
+explicit x86-64 dependencies. Next work is a linked runner and the real import
+check. Guest scene progress and a full graphics-enabled build remain pending.

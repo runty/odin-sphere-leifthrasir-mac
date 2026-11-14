@@ -95,6 +95,10 @@ typedef struct {
 #define OSL_EMBED(symbol, path) \
     __asm__(".section .rdata,\"dr\"\n.balign 16\n.global " #symbol "\n" #symbol ":\n.incbin \"" path "\"\n" \
             ".global " #symbol "_end\n" #symbol "_end:\n.text\n")
+#elif defined(__APPLE__)
+#define OSL_EMBED(symbol, path) \
+    __asm__(".section __TEXT,__const\n.balign 16\n.globl _" #symbol "\n_" #symbol ":\n.incbin \"" path "\"\n" \
+            ".globl _" #symbol "_end\n_" #symbol "_end:\n.text\n")
 #else
 #define OSL_EMBED(symbol, path) \
     __asm__(".section .rodata\n.balign 16\n.hidden " #symbol "\n.global " #symbol "\n" #symbol ":\n.incbin \"" path "\"\n" \
