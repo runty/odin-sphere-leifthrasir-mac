@@ -78,3 +78,20 @@ error, so no iPad routine-execution result is claimed yet. The user's hands-on
 30-minute Mac gameplay session remains deferred. Next: establish a committed
 device baseline, then extend the checked runtime to the actual linked-module
 initializers and guest startup before selecting the final mobile CPU backend.
+
+
+## Linked-module startup experiment
+
+The probe can now include [checked module/eboot startup](game/README.md) as an
+optional fourth build argument. Both actual module initializers return zero on
+arm64 Mac and iPhone, followed by the real eboot entry. A 244-trace development
+corpus reaches the same next missing block after 397 dispatches on both hosts,
+without a memory fault. GPU-visible host identity addresses fit below 1 TiB on
+the reference phone; Metal 4 family support is reported. This is evidence for
+the runtime approach, not whole-game instruction or renderer coverage.
+
+The comparison library and startup library share one checked memory/dispatch
+core. Their lifted symbol namespaces are separate. The build checks matching
+runtime hashes; startup reports identify the exact corpus. Generated code and
+private images stay outside the source tree. Continue in an isolated backend
+cache so another project's rebuild cannot change semantics under discovery.

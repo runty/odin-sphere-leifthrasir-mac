@@ -1,21 +1,27 @@
 // Run only the three bounded, read-reviewed routines from the player's image.
-#include <cstdio>
+#include "fixtures.h"
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iterator>
-#include <vector>
 #include <sys/mman.h>
-#include "fixtures.h"
-struct Result { uint64_t value, flags; };
+#include <vector>
+struct Result {
+    uint64_t value, flags;
+};
 extern "C" Result osl_invoke(void *, uint64_t);
 int main(int argc, char **argv) {
-    if (argc != 2) return 2;
+    if (argc != 2)
+        return 2;
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
-    if (image.size() != image_size) return 3;
-    auto code = static_cast<uint8_t *>(mmap(nullptr, image.size(), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0));
-    if (code == MAP_FAILED) return 4;
+    if (image.size() != image_size)
+        return 3;
+    auto code = static_cast<uint8_t *>(mmap(
+        nullptr, image.size(), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0));
+    if (code == MAP_FAILED)
+        return 4;
     std::memcpy(code, image.data(), image.size());
     for (const auto &t : fixture_cases) {
         std::vector<uint8_t> data(8192, 0x55);
@@ -33,7 +39,8 @@ int main(int argc, char **argv) {
         }
         auto result = osl_invoke(code + t.offset, arg);
         uint64_t observed = 0;
-        if (t.kind == 2) std::memcpy(&observed, code + fios_storage, 4);
+        if (t.kind == 2)
+            std::memcpy(&observed, code + fios_storage, 4);
         printf("%u %llu %llu %llu\n", t.kind, (unsigned long long)result.value,
                (unsigned long long)(result.flags & 0x8c5), (unsigned long long)observed);
     }

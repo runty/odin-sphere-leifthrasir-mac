@@ -1,7 +1,33 @@
 #include "runtime.h"
+#include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
+
+static std::recursive_mutex guestAtomics;
+Memory::~Memory() {
+    if (atomic_held)
+        guestAtomics.unlock();
+}
+
+void stopGuest(Memory &m, const char *reason, uint64_t pc) {
+    m.fault = reason;
+    m.missing_pc = pc;
+    if (m.recovery) {
+        if (m.atomic_held) {
+            m.atomic_held = false;
+            guestAtomics.unlock();
+        }
+        std::longjmp(*m.recovery, 1);
+    }
+}
+Memory *dispatch(State &s, uint64_t pc, Memory *m) {
+    if (m->dispatcher)
+        return m->dispatcher(s, pc, m);
+    stopGuest(*m, "guest dispatcher is not configured", pc);
+    return m;
+}
 
 void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size) {
     if (!size || size > std::numeric_limits<uint64_t>::max() - base)
@@ -15,14 +41,35 @@ uint8_t *guestPointer(Memory &m, uint64_t address, size_t size) {
     for (const auto &r : m.regions)
         if (size <= r.size && address >= r.base && address - r.base <= r.size - size)
             return r.data + (address - r.base);
-    m.fault = "unmapped guest memory";
+    m.fault_address = address;
+    stopGuest(m, "unmapped guest memory");
     return nullptr;
 }
-#define SCALAR(BITS, TYPE) \
-extern "C" TYPE __remill_read_memory_##BITS(Memory *m, uint64_t a) { \
-    TYPE value{}; if (auto p = guestPointer(*m, a, sizeof(value))) std::memcpy(&value, p, sizeof(value)); return value; } \
-extern "C" Memory *__remill_write_memory_##BITS(Memory *m, uint64_t a, TYPE v) { \
-    if (auto p = guestPointer(*m, a, sizeof(v))) std::memcpy(p, &v, sizeof(v)); return m; }
+static void transfer(Memory &m, uint64_t address, void *value, size_t size, bool writing) {
+    auto recovery = m.recovery;
+    m.recovery = nullptr;
+    guestAtomics.lock();
+    if (auto p = guestPointer(m, address, size)) {
+        if (writing)
+            std::memcpy(p, value, size);
+        else
+            std::memcpy(value, p, size);
+    }
+    guestAtomics.unlock();
+    m.recovery = recovery;
+    if (!m.fault.empty() && recovery)
+        stopGuest(m, "unmapped guest memory");
+}
+#define SCALAR(BITS, TYPE)                                                                         \
+    extern "C" TYPE __remill_read_memory_##BITS(Memory *m, uint64_t a) {                           \
+        TYPE value{};                                                                              \
+        transfer(*m, a, &value, sizeof(value), false);                                             \
+        return value;                                                                              \
+    }                                                                                              \
+    extern "C" Memory *__remill_write_memory_##BITS(Memory *m, uint64_t a, TYPE v) {               \
+        transfer(*m, a, &v, sizeof(v), true);                                                      \
+        return m;                                                                                  \
+    }
 SCALAR(8, uint8_t)
 SCALAR(16, uint16_t)
 SCALAR(32, uint32_t)
@@ -30,15 +77,71 @@ SCALAR(64, uint64_t)
 SCALAR(f32, float)
 SCALAR(f64, double)
 #undef SCALAR
-extern "C" Memory *__remill_function_return(State &, uint64_t, Memory *m) { ++m->returns; return m; }
-extern "C" Memory *__remill_function_call(State &s, uint64_t pc, Memory *m) { return dispatch(s, pc, m); }
+extern "C" Memory *__remill_function_return(State &, uint64_t, Memory *m) {
+    ++m->returns;
+    return m;
+}
+extern "C" Memory *__remill_function_call(State &s, uint64_t pc, Memory *m) {
+    return dispatch(s, pc, m);
+}
 extern "C" Memory *__remill_jump(State &s, uint64_t pc, Memory *m) { return dispatch(s, pc, m); }
-extern "C" Memory *__remill_missing_block(State &s, uint64_t pc, Memory *m) { return dispatch(s, pc, m); }
-#define FLAG(NAME) extern "C" bool __remill_flag_computation_##NAME(bool v, ...) { return v; }
-FLAG(carry) FLAG(zero) FLAG(sign) FLAG(overflow)
+extern "C" Memory *__remill_missing_block(State &s, uint64_t pc, Memory *m) {
+    return dispatch(s, pc, m);
+}
+extern "C" Memory *__remill_async_hyper_call(State &, uint64_t pc, Memory *m) {
+    stopGuest(*m, "unsupported guest async hypercall", pc);
+    return m;
+}
+extern "C" Memory *__remill_error(State &, uint64_t pc, Memory *m) {
+    stopGuest(*m, "unsupported guest instruction", pc);
+    std::abort();
+}
+#define FLAG(NAME)                                                                                 \
+    extern "C" bool __remill_flag_computation_##NAME(bool v, ...) { return v; }
+FLAG(carry)
+FLAG(zero) FLAG(sign) FLAG(overflow)
 #undef FLAG
-#define COMPARE(NAME) extern "C" bool __remill_compare_##NAME(bool v) { return v; }
-COMPARE(eq) COMPARE(neq) COMPARE(ult) COMPARE(ule) COMPARE(ugt) COMPARE(uge)
-COMPARE(slt) COMPARE(sle) COMPARE(sgt) COMPARE(sge)
+#define COMPARE(NAME)                                                                              \
+    extern "C" bool __remill_compare_##NAME(bool v) { return v; }
+    COMPARE(eq) COMPARE(neq) COMPARE(ult) COMPARE(ule) COMPARE(ugt) COMPARE(uge) COMPARE(slt)
+        COMPARE(sle) COMPARE(sgt) COMPARE(sge)
 #undef COMPARE
-extern "C" uint8_t __remill_undefined_8() { return 0; }
+            extern "C" uint8_t __remill_undefined_8() {
+    return 0;
+}
+extern "C" Memory *__remill_atomic_begin(Memory *m) {
+    if (m->atomic_held) {
+        stopGuest(*m, "nested guest atomic region");
+        return m;
+    }
+    guestAtomics.lock();
+    m->atomic_held = true;
+    return m;
+}
+extern "C" Memory *__remill_atomic_end(Memory *m) {
+    if (!m->atomic_held) {
+        stopGuest(*m, "unbalanced guest atomic region");
+        return m;
+    }
+    m->atomic_held = false;
+    guestAtomics.unlock();
+    return m;
+}
+extern "C" Memory *__remill_compare_exchange_memory_32(Memory *m, uint64_t address,
+                                                       uint32_t &expected, uint32_t desired) {
+    auto recovery = m->recovery;
+    m->recovery = nullptr;
+    guestAtomics.lock();
+    if (auto pointer = guestPointer(*m, address, 4)) {
+        uint32_t current;
+        std::memcpy(&current, pointer, 4);
+        if (current == expected)
+            std::memcpy(pointer, &desired, 4);
+        expected = current;
+    }
+    guestAtomics.unlock();
+    m->recovery = recovery;
+    if (!m->fault.empty() && recovery)
+        stopGuest(*m, "invalid guest compare-exchange address");
+    return m;
+}

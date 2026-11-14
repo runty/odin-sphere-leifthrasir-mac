@@ -4,18 +4,21 @@
 #import <unistd.h>
 
 extern "C" const char *osl_mobile_cpu_report();
+#if OSL_GAME_STARTUP
+extern "C" const char *osl_mobile_game_report(const char *);
+#endif
 
 @interface OdinProbeController : UIViewController
 @end
 @implementation OdinProbeController
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Odin Sphere CPU Probe";
+    self.title = @"Odin Sphere Startup Probe";
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     UITextView *text = [UITextView new];
     text.editable = NO;
     text.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    text.text = @"Checking three translated Odin routines. The game is not connected yet.";
+    text.text = @"Checking translated routines and guest startup.";
     text.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:text];
     [NSLayoutConstraint activateConstraints:@[
@@ -33,15 +36,30 @@ extern "C" const char *osl_mobile_cpu_report();
         const char *report = osl_mobile_cpu_report();
         NSData *cpuData = [NSData dataWithBytes:report length:strlen(report)];
         NSDictionary *cpu = [NSJSONSerialization JSONObjectWithData:cpuData options:0 error:NULL] ?: @{@"failed": @1};
+        NSDictionary *game = @{@"game_booted": @NO, @"status": @"startup library not built"};
+#if OSL_GAME_STARTUP
+        NSString *image = [[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
+        if ([NSFileManager.defaultManager fileExistsAtPath:image]) {
+            setenv("OSL_GUEST_IDENTITY", "1", 1);
+            const char *startup = osl_mobile_game_report(image.fileSystemRepresentation);
+            NSData *startupData = [NSData dataWithBytes:startup length:strlen(startup)];
+            game = [NSJSONSerialization JSONObjectWithData:startupData options:0 error:NULL] ?: @{@"game_booted": @NO, @"error": @"invalid startup report"};
+        } else {
+            game = @{@"game_booted": @NO, @"status": @"private prepared image has not been copied into Guest"};
+        }
+#endif
         struct utsname machine; uname(&machine);
         id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
         NSDictionary *diagnostics = @{
             @"build_id": NSBundle.mainBundle.infoDictionary[@"OSLBuildID"] ?: @"unknown",
-            @"stage": @"three real-module routines; full game startup pending",
+            @"stage": @"real-module startup experiment; full game boot pending",
             @"game_booted": @NO, @"cpu": cpu, @"machine": @(machine.machine),
+            @"game_startup": game,
+            @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
             @"page_size": @(getpagesize()), @"launch_count": @(count),
             @"metal_device": gpu.name ?: @"unavailable", @"bc_texture_compression": @(gpu.supportsBCTextureCompression),
+            @"metal4_gpu_family": @([gpu supportsFamily:MTLGPUFamilyMetal4]),
             @"timestamp": @([[NSDate date] timeIntervalSince1970])};
         NSData *json = [NSJSONSerialization dataWithJSONObject:diagnostics options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:NULL];
         BOOL saved = [json writeToFile:[documents stringByAppendingPathComponent:@"diagnostics.json"] options:NSDataWritingAtomic error:NULL];

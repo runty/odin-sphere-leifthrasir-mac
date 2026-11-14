@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build a private signed app containing the Odin-specific AOT CPU comparisons.
 set -euo pipefail
-if [[ $# != 3 ]]; then
-    echo 'Usage: ios/build-probe.sh EXTERNAL_BUILD_DIR DEVELOPMENT_TEAM CPU_FIXTURE_OUTPUT' >&2
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+    echo 'Usage: ios/build-probe.sh EXTERNAL_BUILD_DIR DEVELOPMENT_TEAM CPU_FIXTURE_OUTPUT [GAME_STARTUP_OUTPUT]' >&2
     exit 2
 fi
 source_dir=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,7 +18,35 @@ if len(p.parts)<3 or p.parts[1]!='Volumes' or not Path('/Volumes',p.parts[2]).is
 PY
 mkdir -p "$build_dir/Source"
 cp "$source_dir/ios/main.mm" "$build_dir/Source/main.mm"
+iconset="$build_dir/Source/Assets.xcassets/AppIcon.appiconset"
+mkdir -p "$iconset"
+sips -z 1024 1024 "$source_dir/packaging/icons/app-icon-256.png" --out "$iconset/Icon.png" >/dev/null
+python3 - "$iconset" <<'PY'
+import json,sys
+from pathlib import Path
+p=Path(sys.argv[1])
+(p/'Contents.json').write_text(json.dumps({'images':[{'filename':'Icon.png','idiom':'universal','platform':'ios','size':'1024x1024'}],'info':{'author':'xcode','version':1}})+'\n')
+(p.parent/'Contents.json').write_text(json.dumps({'info':{'author':'xcode','version':1}})+'\n')
+PY
 cp "$fixtures/ios/libodin-cpu.a" "$build_dir/Source/libodin-cpu.a"
+cp "$fixtures/ios/libodin-runtime.a" "$build_dir/Source/libodin-runtime.a"
+game_corpus=none
+game_enabled=0
+game_dependency=""
+if [[ $# == 4 ]]; then
+    python3 - "$fixtures/manifest.json" "$4/ios/manifest.json" <<'PY'
+import json,sys
+cpu,game=[json.load(open(p)) for p in sys.argv[1:]]
+if cpu['runtime_sha256']!=game['runtime_sha256']:
+    raise SystemExit('CPU and game startup libraries use different checked runtimes; rebuild them together')
+PY
+    cp "$4/ios/libodin-startup.a" "$build_dir/Source/libodin-startup.a"
+    game_corpus=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["corpus_sha256"])' "$4/ios/manifest.json")
+    game_enabled=1
+    game_dependency=$'      - framework: Source/libodin-startup.a\n        embed: false'
+else
+    rm -f "$build_dir/Source/libodin-startup.a"
+fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi
 cat > "$build_dir/project.yml" <<YAML
@@ -38,6 +66,9 @@ targets:
       - sdk: Metal.framework
       - framework: Source/libodin-cpu.a
         embed: false
+      - framework: Source/libodin-runtime.a
+        embed: false
+$game_dependency
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.probe
@@ -46,6 +77,8 @@ targets:
         TARGETED_DEVICE_FAMILY: '1,2'
         CLANG_ENABLE_OBJC_ARC: YES
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
+        GCC_PREPROCESSOR_DEFINITIONS: OSL_GAME_STARTUP=$game_enabled
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: '0.1'
     info:
@@ -53,12 +86,13 @@ targets:
       properties:
         CFBundleDisplayName: Odin Sphere Probe
         OSLBuildID: '$revision'
+        OSLGameCorpus: '$game_corpus'
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
 YAML
 xcodegen generate --spec "$build_dir/project.yml" --project "$build_dir"
 xcodebuild -project "$build_dir/OdinSphereProbe.xcodeproj" -scheme OdinSphereProbe -configuration Release \

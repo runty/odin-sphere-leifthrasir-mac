@@ -74,13 +74,16 @@ for name, offset, size in routines:
     traces.append({"name": name, "offset": hex(offset), "size": size, "sha256": hashlib.sha256(code).hexdigest()})
     run(name + "-lift", [a.remill / "remill-build/bin/lift/remill-lift-23", "--os", "linux", "--arch", "amd64_avx",
         "--address", str(base + offset), "--bytes", code.hex(), "--ir_out", root / (name + ".ll")])
-    for symbol in re.findall(r"^define ptr @sub_([0-9a-f]+)\(", (root / (name + ".ll")).read_text(), re.M):
-        entries[int(symbol, 16)] = "sub_" + symbol
+    ir = root / (name + ".ll")
+    # Keep comparison fixtures distinct from the whole-game trace corpus.
+    ir.write_text(ir.read_text().replace("@sub_", "@fixture_sub_"))
+    for symbol in re.findall(r"^define ptr @fixture_sub_([0-9a-f]+)\(", ir.read_text(), re.M):
+        entries[int(symbol, 16)] = "fixture_sub_" + symbol
 corpus = hashlib.sha256(json.dumps({"modules": expected, "traces": traces, "cases": cases}, sort_keys=True).encode()).hexdigest()
 
 
 def header(reference=None):
-    text = "#pragma once\n#include <cstdint>\n"
+    text = "#pragma once\n#include <cstdint>\n#ifndef OSL_NATIVE_ORACLE\n#include \"runtime.h\"\n#endif\n"
     text += f"static constexpr uint64_t image_base={base}, image_size={len(image)}, fios_storage={storage};\n"
     text += f'static const char *corpus_hash="{corpus}";\n'
     text += "struct FixtureCase { unsigned kind; uint64_t offset,a,b,expected,flags,observed; };\nstatic const FixtureCase fixture_cases[]={\n"
@@ -112,6 +115,8 @@ for i, line in enumerate((root / "oracle.log").read_text().splitlines()):
     reference.append((result, flags, observed))
 assert len(reference) == len(cases)
 header(reference)
+run("runtime-test-build", ["xcrun", "clang++", "-arch", "arm64", "-std=c++17", "-O2", "-I" + str(a.remill / "remill/include"), source / "runtime.cpp", source / "runtime-test.cpp", "-o", root / "runtime-test"])
+run("runtime-test", [root / "runtime-test"])
 for platform, target, sdk in (("mac", "arm64-apple-macos15", "macosx"),
                               ("ios", "arm64-apple-ios18", "iphoneos"),
                               ("simulator", "arm64-apple-ios18-simulator", "iphonesimulator")):
@@ -127,17 +132,28 @@ for platform, target, sdk in (("mac", "arm64-apple-macos15", "macosx"),
     for name in ("runtime", "harness"):
         obj = directory / (name + ".o")
         run(platform + "-" + name, ["xcrun", "--sdk", sdk, "clang++", "-target", target, "-isysroot", sysroot,
-            "-std=c++17", "-O2", "-I" + str(a.remill / "remill/include"), "-I" + str(root), "-c", source / (name + ".cpp"), "-o", obj])
-        objects.append(obj)
-    run(platform + "-archive", [a.llvm / "bin/llvm-ar", "rcs", directory / "libodin-cpu.a", *objects])
+            "-std=c++17", "-O2", "-I" + str(a.remill / "remill/include"), "-I" + str(root), "-I" + str(source), "-c", source / (name + ".cpp"), "-o", obj])
+        if name == "runtime":
+            core = directory / "libodin-runtime.new.a"
+            core.unlink(missing_ok=True)
+            run(platform + "-runtime-archive", [a.llvm / "bin/llvm-ar", "rcs", core, obj])
+            core.replace(directory / "libodin-runtime.a")
+        else:
+            objects.append(obj)
+    archive = directory / "libodin-cpu.new.a"
+    archive.unlink(missing_ok=True)
+    run(platform + "-archive", [a.llvm / "bin/llvm-ar", "rcs", archive, *objects])
+    archive.replace(directory / "libodin-cpu.a")
     if platform == "mac":
         (root / "cli.cpp").write_text('#include <cstdio>\n#include <cstring>\nextern "C" const char *osl_mobile_cpu_report();\nint main(){auto p=osl_mobile_cpu_report();puts(p);return strstr(p,"\\"failed\\":0")==nullptr;}\n')
-        run("mac-link", ["xcrun", "clang++", "-arch", "arm64", root / "cli.cpp", directory / "libodin-cpu.a", "-o", root / "cpu-check"])
+        run("mac-link", ["xcrun", "clang++", "-arch", "arm64", root / "cli.cpp", directory / "libodin-cpu.a", directory / "libodin-runtime.a", "-o", root / "cpu-check"])
         run("mac-results", [root / "cpu-check"])
 manifest = {"profile": "CUSA05083 US base 1.00", "module_hashes": expected, "corpus_sha256": corpus,
             "routines": traces, "cases_per_worker": len(cases), "oracle": "x86-64 game bytes executed under Rosetta",
             "remill_commit": remill_pin,
             "lifter_sha256": hashlib.sha256((a.remill / "remill-build/bin/lift/remill-lift-23").read_bytes()).hexdigest(),
+            "semantics_sha256": hashlib.sha256((a.remill / "remill-build/lib/Arch/X86/Runtime/amd64_avx.bc").read_bytes()).hexdigest(),
+            "runtime_sha256": hashlib.sha256((source / "runtime.h").read_bytes() + (source / "runtime.cpp").read_bytes()).hexdigest(),
             "limitations": "Three bounded routines; no module startup, callbacks, GPU rendering or full-game claim."}
 (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 print((root / "mac-results.log").read_text())
