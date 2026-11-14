@@ -8,5 +8,8 @@ struct MobileGpuServices {
     void *context;
     bool (*call)(void *,const char *symbol,const char *nid,const uint64_t args[6],uint64_t stack,Memory *,uint64_t *result);
     void (*finish)(void *);
+    // Optional frontend-owned cancellation. Its lifetime includes the whole
+    // report; every guest CPU and bounded host wait observes the same flag.
+    std::atomic<bool> *stop_requested=nullptr;
 };
 extern "C" const char *osl_mobile_game_report_with_gpu(const char *,const MobileGpuServices *);

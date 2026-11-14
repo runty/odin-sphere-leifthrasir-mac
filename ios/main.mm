@@ -6,7 +6,7 @@
 
 extern "C" const char *osl_mobile_cpu_report();
 #if OSL_RENDERER_SESSION
-extern "C" void osl_mobile_renderer_begin(UIWindowScene *,NSString *,void (^)(NSDictionary *));
+extern "C" void osl_mobile_renderer_begin(UIWindowScene *,NSString *,NSString *,void (^)(NSDictionary *));
 #endif
 extern "C" NSDictionary *osl_mobile_vm_report();
 #if OSL_SDL_SURFACE
@@ -49,7 +49,7 @@ extern "C" NSDictionary *osl_mobile_memory_report();
         NSData *cpuData = [NSData dataWithBytes:report length:strlen(report)];
         NSDictionary *cpu = [NSJSONSerialization JSONObjectWithData:cpuData options:0 error:NULL] ?: @{@"failed": @1};
         NSDictionary *game = @{@"game_booted": @NO, @"status": @"startup library not built"};
-#if OSL_GAME_STARTUP
+#if OSL_GAME_STARTUP && !OSL_RENDERER_SESSION
         NSString *image = [[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
         if ([NSFileManager.defaultManager fileExistsAtPath:image]) {
             // A developer launch may compare checked virtual and identity
@@ -90,14 +90,17 @@ extern "C" NSDictionary *osl_mobile_memory_report();
 #endif
         NSDictionary *renderer = @{@"status":@"renderer session not linked",@"game_frames":@NO};
 #if OSL_RENDERER_SESSION
+        game=@{@"game_booted":@NO,@"status":@"renderer session owns optional guest startup"};
         dispatch_semaphore_t rendererDone=dispatch_semaphore_create(0);
         __block NSDictionary *rendererResult=nil;
         dispatch_async(dispatch_get_main_queue(), ^{
-            osl_mobile_renderer_begin(self.view.window.windowScene,[documents stringByAppendingPathComponent:@"RendererDiagnostics"],^(NSDictionary *result){rendererResult=result;dispatch_semaphore_signal(rendererDone);});
+            NSString *guestImage=[[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
+            if(![NSFileManager.defaultManager fileExistsAtPath:guestImage])guestImage=nil;
+            osl_mobile_renderer_begin(self.view.window.windowScene,[documents stringByAppendingPathComponent:@"RendererDiagnostics"],guestImage,^(NSDictionary *result){rendererResult=result;dispatch_semaphore_signal(rendererDone);});
         });
         if(dispatch_semaphore_wait(rendererDone,dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC))!=0)
             renderer=@{@"passed":@NO,@"error":@"Renderer session exceeded diagnostic deadline",@"game_frames":@NO};
-        else renderer=rendererResult;
+        else {renderer=rendererResult;if([renderer[@"guest_requested"] boolValue])game=renderer[@"guest_session"][@"guest"]?:@{@"error":@"GPU guest did not return a report"};else game=@{@"game_booted":@NO,@"status":@"private prepared image has not been copied into Guest"};}
 #endif
         struct utsname machine; uname(&machine);
         id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
@@ -121,6 +124,7 @@ extern "C" NSDictionary *osl_mobile_memory_report();
             @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",
             @"sdl_archive_sha256": NSBundle.mainBundle.infoDictionary[@"OSLSDLArchive"] ?: @"none",
             @"renderer_archive_sha256": NSBundle.mainBundle.infoDictionary[@"OSLRendererArchive"] ?: @"none",
+            @"gpu_guest_frontend_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGuestFrontendArchive"] ?: @"none",
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
             @"page_size": @(getpagesize()), @"launch_count": @(count),
             @"metal_device": gpu.name ?: @"unavailable", @"bc_texture_compression": @(gpu.supportsBCTextureCompression),

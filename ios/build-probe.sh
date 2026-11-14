@@ -125,8 +125,10 @@ fi
 renderer_enabled=0
 renderer_dependency=""
 renderer_corpus=none
+guest_frontend_corpus=none
 if [[ -n ${OSL_PROBE_RENDERER_ROOT:-} ]]; then
     [[ $game_enabled == 1 && $gpu_enabled == 1 && $sdl_enabled == 1 ]] || { echo 'Renderer session requires the real game runtime, driver and matching SDL prefix' >&2; exit 1; }
+    [[ -n ${OSL_PROBE_GUEST_ROOT:-} ]] || { echo 'Renderer session requires OSL_PROBE_GUEST_ROOT from build-guest-session.py' >&2; exit 1; }
     renderer_corpus=$(python3 - "$OSL_PROBE_RENDERER_ROOT" "$probe_sdk" "$source_dir" "$build_dir/Source" "$OSL_PROBE_SDL_PREFIX" <<'PYRENDERER'
 from pathlib import Path
 import hashlib,json,shutil,sys
@@ -151,6 +153,24 @@ for name,item in deps['libraries'].items():
 print(d['archives']['gpu/liboslgpu.a']['sha256'])
 PYRENDERER
 )
+    guest_frontend_corpus=$(python3 - "$OSL_PROBE_GUEST_ROOT" "$probe_sdk" "$source_dir" "$4/$archive_platform/manifest.json" "$OSL_PROBE_RENDERER_ROOT" "$build_dir/Source" <<'PYGUEST'
+from pathlib import Path
+import hashlib,json,shutil,sys
+root=Path(sys.argv[1]);sdk=sys.argv[2];repo=Path(sys.argv[3]);game=json.loads(Path(sys.argv[4]).read_text());renderer=Path(sys.argv[5]);output=Path(sys.argv[6])
+def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+d=json.loads((root/('inputs-'+sdk+'.json')).read_text())
+if d['platform']!=sdk or d['corpus_sha256']!=game['corpus_sha256'] or d['trace_inputs']!=game['trace_inputs']:raise SystemExit('GPU guest frontend differs from game archive/SDK')
+if digest(renderer/('inputs-'+sdk+'.json'))!=d['renderer_manifest_sha256']:raise SystemExit('GPU guest frontend uses different renderer metadata')
+for name,wanted in d['sources'].items():
+ if digest(repo/name)!=wanted:raise SystemExit('GPU guest frontend source changed: '+name)
+if digest(repo/'ios/graphics/build-guest-session.py')!=d['builder_sha256']:raise SystemExit('GPU guest frontend builder changed')
+archive=Path(d['archive'])
+if digest(archive)!=d['archive_sha256']:raise SystemExit('GPU guest frontend archive changed')
+shutil.copy2(archive,output/'libodin-gpu-guest.a')
+shutil.copy2(repo/'ios/graphics/guest-session.h',output/'guest-session.h')
+print(d['archive_sha256'])
+PYGUEST
+)
     cp "$source_dir/ios/graphics/renderer-session.mm" "$build_dir/Source/renderer_session.mm"
     cp "$source_dir/src/oslgpu.h" "$build_dir/Source/oslgpu.h"
     cp "$source_dir/ios/services/clock.h" "$build_dir/Source/clock.h"
@@ -158,9 +178,10 @@ PYRENDERER
         renderer_dependency+=$'      - framework: Source/lib'"$library"$'.a\n        embed: false\n'
     done
     renderer_dependency+=$'      - sdk: libz.tbd'
+    renderer_dependency+=$'\n      - framework: Source/libodin-gpu-guest.a\n        embed: false'
     renderer_enabled=1
 else
-    rm -f "$build_dir/Source/renderer_session.mm" "$build_dir/Source/oslgpu.h" "$build_dir/Source/clock.h"
+    rm -f "$build_dir/Source/renderer_session.mm" "$build_dir/Source/oslgpu.h" "$build_dir/Source/clock.h" "$build_dir/Source/guest-session.h" "$build_dir/Source/libodin-gpu-guest.a"
 fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi
@@ -213,6 +234,7 @@ $entitlements_setting
         OSLGPUDriver: '$gpu_corpus'
         OSLSDLArchive: '$sdl_corpus'
         OSLRendererArchive: '$renderer_corpus'
+        OSLGuestFrontendArchive: '$guest_frontend_corpus'
         GCSupportsControllerUserInteraction: true
         GCSupportedGameControllers:
           - ProfileName: ExtendedGamepad

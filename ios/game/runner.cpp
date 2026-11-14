@@ -77,7 +77,8 @@ struct Session {
 #endif
     const MobileGpuServices *gpu=nullptr;
     unsigned gpu_service_calls=0;
-    explicit Session(const MobileGpuServices *renderer=nullptr) : gpu(renderer) {
+    explicit Session(const MobileGpuServices *renderer=nullptr)
+        : gpu(renderer), stopping(renderer && renderer->stop_requested ? *renderer->stop_requested : local_stopping) {
         memory.external_pointer = DirectMemory::pointer;
         memory.stop_requested = &stopping;
         osl_aot_user_reset();
@@ -101,7 +102,8 @@ struct Session {
     std::vector<AlignedBytes> gpu_allocations;
     ModuleTlsTemplates tls_templates;
     std::unique_ptr<ThreadStorage> primary_storage;
-    std::atomic<bool> stopping{false};
+    std::atomic<bool> local_stopping{false};
+    std::atomic<bool> &stopping;
     std::unique_ptr<MobileWorkers> workers;
     std::map<uint16_t, unsigned> compatibility_modules;
     unsigned gesture_setup_calls = 0;
@@ -1151,6 +1153,7 @@ extern "C" const char *osl_mobile_game_report_with_gpu(const char *path,const Mo
 }
 #ifdef OSL_GAME_CLI
 extern "C" Memory *__remill_atomic_begin(Memory *);
+extern "C" void __osl_guest_tick(Memory *,const State *);
 static bool serviceChecks() {
     auto owner = std::make_unique<Session>();
     auto &session = *owner;
@@ -1569,7 +1572,33 @@ static bool workerCleanupCheck() {
     if(!child_mutex || pthread_mutex_trylock(&child_mutex->mutex))throw std::runtime_error("child failure retained its mutex");
     if(pthread_mutex_unlock(&child_mutex->mutex))throw std::runtime_error("child failure cleanup unlock failed");
     child_mutex.reset();
-    std::puts("{\"worker_cleanup_checks\":2,\"failure_injected\":true,\"child_joined\":true,\"parent_mutex_released\":true,\"child_exception_released_mutex\":true,\"failed\":0,\"game_frames\":false}");
+    // A UIKit stop request must reach already-running CPUs without destroying
+    // Session or calling stopAndJoin first. The GPU finish callback runs only
+    // after that CPU has left its checked execution scope.
+    struct FrontendStop { std::atomic<bool> stop{false},entered{false},done{false};unsigned finishes=0; } frontend;
+    MobileGpuServices renderer{&frontend,
+        [](void *,const char *,const char *,const uint64_t[6],uint64_t,Memory *,uint64_t *){return false;},
+        [](void *opaque){auto &f=*static_cast<FrontendStop *>(opaque);if(!f.done)std::abort();++f.finishes;},&frontend.stop};
+    {
+        auto owner=std::make_unique<Session>(&renderer);auto &session=*owner;
+        if(session.memory.stop_requested!=&frontend.stop)throw std::logic_error("frontend stop is not shared by primary CPU");
+        session.workers=std::make_unique<MobileWorkers>(session.memory,session.tls_templates,false,session.stopping);
+        ThreadAttr attributes;attributes.stack=65536;uint64_t id=0;
+        if(session.workers->spawn(1,0,attributes,[&](auto &node) {
+            std::jmp_buf checkpoint;node.memory.recovery=&checkpoint;
+            if(setjmp(checkpoint)==0){frontend.entered=true;for(;;){__osl_guest_tick(&node.memory,&node.state);std::this_thread::yield();}}
+            node.memory.recovery=nullptr;
+            frontend.done=node.memory.fault=="guest execution interrupted";
+        },id))throw std::logic_error("frontend stop fixture spawn failed");
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(1);
+        while(!frontend.entered && std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
+        if(!frontend.entered)throw std::logic_error("frontend stop fixture did not start");
+        frontend.stop=true;
+        while(!frontend.done && std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
+        if(!frontend.done)throw std::logic_error("frontend stop did not interrupt running CPU");
+    }
+    if(frontend.finishes!=1)throw std::logic_error("frontend stop did not finish GPU ownership once");
+    std::puts("{\"worker_cleanup_checks\":3,\"failure_injected\":true,\"child_joined\":true,\"parent_mutex_released\":true,\"child_exception_released_mutex\":true,\"frontend_stop_reaches_running_cpu\":true,\"gpu_finish_after_cpu_stop\":true,\"failed\":0,\"game_frames\":false}");
     return true;
 }
 int main(int argc, char **argv) {
