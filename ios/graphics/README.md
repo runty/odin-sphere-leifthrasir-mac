@@ -1,10 +1,11 @@
 # iPhoneOS Vulkan-on-Metal experiment
 
 The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with
-only Apple/system runtime dependencies. Fresh clean iPad `1376d6a` launches 12
-and 13 execute actual 64-word Vulkan fill, fence and mapped GPU readback on the
-A20 Pro. CPU 414 and native memory 19 also pass. iPhone has the same signed
-update but foreground launch is denied while locked, so fresh iPhone driver
+only Apple/system runtime dependencies. Fresh clean iPad `b1b10cc` launches 18
+and 19 execute actual 64-word Vulkan fill, fence and mapped GPU readback on the
+A20 Pro, plus real UIKit Vulkan surface/capability checks. CPU 414 and native
+memory 19 also pass. iPhone retains `1376d6a`; foreground launch is denied while
+locked, so fresh iPhone driver
 execution is unverified. No mobile game draw/presentation is established. Keep
 the working Mac app/driver unchanged.
 
@@ -50,8 +51,8 @@ copy. A newer bottle is rejected. The driver builder relocates private copies
 of the native shader tools to that library, leaving originals untouched. This
 avoids relying on DYLD variables that system script launchers can strip.
 
-Next: execute the signed framework probe on physical devices, then replay an
-actual captured Odin draw and integrate title/battle presentation.
+Next: qualify swapchain presentation, then replay an actual captured Odin draw
+and integrate title/battle presentation.
 Synthetic draws and Simulator results must stay separate from physical game
 frames. Module/thread/TLS/fiber, audio/input, Files import and save lifecycle
 remain independent work before a playable mobile app exists.
@@ -65,7 +66,8 @@ it. The probe's offscreen check allocates a Vulkan buffer, fills a nonuniform
 and verifies all 64 words. This is not game rendering or display presentation.
 `probe.mm` is also usable in a native Mac CLI against an arm64 Mac build of the
 same source. That path passes all 64 words on the M5 Max; the report explicitly
-sets `game_frames=false`. Device execution remains pending.
+sets `game_frames=false`. The same 64-word check also passes on physical iPad;
+it does not establish a rendered game frame.
 
 The iOS 27.2 Simulator SDK omits the required Metal 4 encoder protocols. The
 Simulator driver build therefore stops explicitly; headers are not substituted
@@ -275,13 +277,37 @@ ICD directly, verifies/enables KHR surface and EXT Metal surface extensions,
 creates `VkSurfaceKHR` from the still-live SDL Metal layer, and queries surface
 capabilities, actual formats, FIFO mode and graphics/presentation queue support.
 It destroys the Vulkan surface/instance before releasing the layer/window.
-This development candidate passes on the physical iPad: five formats, FIFO,
+Clean `b1b10cc` passes twice on the physical iPad (launches 18/19), preserving
+preexisting inputs: five formats, FIFO,
 queue 0, three-image minimum/maximum and matching 2316×1512 extent. Original
 UIKit window and SDL cleanup still pass. Simulator builds without a GPU driver
 retain the Metal-layer-only path because its SDK lacks required Metal 4 types.
+That clean path passes Simulator launches 22/23, with CPU/memory/startup checks
+and preserved inputs.
 
 Diagnostics explicitly report `presentation_tested:false` and
 `game_frames:false`. This is actual surface creation/capability qualification,
 not swapchain image acquisition, presentation, a guest draw or the full mobile
 game frontend. Next connect the native renderer while preserving main-thread
 ownership, resource lifetime and foreground constraints.
+
+## Isolated renderer support libraries
+
+```sh
+python3 ios/graphics/build-dependencies.py --root "$WORK/ios-renderer-deps" --sdk iphoneos
+python3 ios/graphics/build-dependencies.py --root "$WORK/ios-renderer-deps" --sdk iphonesimulator
+```
+
+`dependency-lock.json` pins fmt, xxHash, Zycore, Zydis and header-only robin-map.
+The builder clones private sources, rejects changed pins/source edits, serializes
+builds in its root and installs each SDK to its own prefix. Package/include/
+library discovery stays within that target prefix and SDK; host tools remain
+host executables. A generated CMake include supplies the legacy `Zycore` alias
+expected by this Zydis pin without editing either dependency's source.
+
+Both SDK builds pass: every object in fmt (2), xxHash (1), Zycore (13) and
+Zydis (18) is audited for the appropriate iOS/iOS Simulator Mach-O platform,
+in addition to arm64 architecture. Manifests retain hashes, pins and options.
+These support-library builds do not link or execute the complete mobile game
+renderer. PNG, remaining header dependencies and the full frontend integration
+still need qualification; the Mac renderer/dependency caches remain intact.
