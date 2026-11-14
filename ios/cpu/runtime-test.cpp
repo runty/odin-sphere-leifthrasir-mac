@@ -71,7 +71,7 @@ int main() {
     }
     protected_memory->recovery = nullptr;
     assert(counter == 4000 && protected_memory->fault == "guest write to protected region");
-    protected_memory->fault.clear();
+    protected_memory->fault = {};
     protected_memory->recovery = &recovery;
     if (setjmp(recovery) == 0) {
         uint32_t expected = 4000;

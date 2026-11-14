@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Every transfer is checked against explicit regions, including native-address identity mappings.
@@ -20,7 +21,9 @@ struct Memory {
     std::vector<Region> regions;
     uint64_t checkpoints = 0, checkpoint_limit = 1000000;
     std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    std::string fault;
+    // Fault reasons are static literals: raising a fault must not allocate or
+    // throw through lifted LLVM code.
+    std::string_view fault;
     unsigned returns = 0;
     std::jmp_buf *recovery = nullptr;
     uint64_t missing_pc = 0, fault_address = 0;

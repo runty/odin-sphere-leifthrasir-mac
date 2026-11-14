@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <map>
 #include <pthread.h>
 #include <sstream>
 #include <unordered_map>
@@ -45,11 +46,18 @@ struct ThreadAttr {
     int priority = 700;
 };
 
+struct FreeBytes { void operator()(uint8_t *p) const { std::free(p); } };
+using AlignedBytes = std::unique_ptr<uint8_t, FreeBytes>;
+
 struct Session {
     Memory memory;
     State state{};
     std::vector<uint8_t> image, stack;
     std::vector<std::unique_ptr<std::vector<uint8_t>>> owned;
+    std::vector<AlignedBytes> gpu_allocations;
+    std::map<uint16_t, unsigned> compatibility_modules;
+    unsigned gesture_setup_calls = 0;
+    bool save_dialog_initialized = false, common_dialog_initialized = false;
     const char *stage = "prepare", *missing_service = "";
     unsigned completed_modules = 0, calls = 0;
     uint64_t heap_api = 0, next_allocation = 0x30000000;
@@ -57,7 +65,7 @@ struct Session {
     bool identity = false;
     std::unordered_map<uint64_t, int> mutex_attributes;
     std::unordered_map<uint64_t, std::unique_ptr<HostMutex>> mutexes;
-    uint64_t flexible_bytes = 0;
+    uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
     std::unordered_map<uint64_t, ThreadAttr> thread_attributes;
 };
 static thread_local Session *active;
@@ -77,18 +85,35 @@ static uint64_t allocate(Session &s, uint64_t size, bool gpu_visible = false) {
         stopGuest(s.memory, "unsupported allocation size");
         return 0;
     }
-    auto bytes = std::make_unique<std::vector<uint8_t>>(size);
+    std::unique_ptr<std::vector<uint8_t>> bytes;
+    AlignedBytes aligned;
+    uint8_t *data = nullptr;
+    if (gpu_visible) {
+        const uint64_t reserved_size = (size + 16383) & ~uint64_t(16383);
+        void *pointer = nullptr;
+        if (posix_memalign(&pointer, 16384, reserved_size))
+            throw std::bad_alloc();
+        aligned.reset(static_cast<uint8_t *>(pointer));
+        data = aligned.get();
+        std::memset(data, 0, reserved_size);
+    } else {
+        bytes = std::make_unique<std::vector<uint8_t>>(size);
+        data = bytes->data();
+    }
     uint64_t address = s.next_allocation;
     if (s.identity && gpu_visible)
-        address = reinterpret_cast<uint64_t>(bytes->data());
+        address = reinterpret_cast<uint64_t>(data);
     else
         s.next_allocation += (size + 16383) & ~uint64_t(16383);
     if (address >= (uint64_t(1) << 40) || size > (uint64_t(1) << 40) - address) {
         stopGuest(s.memory, "host allocation exceeds guest GPU address range");
         return 0;
     }
-    mapRegion(s.memory, address, bytes->data(), bytes->size());
-    s.owned.push_back(std::move(bytes));
+    mapRegion(s.memory, address, data, size);
+    if (aligned)
+        s.gpu_allocations.push_back(std::move(aligned));
+    else
+        s.owned.push_back(std::move(bytes));
     return address;
 }
 static uint64_t orbisError(int e) { return e ? uint32_t(0x80020000u | unsigned(e)) : 0; }
@@ -98,10 +123,106 @@ static Memory *hostReturn(State &s, Memory *m, uint64_t value) {
     s.gpr.rsp.qword += 8;
     return m;
 }
+static bool gestureSetupFunction(const char *name) {
+    return !std::strcmp(name, "sceSystemGestureOpen") ||
+           !std::strcmp(name, "sceSystemGestureClose") ||
+           !std::strcmp(name, "sceSystemGestureCreateTouchRecognizer") ||
+           !std::strcmp(name, "sceSystemGestureInitializePrimitiveTouchRecognizer") ||
+           !std::strcmp(name, "sceSystemGestureFinalizePrimitiveTouchRecognizer");
+}
+static bool saveDialogFunction(const char *name) {
+    return !std::strcmp(name, "sceSaveDataDialogInitialize") ||
+           !std::strcmp(name, "sceSaveDataDialogTerminate") ||
+           !std::strcmp(name, "sceSaveDataDialogUpdateStatus") ||
+           !std::strcmp(name, "sceSaveDataDialogGetResult") ||
+           !std::strcmp(name, "sceSaveDataDialogOpen");
+}
 static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
     const auto &import = imports[(pc - hle_base) / 0x1000];
     const char *name = import.symbol;
+    if (!std::strcmp(name, "sceSysmoduleLoadModule") ||
+        !std::strcmp(name, "sceSysmoduleUnloadModule")) {
+        const uint16_t id = uint16_t(s.gpr.rdi.qword);
+        if (!id)
+            return hostReturn(s, m, 0x805a1000u);
+        // Fixed-profile compatibility provider. The Mac reference treats these
+        // SDK modules as resident. Ult/Fiber have no imported API in this
+        // linked image. Other providers below expose only the explicit supported
+        // lifecycle methods; requests for a presenter still stop. Never accept
+        // an unknown export or introduce dynamic module/symbol resolution.
+        const char *library = id == 6 ? "#libSceFiber" : id == 7 ? "#libSceUlt" :
+                              id == 206 ? "#libSceSystemGesture" : id == 160 ? "#libSceSaveDataDialog" : nullptr;
+        bool empty_provider = library != nullptr;
+        for (const auto &item : imports) {
+            if ((library && std::strstr(item.nid, library) &&
+                 !(id == 206 && gestureSetupFunction(item.symbol)) &&
+                 !(id == 160 && saveDialogFunction(item.symbol))) ||
+                std::strstr(item.symbol, "Dlsym") || std::strstr(item.symbol, "LoadStartModule"))
+                empty_provider = false;
+        }
+        if (!empty_provider) {
+            session.missing_service = name;
+            stopGuest(*m, "module provider unavailable", pc);
+            return m;
+        }
+        auto &references = session.compatibility_modules[id];
+        if (!std::strcmp(name, "sceSysmoduleUnloadModule")) {
+            if (!references)
+                return hostReturn(s, m, 0x805a1001u);
+            --references;
+        } else {
+            if (references >= 1024) {
+                stopGuest(*m, "module reference budget exhausted", pc);
+                return m;
+            }
+            ++references;
+        }
+        return hostReturn(s, m, 0);
+    }
+    if (gestureSetupFunction(name)) {
+        if (!session.compatibility_modules[206]) {
+            session.missing_service = name;
+            stopGuest(*m, "SystemGesture provider is not loaded", pc);
+            return m;
+        }
+        // Match the working Mac port's setup-only compatibility: this exact
+        // profile imports no touch-gesture update/result consumer. This does
+        // not provide touch controls or pretend to recognize gesture events.
+        ++session.gesture_setup_calls;
+        return hostReturn(s, m, 0);
+    }
+    if (!std::strcmp(name, "sceCommonDialogInitialize")) {
+        session.common_dialog_initialized = true;
+        return hostReturn(s, m, 0);
+    }
+    if (saveDialogFunction(name)) {
+        if (!session.compatibility_modules[160]) {
+            session.missing_service = name;
+            stopGuest(*m, "SaveDataDialog provider is not loaded", pc);
+            return m;
+        }
+        if (!std::strcmp(name, "sceSaveDataDialogInitialize")) {
+            if (session.save_dialog_initialized) return hostReturn(s, m, 0x80b80004u);
+            session.save_dialog_initialized = true;
+            return hostReturn(s, m, 0);
+        }
+        if (!std::strcmp(name, "sceSaveDataDialogTerminate")) {
+            if (!session.save_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
+            session.save_dialog_initialized = false;
+            return hostReturn(s, m, 0);
+        }
+        if (!std::strcmp(name, "sceSaveDataDialogUpdateStatus"))
+            return hostReturn(s, m, session.save_dialog_initialized ? 1 : 0);
+        if (!std::strcmp(name, "sceSaveDataDialogGetResult"))
+            return hostReturn(s, m, 0x80b80005u); // No completed selection exists.
+        if (!session.save_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
+        if (!s.gpr.rdi.qword) return hostReturn(s, m, 0x80b8000du);
+        if (!guestPointer(*m, s.gpr.rdi.qword, 56)) return m;
+        session.missing_service = name;
+        stopGuest(*m, "save dialog presenter unavailable", pc);
+        return m;
+    }
     if (!std::strcmp(name, "sceKernelGetProcParam"))
         return hostReturn(s, m, session.image_address + procparam);
     if (!std::strcmp(name, "scePthreadSelf"))
@@ -152,10 +273,12 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             stopGuest(*m, "unsupported flexible-map protection or fixed address", pc);
             return m;
         }
-        if (size > 128 * 1024 * 1024 || session.flexible_bytes + size > 256 * 1024 * 1024)
+        const uint64_t reserved_size = (size + 16383) & ~uint64_t(16383);
+        if (size > 128 * 1024 * 1024 || session.flexible_reserved_bytes + reserved_size > 256 * 1024 * 1024)
             return hostReturn(s, m, orbisError(12));
         const uint64_t address = allocate(session, size, true);
         session.flexible_bytes += size;
+        session.flexible_reserved_bytes += reserved_size;
         store64(*m, s.gpr.rdi.qword, address);
         return hostReturn(s, m, 0);
     }
@@ -383,12 +506,27 @@ static std::string bootstrap(const char *path) {
         << ",\"image_address\":" << session->image_address
         << ",\"stack_address\":" << session->stack_address
         << ",\"fault_address\":" << session->memory.fault_address
+        << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
+        << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
+        << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
+        << ",\"flexible_reserved_bytes\":" << session->flexible_reserved_bytes
         << ",\"flexible_bytes\":" << session->flexible_bytes << ",\"missing_service\":\""
         << session->missing_service << "\",\"service_args\":[" << session->state.gpr.rdi.qword << ","
         << session->state.gpr.rsi.qword << "," << session->state.gpr.rdx.qword
         << "],\"heap_api_registered\":" << (session->heap_api != 0 ? "true" : "false") << "}";
+    std::string result = out.str();
+    result.pop_back();
+    std::ostringstream modules_out;
+    modules_out << ",\"compatibility_modules\":{";
+    bool first_module = true;
+    for (const auto &[id, references] : session->compatibility_modules) {
+        if (!first_module) modules_out << ",";
+        modules_out << "\"" << id << "\":" << references;
+        first_module = false;
+    }
+    modules_out << "}}";
     active = nullptr;
-    return out.str();
+    return result + modules_out.str();
 }
 extern "C" const char *osl_mobile_game_report(const char *path) {
     static thread_local std::string report;
@@ -400,10 +538,66 @@ extern "C" const char *osl_mobile_game_report(const char *path) {
     return report.c_str();
 }
 #ifdef OSL_GAME_CLI
+static bool serviceChecks() {
+    auto owner = std::make_unique<Session>();
+    auto &session = *owner;
+    session.stack.resize(4096);
+    mapRegion(session.memory, 0x20000000, session.stack.data(), session.stack.size());
+    active = &session;
+    unsigned checks = 0;
+    auto call = [&](const char *name, uint64_t argument = 0) {
+        session.memory.fault = {};
+        session.state = State{};
+        session.state.gpr.rsp.qword = 0x20000ff8;
+        session.state.gpr.rdi.qword = argument;
+        store64(session.memory, session.state.gpr.rsp.qword, 0xfeedface);
+        for (size_t i = 0; i < std::size(imports); ++i)
+            if (!std::strcmp(imports[i].symbol, name)) {
+                hostService(session.state, hle_base + i * 0x1000, &session.memory);
+                return session.state.gpr.rax.qword;
+            }
+        throw std::runtime_error("Service fixture name is not imported");
+    };
+    auto require = [&](bool value) {
+        if (!value) throw std::runtime_error("Service contract check " + std::to_string(checks + 1) + " failed");
+        ++checks;
+    };
+    require(call("sceSysmoduleLoadModule", 0) == 0x805a1000u);
+    require(call("sceSysmoduleLoadModule", 7) == 0 && session.memory.fault.empty());
+    require(call("sceSysmoduleUnloadModule", 7) == 0);
+    require(call("sceSysmoduleUnloadModule", 7) == 0x805a1001u);
+    call("sceSysmoduleLoadModule", 173); // 0xad is NpTrophy, never SaveDataDialog.
+    require(session.memory.fault == "module provider unavailable");
+    require(call("sceSysmoduleLoadModule", 160) == 0 && session.memory.fault.empty());
+    require(call("sceSaveDataDialogInitialize") == 0);
+    require(call("sceSaveDataDialogInitialize") == 0x80b80004u);
+    require(call("sceSaveDataDialogUpdateStatus") == 1);
+    require(call("sceSaveDataDialogGetResult") == 0x80b80005u);
+    require(call("sceSaveDataDialogOpen") == 0x80b8000du);
+    call("sceSaveDataDialogOpen", 0x20000080);
+    require(session.memory.fault == "save dialog presenter unavailable");
+    require(call("sceSaveDataDialogTerminate") == 0);
+    require(call("sceSaveDataDialogTerminate") == 0x80b80003u);
+    require(call("sceSysmoduleLoadModule", 206) == 0 && session.memory.fault.empty());
+    require(call("sceSystemGestureOpen") == 0);
+    require(session.gesture_setup_calls == 1);
+    call("sceSysmoduleLoadModule", 65535);
+    require(session.memory.fault == "module provider unavailable");
+    session.memory.fault = {};
+    uint64_t allocation = allocate(session, 4096, true);
+    auto bytes = guestPointer(session.memory, allocation, 4096);
+    require(bytes && reinterpret_cast<uint64_t>(bytes) % 16384 == 0);
+    require(std::all_of(bytes, bytes + 4096, [](uint8_t byte) { return byte == 0; }));
+    require(std::all_of(bytes + 4096, bytes + 16384, [](uint8_t byte) { return byte == 0; }));
+    active = nullptr;
+    std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
+    return true;
+}
 int main(int argc, char **argv) {
     if (argc != 2)
         return 2;
     try {
+        if (!std::strcmp(argv[1], "--service-check")) return serviceChecks() ? 0 : 1;
         puts(bootstrap(argv[1]).c_str());
         return 0;
     } catch (const std::exception &e) {

@@ -65,7 +65,7 @@ static unsigned worker() {
                 "real routine comparison failed: kind=" + std::to_string(t.kind) +
                 " a=" + std::to_string(t.a) + " b=" + std::to_string(t.b) +
                 " actual=" + std::to_string(s.gpr.rax.qword) +
-                " flags=" + std::to_string(flags(s)) + " fault=" + m.fault);
+                " flags=" + std::to_string(flags(s)) + " fault=" + std::string(m.fault));
         ++passed;
     }
     // Explicit guest addressing must reject edges, overflow and overlapping maps.
@@ -91,7 +91,7 @@ static unsigned worker() {
         throw std::runtime_error("overlapping guest mapping accepted");
     ++passed;
     State s{};
-    m.fault.clear();
+    m.fault = {};
     dispatch(s, 0xbad, &m);
     if (m.fault.empty())
         throw std::runtime_error("missing trace silently accepted");

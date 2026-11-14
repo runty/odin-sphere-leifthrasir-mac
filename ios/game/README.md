@@ -106,3 +106,32 @@ instructions. Scalar/CAS protection, concurrency and atomic-fault cleanup are
 covered by `runtime-test.cpp`. The routine comparison suite still passes 414
 checks with the guarded/protected core. Rebuild both static libraries before
 linking a device app whenever their shared core changes.
+
+
+## Scoped service providers
+
+The next host checkpoint reaches 628 registered traces / 1,505 dispatches with
+no memory fault, after resident compatibility setup for Fiber (6), Ult (7) and
+SystemGesture (206). Ult/Fiber are accepted only when the fixed linked image
+imports none of their APIs and has no dynamic module/symbol resolver.
+SystemGesture supports exactly the Mac port's five setup/teardown compatibility
+calls; this profile has no gesture-event consumer. It does not implement touch
+controls or recognize touch events.
+
+SaveDataDialog is module **160 (0xa0)**; Trophy is **173 (0xad)**. The new dialog
+provider supports initialization/status/termination and accurate error returns.
+Opening a selection stops with `save dialog presenter unavailable`; it never
+fabricates a selection or writes progress. The module mapping was corrected
+during validation and the CLI regression check distinguishes those IDs.
+
+```sh
+"$WORK/ios-game/guest-startup" --service-check
+```
+
+This passes 21 checks for load/unload, invalid/unknown IDs, lifecycle/errors,
+missing presenters and 16 KiB GPU allocation alignment/zeroed padding. Flexible
+memory accounts for rounded native backing sizes. Fault reasons use static
+string views, so a fault does not allocate or throw through lifted code. The
+414 comparisons, atomic tests, loop guards and copied-input checks still pass.
+Trophy module startup and remaining kernel/display services are the next gaps;
+this newer host-only checkpoint has not replaced the signed 624-trace baseline.

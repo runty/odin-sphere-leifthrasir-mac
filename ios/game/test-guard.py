@@ -44,7 +44,7 @@ int main() {
  if(setjmp(checkpoint)==0) { sub_2(state,0,m.get()); assert(false); }
  m->recovery=nullptr;
  assert(m->fault=="guest execution budget exhausted" && m->checkpoints==33);
- m->fault.clear();m->checkpoints=0;m->checkpoint_limit=1000000;
+ m->fault = {};m->checkpoints=0;m->checkpoint_limit=1000000;
  m->deadline=std::chrono::steady_clock::now()-std::chrono::seconds(1);
  m->recovery=&checkpoint;
  if(setjmp(checkpoint)==0) { sub_2(state,0,m.get()); assert(false); }
