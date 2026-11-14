@@ -12,6 +12,7 @@
 #include "../services/gpu.h"
 #include "../services/system.h"
 #include "../services/condition.h"
+#include "../services/thread_storage.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <cstdio>
@@ -91,6 +92,8 @@ struct Session {
     std::vector<uint8_t> image, stack;
     std::vector<std::unique_ptr<std::vector<uint8_t>>> owned;
     std::vector<AlignedBytes> gpu_allocations;
+    ModuleTlsTemplates tls_templates;
+    std::unique_ptr<ThreadStorage> primary_storage;
     std::map<uint16_t, unsigned> compatibility_modules;
     unsigned gesture_setup_calls = 0;
     bool save_dialog_initialized = false, common_dialog_initialized = false, live_streaming_initialized = false, error_dialog_initialized = false;
@@ -216,6 +219,9 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     uint64_t system_result=0;
     if (GuestSystem::call(name,s,*m,system_result))
         return m->fault.empty() ? hostReturn(s,m,system_result) : m;
+    uint64_t tls_result=0;
+    if (session.primary_storage && GuestTls::call(name,s,*m,*session.primary_storage,tls_result))
+        return m->fault.empty() ? hostReturn(s,m,tls_result) : m;
     uint64_t condition_result=0;
     if (GuestConditions::call(name,s,*m,session.conditions,[&](uint64_t id) -> pthread_mutex_t * {
             const auto found=session.mutexes.find(id);
@@ -613,10 +619,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             store64(*m, s.gpr.rsi.qword, attr->second.affinity);
         } else {
             session.thread_attributes.erase(attr);
-            auto &regions = m->regions;
-            regions.erase(std::remove_if(regions.begin(), regions.end(),
-                                         [address](const auto &r) { return r.base == address; }),
-                          regions.end());
+            unmapRegion(*m,address);
             store64(*m, s.gpr.rdi.qword, 0);
         }
         return hostReturn(s, m, 0);
@@ -669,10 +672,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             // Like the Mac runtime: validate policy; no console priority scheduler.
         } else {
             session.mutex_attributes.erase(attr);
-            auto &regions = m->regions;
-            regions.erase(std::remove_if(regions.begin(), regions.end(),
-                                         [address](const auto &r) { return r.base == address; }),
-                          regions.end());
+            unmapRegion(*m,address);
             store64(*m, s.gpr.rdi.qword, 0);
         }
         return hostReturn(s, m, 0);
@@ -788,6 +788,12 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
             std::memcpy(session->image.data() + offset, &value, 8);
         }
     }
+    for(const auto &module:modules) if(module.id) {
+        if(module.tls>image_size || module.memsz>image_size-module.tls || module.filesz>module.memsz ||
+           !session->tls_templates.define(module.id,session->image.data()+module.tls,module.filesz,module.memsz))
+            return "{\"error\":\"unsupported module TLS metadata\"}";
+    }
+    session->primary_storage=std::make_unique<ThreadStorage>(session->memory,session->tls_templates,session->identity,0x80000000);
     for (const auto &segment : segments)
         mapRegion(session->memory, session->image_address + segment.address,
                   session->image.data() + segment.address, segment.size, (segment.flags & 2) != 0 && (segment.flags & 1) == 0);
@@ -879,6 +885,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
         << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
         << ",\"event_flags\":" << session->event_flags.count()
+        << ",\"primary_tls_reserved_bytes\":" << session->primary_storage->allocatedBytes()
         << ",\"condition_variables\":" << session->conditions.count()
         << ",\"gpu_adapter_enabled\":" << (session->gpu ? "true" : "false")
         << ",\"gpu_service_calls\":" << session->gpu_service_calls
@@ -1176,6 +1183,23 @@ static bool serviceChecks() {
     require(call("scePthreadAttrDestroy",0x20000181)==0 && session.thread_attributes.size()==attribute_count);
     require(load64(session.memory,0x20000181)==0 && session.stack[0x180]==0x7b && session.stack[0x189]==0x7b);
     require(call("scePthreadAttrSetdetachstate",0x20000181,0)==0x80020016u);
+    std::memset(session.stack.data()+0x300,0x51,16);
+    require(session.tls_templates.define(2,session.stack.data()+0x300,16,32));
+    session.primary_storage=std::make_unique<ThreadStorage>(session.memory,session.tls_templates,false,0x90000000);
+    store64(session.memory,0x200001a1,2);store64(session.memory,0x200001a9,0);
+    const uint64_t tls=call("__tls_get_addr",0x200001a1);
+    auto tls_data=guestPointer(session.memory,tls,32);
+    require(tls==0x90000000 && tls_data && std::all_of(tls_data,tls_data+16,[](uint8_t x){return x==0x51;}));
+    require(std::all_of(tls_data+16,tls_data+32,[](uint8_t x){return x==0;}));
+    tls_data[31]=0x7b;store64(session.memory,0x200001a9,31);
+    require(call("__tls_get_addr",0x200001a1)==tls+31 && tls_data[31]==0x7b);
+    store64(session.memory,0x200001a9,32);call("__tls_get_addr",0x200001a1);
+    require(session.memory.fault=="unsupported TLS module or offset");
+    call("__tls_get_addr",0x20000ff1);require(!session.memory.fault.empty());
+    store64(session.memory,0x200001a1,3);store64(session.memory,0x200001a9,0);call("__tls_get_addr",0x200001a1);
+    require(session.memory.fault=="unsupported TLS module or offset");
+    session.primary_storage.reset();session.memory.fault={};
+    require(!guestPointer(session.memory,tls,1));session.memory.fault={};
     active = nullptr;
     std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
     return true;

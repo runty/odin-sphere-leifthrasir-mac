@@ -7,6 +7,15 @@
 #include <stdexcept>
 
 static std::recursive_mutex guestAtomics;
+GuestMemoryScope::GuestMemoryScope(){lock();}
+GuestMemoryScope::~GuestMemoryScope(){unlock();}
+void GuestMemoryScope::lock(){if(!held_){guestAtomics.lock();held_=true;}}
+void GuestMemoryScope::unlock(){if(held_){held_=false;guestAtomics.unlock();}}
+const char *guestInterruption(const Memory &m) {
+    if(m.cancel_requested && m.cancel_requested->load(std::memory_order_relaxed))return "guest thread cancellation requested";
+    if(m.stop_requested && m.stop_requested->load(std::memory_order_relaxed))return "guest execution interrupted";
+    return nullptr;
+}
 Memory::~Memory() {
     if (atomic_held)
         guestAtomics.unlock();
@@ -27,6 +36,7 @@ void stopGuest(Memory &m, const char *reason, uint64_t pc) {
     resumeFault(m);
 }
 extern "C" void __osl_guest_tick(Memory *m, const State *s) {
+    if(const char *reason=guestInterruption(*m))stopGuest(*m,reason,s->gpr.rip.qword);
     if (++m->checkpoints > m->checkpoint_limit)
         stopGuest(*m, "guest execution budget exhausted", s->gpr.rip.qword);
     if ((m->checkpoints & 1023) == 0 && std::chrono::steady_clock::now() > m->deadline)
@@ -46,21 +56,32 @@ Memory *dispatch(State &s, uint64_t pc, Memory *m) {
 void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writable) {
     if (!data || !size || size > std::numeric_limits<uint64_t>::max() - base)
         throw std::runtime_error("invalid guest mapping");
-    for (const auto &r : m.regions)
+    std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
+    for (const auto &r : m.mappings->regions)
         if (base < r.base + r.size && r.base < base + size)
             throw std::runtime_error("overlapping guest mappings");
-    m.regions.push_back({base, data, size, writable});
+    m.mappings->regions.push_back({base, data, size, writable});
+}
+bool unmapRegion(Memory &m,uint64_t base) {
+    std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
+    auto &regions=m.mappings->regions;
+    for(auto it=regions.begin();it!=regions.end();++it)if(it->base==base){regions.erase(it);return true;}
+    return false;
 }
 uint8_t *guestPointer(Memory &m, uint64_t address, size_t size, bool writing) {
-    for (const auto &r : m.regions)
+    uint8_t *pointer=nullptr;bool protected_write=false;
+    {
+    std::shared_lock<std::shared_mutex> lock(m.mappings->mutex);
+    for (const auto &r : m.mappings->regions)
         if (size <= r.size && address >= r.base && address - r.base <= r.size - size) {
             if (writing && !r.writable) {
-                m.fault_address = address;
-                stopGuest(m, "guest write to protected region");
-                return nullptr;
+                protected_write=true;break;
             }
-            return r.data + (address - r.base);
+            pointer=r.data+(address-r.base);break;
         }
+    } // Release the mapping lock before a fault can longjmp.
+    if(protected_write){m.fault_address=address;stopGuest(m,"guest write to protected region");return nullptr;}
+    if(pointer)return pointer;
     if (m.external_pointer)
         if (auto p = m.external_pointer(address, size, writing)) return p;
     m.fault_address = address;

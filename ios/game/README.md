@@ -376,3 +376,39 @@ two real conditions and no memory fault. Corpus:
 The first requested worker entry normalizes to `0x10738d70`. Worker creation is
 still an explicit missing service; a successful spawn is not fabricated.
 Both mobile SDKs compile this corpus; neither installed mobile app changes.
+
+## Worker memory and TLS foundation
+
+Checked CPUs now share a synchronized mapping table while retaining separate
+faults, checkpoints, register state and interruption flags. Unmapping removes a
+descriptor from every attached CPU; the session must keep its backing storage
+alive until all CPUs and GPU users have stopped. Mapping locks leave scope
+before a fault can longjmp. `GuestMemoryScope` lets host services use the same
+recursive lock as scalar/CAS transfers and must be released around waits.
+
+`thread_storage.h` owns each worker's aligned stack and lazy module TLS. It
+copies the real initialized template, zero-fills the rest, validates module/
+offset/index spans, publishes mappings to attached CPUs and removes them before
+freeing its bytes. Primary startup now configures libc/Fios2 templates and the
+real `__tls_get_addr` adapter; actual worker creation remains unsupported until
+execution ownership, blocking-service scopes and join/teardown are connected.
+No additional game dispatch progress or guest worker execution is claimed.
+
+The shared-map checks pass on arm64/Rosetta with 20,000 synchronized CPU/host
+updates, 2,000 concurrent map cycles, protected-fault lock recovery and cross-
+thread stop/cancel interruption. Arm64 ASan/TSan pass. Real-template storage
+checks pass 55 arm64 / 52 Rosetta cases with four native workers, separate TLS
+values, stack limits, invalid/protected spans and complete mapping teardown.
+Arm64 TSan passes all 55, including native identity addresses. ASan passes 53:
+its heap lies above 40 bits, and the identity case explicitly verifies rejection
+rather than truncating or substituting an address. This is native engineering
+coverage, not translated guest-worker execution or a physical-device result.
+
+The rebuilt three-routine/two-worker CPU comparisons still pass all 414 checks;
+fixtures and both mobile runtime archives are in `ios-cpu-workers/fixtures/`.
+Core hash `8008e1e3c1c1ea991971c5bd893b4099642223403aa6033e259b395d998c6c3c`.
+All 4,293 imported-service checks, the 60 real GPU-boundary checks, headless
+address/input rejection and both mobile SDK archive builds pass. Current native
+GPU-backed corpus `29361ce73a39bb8c162f9412b7400e27bc4e8a0664e1d1c0e60a615e3f8dc606`
+still stops at `scePthreadCreate`, 938 entries / 2,953 dispatches. Old installed
+mobile probes and their earlier CPU fixture hashes remain separate baselines.
