@@ -459,3 +459,37 @@ address host result: 859 traces / 2,562 dispatches, 414 CPU checks, both
 initializers complete, twelve flags and no memory fault. Private inputs survive
 replacement/relaunch. The matching signed iPhoneOS/GPU app builds and verifies,
 staged only. Physical devices retain `dcd85de`. [Shared event-flag scope](../ios/services/README.md#shared-event-flags-and-guarded-guest-waits).
+
+
+### 2026-11-14 mobile integration checkpoint
+
+The installed Mac stays validated `af52e09`, with player-confirmed gameplay,
+audio/save reload and the earlier combat improvement. The user deferred the
+30-minute hands-on soak; it and fresh-account click-through remain open.
+
+The physical iPad now passes clean `b1b10cc` launches 18/19: CPU 414, native
+memory 19, GPU readback 64 and actual main-thread SDL UIKit/Metal-to-Vulkan
+surface creation/capability checks. Both original input files survive update
+and relaunch. Five formats, FIFO, graphics/present queue 0, three-image min/max,
+2316×1512 extent, Vulkan/SDL cleanup and original UIKit key window preservation
+pass. Simulator clean launches 22/23 pass their Metal-layer-only path. iPhone
+retains `1376d6a`; fresh execution remains denied while locked. No swapchain
+presentation, mobile guest draw or playable mobile game is established.
+
+A new isolated backend passes exact VBLENDPS and lane-local VSHUFPS contracts,
+each across 24,576 output lanes including destructive aliases. Reciprocal and
+VPERMILPS regressions and all 414 real-routine checks pass. A full-window
+re-lift of all 1,037 seed PCs, without copying old IR across semantics, now
+advances through both executed instruction gaps. Strict native Mac GPU
+qualification passes 60 bridge checks, four joined workers, three 1080p buffers
+and ordered cleanup; headless input-rejection checks pass. New GPU corpus
+`c039c7a4` still stops explicitly at VPERMILPD `0x106aad24`, without memory fault
+or frames. These host experiments are separate from device memory corpus
+`6be8c7c0`; instruction-test success is not physical game execution.
+
+Both mobile SDKs now have independently built/audited SDL, fmt, xxHash, Zycore,
+Zydis and robin-map. Support-library CMake consumer/link checks pass, with all
+34 non-SDL archive objects per SDK platform-audited. Remaining work includes
+PNG/header dependencies, the next executed CPU gap, main-thread/foreground
+renderer integration, swapchain/full guest presentation, asset import and
+mobile lifecycle/input/audio/save acceptance. [Current graphics scope](../ios/graphics/README.md).
