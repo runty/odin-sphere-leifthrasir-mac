@@ -385,7 +385,7 @@ s32 PS4_SYSV_ABI sceVideoOutGetDeviceCapabilityInfo(
     return ORBIS_OK;
 }
 
-s32 PS4_SYSV_ABI sceVideoOutWaitVblank(s32 handle) {
+s32 WaitVblankGuarded(s32 handle, int (*interrupt)(void*), void* context) {
     auto* port = driver->GetPort(handle);
     if (!port) {
         return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
@@ -393,8 +393,21 @@ s32 PS4_SYSV_ABI sceVideoOutWaitVblank(s32 handle) {
 
     std::unique_lock lock{port->vo_mutex};
     const auto prev_counter = port->vblank_status.count;
-    port->vblank_cv.wait(lock, [&]() { return prev_counter != port->vblank_status.count; });
+    if (!interrupt) {
+        port->vblank_cv.wait(lock, [&]() { return prev_counter != port->vblank_status.count; });
+    } else {
+        while (prev_counter == port->vblank_status.count) {
+            if (interrupt(context)) {
+                return static_cast<s32>(0x80020004u); // host guard interruption
+            }
+            port->vblank_cv.wait_for(lock, std::chrono::milliseconds(5));
+        }
+    }
     return ORBIS_OK;
+}
+
+s32 PS4_SYSV_ABI sceVideoOutWaitVblank(s32 handle) {
+    return WaitVblankGuarded(handle, nullptr, nullptr);
 }
 
 s32 PS4_SYSV_ABI sceVideoOutColorSettingsSetGamma(SceVideoOutColorSettings* settings, float gamma) {

@@ -3,6 +3,7 @@
 #include "../services/gpu.h"
 #include "../services/memory.h"
 #include "../services/wait_scope.h"
+#include "native-wait.h"
 #include "oslgpu.h"
 #include "core/libraries/gnmdriver/gnmdriver.h"
 #include "core/libraries/videoout/videoout_error.h"
@@ -16,12 +17,6 @@
 struct NativeGnmSubmissions {
     uint64_t calls=0,batches=0,buffers=0,bytes=0,submit_done=0;
     static constexpr uint32_t invalid=0x80d11000u;
-    struct Unlocked {
-        GuestWaitScope scope;
-        explicit Unlocked(GuestWaitScope value):scope(value){scope.before();}
-        ~Unlocked(){scope.after();}
-        Unlocked(const Unlocked &)=delete;
-    };
     static bool shared(Memory &memory,uint64_t address,size_t size,bool writing=false) {
         if((address&3) || address>=(uint64_t(1)<<40) || size>(uint64_t(1)<<40)-address ||
            !DirectMemory::pointer(address,size,writing) || !oslgpu_guest_range_mapped(address,size)) {
@@ -41,7 +36,7 @@ struct NativeGnmSubmissions {
         if(done) {
             if(const char *reason=guestInterruption(memory)){stopGuest(memory,reason);return true;}
             int32_t status;
-            {Unlocked unlocked(wait);status=reinterpret_cast<decltype(&sceGnmSubmitDone)>(entry)();}
+            {NativeGpuWait unlocked(wait);status=reinterpret_cast<decltype(&sceGnmSubmitDone)>(entry)();}
             ++calls;++submit_done;result=static_cast<uint32_t>(status);
             if(const char *reason=guestInterruption(memory))stopGuest(memory,reason);
             return true;
@@ -112,7 +107,7 @@ struct NativeGnmSubmissions {
         auto draws=count?draw.data():&zero_pointer;auto sizes=count?draw_sizes.data():&zero_size;
         int32_t status;
         {
-            Unlocked unlocked(wait);
+            NativeGpuWait unlocked(wait);
             if(flip && workload)status=reinterpret_cast<decltype(&sceGnmSubmitAndFlipCommandBuffersForWorkload)>(entry)(static_cast<uint32_t>(args[0]),count,writable_draw.data(),sizes,ccb_table?writable_constant.data():nullptr,ccb_sizes?constant_sizes.data():nullptr,handle,index,mode,argument);
             else if(flip)status=reinterpret_cast<decltype(&sceGnmSubmitAndFlipCommandBuffers)>(entry)(count,writable_draw.data(),sizes,ccb_table?writable_constant.data():nullptr,ccb_sizes?constant_sizes.data():nullptr,handle,index,mode,argument);
             else if(workload)status=reinterpret_cast<decltype(&sceGnmSubmitCommandBuffersForWorkload)>(entry)(static_cast<uint32_t>(args[0]),count,draws,sizes,ccb_table?(count?constant.data():&zero_pointer):nullptr,ccb_sizes?(count?constant_sizes.data():&zero_size):nullptr);

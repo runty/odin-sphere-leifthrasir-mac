@@ -15,7 +15,7 @@ for path in (root,build,out):
  if len(path.parts)<3 or path.parts[1]!='Volumes' or not Path('/Volumes',path.parts[2]).is_mount():p.error('Use mounted external paths')
 if out.exists():p.error('--output must be new')
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-sources={name:digest(repo/name) for name in ('gpu/shadps4/video_core/amdgpu/liverpool.h','gpu/shadps4/video_core/amdgpu/liverpool.cpp','ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-submission-test.cpp','ios/graphics/test-gnm-submissions.py','ios/cpu/runtime.h','ios/services/gpu.h','ios/services/clock.h','src/oslgpu.h')}
+sources={name:digest(repo/name) for name in ('gpu/shadps4/video_core/amdgpu/liverpool.h','gpu/shadps4/video_core/amdgpu/liverpool.cpp','ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h','ios/graphics/guest-presentation.h','ios/graphics/native-wait.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-submission-test.cpp','ios/graphics/test-gnm-submissions.py','ios/cpu/runtime.h','ios/services/gpu.h','ios/services/clock.h','src/oslgpu.h')}
 state_path=root/'build-state.json';state_bytes=state_path.read_bytes();state=json.loads(state_bytes)
 for name in ('gpu/shadps4/video_core/amdgpu/liverpool.h','gpu/shadps4/video_core/amdgpu/liverpool.cpp','ios/graphics/guest-gpu.h'):
  if state['sources'][name]!=sources[name]:p.error('Checkpoint has different renderer/adapter source: '+name)

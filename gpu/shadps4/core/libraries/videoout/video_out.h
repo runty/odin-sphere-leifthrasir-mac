@@ -127,6 +127,9 @@ s32 PS4_SYSV_ABI sceVideoOutGetBufferLabelAddress(s32 handle, uintptr_t* label_a
 s32 PS4_SYSV_ABI sceVideoOutSetFlipRate(s32 handle, s32 rate);
 s32 PS4_SYSV_ABI sceVideoOutIsFlipPending(s32 handle);
 s32 PS4_SYSV_ABI sceVideoOutWaitVblank(s32 handle);
+// Host-only guard, not a console export. The callback runs under vo_mutex and
+// must only observe cancellation/deadline state; never block, throw or unwind.
+s32 WaitVblankGuarded(s32 handle, int (*interrupt)(void*), void* context);
 s32 PS4_SYSV_ABI sceVideoOutSubmitFlip(s32 handle, s32 bufferIndex, s32 flipMode, s64 flipArg);
 s32 PS4_SYSV_ABI sceVideoOutGetFlipStatus(s32 handle, FlipStatus* status);
 s32 PS4_SYSV_ABI sceVideoOutGetResolutionStatus(s32 handle, SceVideoOutResolutionStatus* status);

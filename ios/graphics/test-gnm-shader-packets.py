@@ -15,7 +15,7 @@ for path in (root,build,out):
  if len(path.parts)<3 or path.parts[1]!='Volumes' or not Path('/Volumes',path.parts[2]).is_mount():p.error('Use mounted external paths')
 if out.exists():p.error('--output must be new')
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-sources={name:digest(repo/name) for name in ('ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packet-test.cpp','ios/graphics/test-gnm-shader-packets.py','ios/cpu/runtime.h','ios/services/gpu.h','ios/services/clock.h','src/oslgpu.h')}
+sources={name:digest(repo/name) for name in ('ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h','ios/graphics/guest-presentation.h','ios/graphics/native-wait.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packet-test.cpp','ios/graphics/test-gnm-shader-packets.py','ios/cpu/runtime.h','ios/services/gpu.h','ios/services/clock.h','src/oslgpu.h')}
 layout=root/'image-layout.h';layout_bytes=layout.read_bytes();out.mkdir(parents=True);(out/'image-layout.h').write_bytes(layout_bytes);(out/'profile').mkdir()
 def current():
  if layout.read_bytes()!=layout_bytes:raise RuntimeError('Immutable image layout changed')

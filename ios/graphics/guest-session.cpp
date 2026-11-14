@@ -117,6 +117,8 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
             <<",\"gnm_shader_calls\":"<<gpu.gnm_shader_calls
             <<",\"gnm_submission_calls\":"<<gpu.submissions.calls<<",\"gnm_batches\":"<<gpu.submissions.batches
             <<",\"gnm_buffers\":"<<gpu.submissions.buffers<<",\"gnm_bytes\":"<<gpu.submissions.bytes<<",\"gnm_submit_done\":"<<gpu.submissions.submit_done
+            <<",\"flip_wait_packets\":"<<gpu.presentation.flip_wait_packets<<",\"vblank_waits\":"<<gpu.presentation.vblank_waits
+            <<",\"presentation_interruptions\":"<<gpu.presentation.interruptions<<",\"gnm_performance_queries\":"<<gpu.presentation.performance_queries
             <<",\"mapped_before_reset\":"<<gpu.mapped_before_reset<<",\"unmapped_after_reset\":"<<unmapped
             <<",\"guest_resources_released\":"<<released<<"},\"presented_frames\":"<<oslgpu_presented_frames()
             <<",\"test_gate_enabled\":"<<session->test_gate.load()<<",\"test_gate_reached\":"<<session->test_gate_reached.load()<<",\"game_frames\":false}";
