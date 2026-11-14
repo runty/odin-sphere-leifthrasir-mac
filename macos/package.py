@@ -114,6 +114,7 @@ def main():
             "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "CFBundleShortVersionString": "0.2.3",
             "CFBundleIconFile": "OdinSphere.icns", "LSMinimumSystemVersion": "27.2",
             "NSHighResolutionCapable": True, "LSArchitecturePriority": ["arm64", "x86_64"],
+            "NSRemovableVolumesUsageDescription": "Open your Odin Sphere game files on the external disk.",
             "LSEnvironment": {"ROSETTA_ADVERTISE_AVX": "1"}}))
         notices = resources / "Notices"
         for root in [SOURCE, args.vulkan_prefix / "share/licenses", args.vulkan_prefix / "src/mesa-kosmickrisp", args.vulkan_prefix / "src/vulkan-loader", *args.license_root]:

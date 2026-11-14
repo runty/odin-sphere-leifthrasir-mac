@@ -86,3 +86,20 @@ driver loading, default performance toggles, immutable bundle contents and
 unchanged saved progress bytes. It does not claim to have visibly loaded a
 save slot or played 30 minutes of combat. Live gameplay, audio and save reload
 have separate player-confirmed evidence in the port plan.
+
+
+## Installed library and Finder launch
+
+The private console pipeline now copies verified runtime files to
+`~/Library/Application Support/OdinSphere/game/` before configuring the app.
+This avoids waiting on an external-volume permission request at Finder launch.
+Dumps, build trees, dependencies and shader caches remain on the external disk;
+the local copy is an installed game library. The wrapper validates and reuses
+an existing local library, stages replacements and preserves previous files.
+`--external-game` explicitly keeps the earlier external-folder configuration.
+
+A normal LaunchServices launch of the installed app with the local library
+logs a valid game, a 1280×720 Metal launcher and `Launcher: shown`. Native UI
+capture remains unavailable in the unattended session, so a visible click-through
+or fresh-account result is not claimed. The earlier player-confirmed gameplay,
+audio and save reload remain the gameplay evidence.
