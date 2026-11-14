@@ -780,3 +780,21 @@ game and boundary SDK archives are refreshed; physical apps are unchanged.
 Private evidence is in `gpu-retirement-qualified/`, `ios-guest-session-retirement/`
 and `ios-game-uikit-next/checkpoint-retirement/`. Further native discovery uses
 the existing checkpoint-stop marker and the unchanged CPU backend/cache.
+
+### Submission adapters and the 1,222-entry checkpoint
+
+`0977a20` adds four typed batch/flip submission ABIs and SubmitDone, with checked
+descriptor/command/label/stack ranges and HLE leases released for native waits.
+[Native queue/presentation checks and scope](../graphics/README.md#typed-guest-submissions-and-diagnostic-flips).
+The interface change is carried by matching game/frontend SDK archives; both
+SDK builds pass. Eight synthetic flip buffers are observed by the native presenter
+in the 245-check ASan/UBSan fixture. The actual guest has not submitted one yet.
+
+Checkpoint `68cead5ee8011394c250a2e9c00434b087a07d711fe64195dcda8893fa1d15e9`
+has 1,222 entries. Strict native startup completes both initializers, starts/
+joins 17 workers, registers three buffers and stops at executable gap
+`0x1075d142` in 380.112 ms, with no memory fault or game submission/frame.
+Bridge 109, shader 305, separate boundary ASan lifecycle/five input negatives,
+4,336 service checks and four worker cleanup fixtures pass. The separate boundary
+normal path still reaches an earlier gap before child CPUs start. Instrumentation
+limits remain explicit in each report. Physical apps/saves are unchanged.

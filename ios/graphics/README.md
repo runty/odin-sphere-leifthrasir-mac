@@ -561,3 +561,53 @@ ICD; Simulator has no driver link or execution claim. Both game archives and
 the separate SDK boundary archives compile. This is host/SDK evidence, not an
 updated physical app or a game-frame/submission result. Typed guest submissions,
 blocking queue waits and gameplay lifecycle are still open.
+
+### Typed guest submissions and diagnostic flips
+
+`0977a20` connects SubmitCommandBuffers, SubmitCommandBuffersForWorkload,
+SubmitAndFlipCommandBuffers, SubmitAndFlipCommandBuffersForWorkload and
+SubmitDone through exact native function types. The adapter snapshots unaligned
+guest descriptor tables, preserves native size validation and zero-count
+non-flip initialization, and checks each nonempty DCB/CCB against aligned,
+permitted shared GPU mappings. Only tables are copied by the adapter. Callers
+retain command/label mappings through GPU completion; final Session teardown
+uses the processor-retirement barrier before releasing the mapping owner.
+
+Flip calls decode three or four additional PS4 stack arguments with checked
+overflow/ranges, preserving signed 64-bit flip arguments. Only the owned VideoOut
+and its successfully registered slots are accepted. The final 64-dword prepare-
+flip packet and its four supported payload kinds are validated before native
+patching, including writable patch/label ranges. Interrupt-label address flags
+are masked as in the backend; its label write is exactly four bytes. Explicit
+guards cover the backend's zero-count flip underflow, inconsistent CCB pointer
+pairs and a 4,096-buffer adapter budget. Unsupported ranges stop explicitly.
+
+`MobileGpuServices` now forwards the HLE state/memory wait scope. Native GPU
+waits release both leases and restore them on return or C++ exception. Host
+cancellation is checked before and after the native call, outside native locks.
+The callback interface change requires matching game/frontend archives. Four
+worker cleanup fixtures, including dispatch-level lease forwarding, and 4,336
+service checks pass ASan/TSan. This does not add bounded cancellation of a hung
+GPU stream or implement guest Equeue waits.
+
+`test-gnm-submissions.py` passes 245 checks under ASan and UBSan through the
+shared adapter: multi-buffer/CCB WriteData acknowledgements, read-only commands,
+descriptor/mapping/stack/slot bounds, real SubmitDone blocking while another CPU
+acquires both leases, post-wait cancellation, and all four prepare-flip variants
+through both flip ABIs. Eight fixed diagnostic buffers reach the native presenter;
+flip status confirms each buffer and complete signed 64-bit argument. A label
+at the final four bytes of a mapping is accepted without touching its canary.
+All eight frames come from the fixture. Actual game submission/frame counts
+remain zero. Only the adapter/inline barrier/fixture is instrumented; supporting
+HLE/CPU runtime, renderer/processor, driver and system libraries are uninstrumented.
+Evidence: `gnm-submission-qualified/{address,undefined}-bounds/`.
+
+The 1,222-entry real startup checkpoint still joins 17 workers and releases its
+three buffers/queues/mappings; bridge 109, boundary ASan lifecycle/input negatives
+and shader 305 checks pass. Both SDK game and separate boundary archives compile
+against the matching renderer; physical apps are unchanged. Evidence:
+`gnm-submission-qualified/`, `ios-guest-session-submissions/`, and
+`ios-game-uikit-next/checkpoint-submissions/` under the private build root.
+CPU discovery continues toward the game's first use of these adapters. Flip-wait
+packets, bounded Equeue waits and further VideoOut services remain to be connected
+as encountered; visible mobile game frames and gameplay acceptance remain open.
