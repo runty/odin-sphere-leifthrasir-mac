@@ -1,4 +1,7 @@
-#include "eventflag.h"
+#ifndef OSL_EVENTFLAG_TEST_HEADER
+#define OSL_EVENTFLAG_TEST_HEADER "eventflag.h"
+#endif
+#include OSL_EVENTFLAG_TEST_HEADER
 #include <array>
 #include <atomic>
 #include <cstdio>

@@ -7,6 +7,7 @@
 #include <unordered_set>
 extern "C" uintptr_t runtime_eventflag_resolve(const char *);
 extern "C" uint64_t runtime_eventflag_live_count();
+extern "C" int32_t runtime_eventflag_wait_guarded(void *,uint64_t,uint32_t,uint64_t *,uint32_t *,int (*)(void *),void *);
 
 // Session-owned, opaque kernel tokens; no native object pointer crosses the ABI.
 class MobileEventFlags {
@@ -61,6 +62,11 @@ public:
         if (!owns(id)) return missing;
         return function<int32_t (*)(void *,uint64_t,uint32_t,uint64_t *,uint32_t *)>("sceKernelWaitEventFlag")(
             reinterpret_cast<void *>(id),bits,mode,out,timeout);
+    }
+    uint32_t wait_guarded(uint64_t id,uint64_t bits,uint32_t mode,uint64_t *out,uint32_t *timeout,
+                          int (*interrupt)(void *),void *context) {
+        if(!owns(id))return missing;
+        return runtime_eventflag_wait_guarded(reinterpret_cast<void *>(id),bits,mode,out,timeout,interrupt,context);
     }
     uint32_t cancel(uint64_t id,uint64_t bits,int32_t *out) {
         if (!owns(id)) return missing;
@@ -125,9 +131,15 @@ inline bool call(const char *name,State &s,Memory &m,MobileEventFlags &owner,uin
         uint32_t bounded=static_cast<uint32_t>(std::min<int64_t>(UINT32_MAX,std::max<int64_t>(1,remaining)));
         if (timeout_output) bounded=std::min(bounded,requested);
         const uint32_t cap=bounded;
+        struct Interruption {Memory *memory;const char *reason=nullptr;} interruption{&m};
+        auto check=[](void *context)->int {
+            auto &state=*static_cast<Interruption *>(context);
+            state.reason=guestInterruption(*state.memory);return state.reason!=nullptr;
+        };
         scope.before();
-        result=owner.wait(first,second,s.gpr.rdx.dword,output ? &observed : nullptr,&bounded);
+        result=owner.wait_guarded(first,second,s.gpr.rdx.dword,output ? &observed : nullptr,&bounded,check,&interruption);
         scope.after();
+        if(interruption.reason){stopGuest(m,interruption.reason);return true;}
         if(const char *reason=guestInterruption(m)){stopGuest(m,reason);return true;}
         if (result==MobileEventFlags::timed_out && (!timeout_output || cap<requested)) {
             // The host guard expired, not the guest's requested timeout. Stop

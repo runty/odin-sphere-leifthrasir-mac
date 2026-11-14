@@ -10,6 +10,7 @@
 
 #define KERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define KERR_ESRCH KERR(3)
+#define KERR_EINTR KERR(4)
 #define KERR_EPERM KERR(1)
 #define KERR_EBUSY KERR(16)
 #define KERR_EINVAL KERR(22)
@@ -211,7 +212,8 @@ static ABI int32_t ef_poll(EventFlag *handle,uint64_t pattern,uint32_t mode,uint
     ef_put(ef);
     return r;
 }
-static ABI int32_t ef_wait(EventFlag *handle,uint64_t pattern,uint32_t mode,uint64_t *result,uint32_t *timeout_us) {
+static int32_t ef_wait_internal(EventFlag *handle,uint64_t pattern,uint32_t mode,uint64_t *result,uint32_t *timeout_us,
+                                int (*interrupt)(void *),void *context) {
     EventFlag *ef=ef_get(handle);
     if (!ef) return KERR_ESRCH;
     if (!pattern || !ef_mode_ok(mode)) { ef_put(ef); return KERR_EINVAL; }
@@ -235,8 +237,26 @@ static ABI int32_t ef_wait(EventFlag *handle,uint64_t pattern,uint32_t mode,uint
         while (*tail) tail=&(*tail)->next;
         *tail=&self;
         while (!self.released && !self.canceled && !ef->deleted) {
-            int e=timeout_us ? ef_timed_wait(ef,&deadline) : pthread_cond_wait(&ef->cond,&ef->lock);
-            if (e==ETIMEDOUT && !self.released && !self.canceled) { r=KERR_ETIMEDOUT; break; }
+            if (interrupt && interrupt(context)) { r=KERR_EINTR; break; }
+            int e;
+            if (interrupt) {
+                // Keep the SAME waiter enqueued across host guard checks, so
+                // FIFO/clear modes and single-waiter EPERM remain atomic.
+                struct timespec slice;ef_now(&slice);
+                slice.tv_nsec+=5000000;
+                if(slice.tv_nsec>=1000000000){++slice.tv_sec;slice.tv_nsec-=1000000000;}
+                if(timeout_us && (deadline.tv_sec<slice.tv_sec ||
+                   (deadline.tv_sec==slice.tv_sec && deadline.tv_nsec<slice.tv_nsec)))slice=deadline;
+                e=ef_timed_wait(ef,&slice);
+                if(e==ETIMEDOUT && !self.released && !self.canceled) {
+                    struct timespec now;ef_now(&now);
+                    if(timeout_us && (now.tv_sec>deadline.tv_sec ||
+                       (now.tv_sec==deadline.tv_sec && now.tv_nsec>=deadline.tv_nsec))){r=KERR_ETIMEDOUT;break;}
+                }
+            } else {
+                e=timeout_us ? ef_timed_wait(ef,&deadline) : pthread_cond_wait(&ef->cond,&ef->lock);
+                if(e==ETIMEDOUT && !self.released && !self.canceled){r=KERR_ETIMEDOUT;break;}
+            }
         }
         if (!self.released && !self.canceled) ef_unlink(ef,&self);
     }
@@ -256,6 +276,16 @@ static ABI int32_t ef_wait(EventFlag *handle,uint64_t pattern,uint32_t mode,uint
     }
     ef_put(ef);
     return r;
+}
+
+static ABI int32_t ef_wait(EventFlag *handle,uint64_t pattern,uint32_t mode,uint64_t *result,uint32_t *timeout_us) {
+    return ef_wait_internal(handle,pattern,mode,result,timeout_us,NULL,NULL);
+}
+/* Host-only guard: callback must not block, throw or unwind through this C lock.
+ * This is not a new guest export and does not change the legacy wait ABI. */
+int32_t runtime_eventflag_wait_guarded(void *handle,uint64_t pattern,uint32_t mode,uint64_t *result,uint32_t *timeout_us,
+                                     int (*interrupt)(void *),void *context) {
+    return ef_wait_internal((EventFlag *)handle,pattern,mode,result,timeout_us,interrupt,context);
 }
 
 unsigned runtime_eventflag_waiters(uint64_t handle) {

@@ -55,6 +55,11 @@ uintptr_t runtime_font_resolve(const char *name);
 uintptr_t runtime_eventflag_resolve(const char *name);
 uint64_t runtime_eventflag_live_count(void);
 unsigned runtime_eventflag_waiters(uint64_t handle);
+/* Host-only interruptible wait. The guard runs under the event lock and must
+ * not block, throw or longjmp. The legacy guest export keeps its original ABI. */
+int32_t runtime_eventflag_wait_guarded(void *handle, uint64_t pattern, uint32_t mode,
+                                     uint64_t *result, uint32_t *timeout_us,
+                                     int (*interrupt)(void *), void *context);
 /* The osl.ini whose keyboard bindings the pad reads, once, at the first sample. */
 void runtime_pad_set_settings(const char *settings_file);
 uintptr_t runtime_pad_resolve(const char *name);
