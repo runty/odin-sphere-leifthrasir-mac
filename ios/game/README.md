@@ -646,3 +646,10 @@ procparam, as the native frontend does. This US base image contains `0x03008041`
 the renderer-only diagnostic's fixed SDK must not be reused as game metadata.
 The shared VideoOut adapter does not yet connect the UIKit session to guest
 execution. Physical apps and the installed Mac remain unchanged.
+
+Both matching SDK archives now compile this checkpoint: 1,079 arm64 objects
+per archive, all platform-audited as iOS or iOS Simulator. Their manifests match
+the qualified CPU fixture backend. A complete default Simulator diagnostic app
+also builds and passes bundle signature verification with the new packaging
+provenance checks. These outputs are staged, not installed or executed; the
+archive manifest still marks `gpu_frontend_linked=false` and no full-game boot.
