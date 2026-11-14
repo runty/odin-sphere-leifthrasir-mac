@@ -493,3 +493,20 @@ Zydis and robin-map. Support-library CMake consumer/link checks pass, with all
 PNG/header dependencies, the next executed CPU gap, main-thread/foreground
 renderer integration, swapchain/full guest presentation, asset import and
 mobile lifecycle/input/audio/save acceptance. [Current graphics scope](../ios/graphics/README.md).
+
+
+The next checkpoint implements immediate VPERMILPD (`34b7b10`): 6,144 exact
+native/AOT 64-bit lanes including destructive aliases, 24,576 shuffle regression
+lanes and CPU 414 all pass, with both mobile fixture archives. A new full-window
+re-lift advances to 1,039 entries and explicit VRSQRTPS `0x106aa80c`; no memory
+fault, four joined workers and three buffers. Qualification is recorded separately
+from this discovery. Register-controlled VPERMILPD remains unimplemented.
+
+The full iPhoneOS and Simulator renderer archives now compile with the real
+shader recompiler, GnmDriver, VideoOut, presenter and UIKit backend; every one of
+173 objects per SDK is platform-audited. PNG (18 objects), Boost and VMA inputs
+are independently pinned and the target SDK supplies zlib. A full consumer links
+against the real signed iPhoneOS driver and allocator/services, without unresolved
+symbols, but is not installed or run. UIKit session/lifecycle and actual game GPU
+callback/asset/presentation integration are still ahead. The verified iPad app
+and installed Mac remain unchanged. [Build and evidence scope](../ios/graphics/README.md#full-mobile-renderer-archive-and-consumer-link).

@@ -7,7 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Frame pointers keep the loader's fault reports walkable.
 add_compile_options(-fno-omit-frame-pointer)
 
-find_package(Vulkan REQUIRED)
+if(OSL_BUILD_IOS_GPU_LIBRARY)
+    if(NOT EXISTS "${OSL_IOS_VULKAN_HEADERS}/vulkan/vulkan.hpp")
+        message(FATAL_ERROR "Supply audited Vulkan headers for the mobile renderer")
+    endif()
+    add_library(Vulkan::Headers INTERFACE IMPORTED)
+    set_target_properties(Vulkan::Headers PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${OSL_IOS_VULKAN_HEADERS}")
+    set(OSL_VULKAN_LINK_TARGET "") # Final UIKit app links the actual ICD framework.
+else()
+    find_package(Vulkan REQUIRED)
+    set(OSL_VULKAN_LINK_TARGET Vulkan::Vulkan)
+endif()
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED CONFIG)
 find_package(tsl-robin-map REQUIRED)
@@ -111,7 +121,7 @@ target_compile_definitions(oslgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG IMGUI_IMP
 set_source_files_properties(shim/osl_overlay.cpp PROPERTIES
     OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf)
 target_compile_options(oslgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
-target_link_libraries(oslgpu PUBLIC Vulkan::Headers Vulkan::Vulkan fmt::fmt Boost::headers magic_enum tsl::robin_map
+target_link_libraries(oslgpu PUBLIC Vulkan::Headers ${OSL_VULKAN_LINK_TARGET} fmt::fmt Boost::headers magic_enum tsl::robin_map
     VulkanMemoryAllocator PkgConfig::XXHASH SDL3::SDL3 PNG::PNG miniz Zydis::Zydis sirit osl_keys)
 if (WIN32)
     # NOMINMAX/WIN32_LEAN_AND_MEAN keep <windows.h> out of the way of std::min/max and the Vulkan/SDL headers.

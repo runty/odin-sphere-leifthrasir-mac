@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 #ifdef __APPLE__
 #include <SDL3/SDL_metal.h>
+#include <TargetConditionals.h>
 #endif
 #include "common/assert.h"
 #include "osl_displays.h"
@@ -71,7 +72,7 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
         ExitNoWindow("Cannot initialize SDL video", SDL_GetError());
     }
 #ifdef __APPLE__
-    ASSERT_MSG(SDL_IsMainThread(),"Cocoa window creation must run on the main thread");
+    ASSERT_MSG(SDL_IsMainThread(),"Apple window creation must run on the main thread");
 #endif
     // The launcher's Window size and Monitor settings; the same display list as its Monitor row.
     const auto& settings = OslSettings::Get();
@@ -94,6 +95,9 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
 #ifdef __APPLE__
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_METAL_BOOLEAN, true);
+#if TARGET_OS_IOS
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, true);
+#endif
 #else
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, true);
 #endif
@@ -114,7 +118,11 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     } else
 #endif
 #ifdef __APPLE__
-    if (driver && !std::strcmp(driver,"cocoa")) {
+    if (driver && (!std::strcmp(driver,"cocoa")
+#if TARGET_OS_IOS
+                   || !std::strcmp(driver,"uikit")
+#endif
+    )) {
         metal_view=SDL_Metal_CreateView(window);
         if (!metal_view) ExitNoWindow("Cannot create Metal view",SDL_GetError());
         window_info.type=WindowSystemType::Metal;

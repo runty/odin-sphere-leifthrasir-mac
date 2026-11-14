@@ -28,6 +28,13 @@ struct VulkanProblem {
 // The renderer's own requirements, asked without its assertions, which end the process with no word to the player.
 std::optional<VulkanProblem> FindVulkanProblem() {
     using namespace Vulkan;
+#if defined(__APPLE__) && TARGET_OS_IOS
+    uint32_t interface_version = 7;
+    if (vk_icdNegotiateLoaderICDInterfaceVersion(&interface_version) != VK_SUCCESS) {
+        return VulkanProblem{"Graphics could not start on this device.", "Try reopening the app."};
+    }
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(&vk_icdGetInstanceProcAddr);
+#else
     static std::unique_ptr<vk::detail::DynamicLoader> loader;
     if (!loader || !loader->success()) {
 #ifdef __APPLE__
@@ -41,6 +48,7 @@ std::optional<VulkanProblem> FindVulkanProblem() {
                              "Install your graphics driver's Vulkan support and try again."};
     }
     VULKAN_HPP_DEFAULT_DISPATCHER.init(loader->getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
+#endif
     u32 version = VK_API_VERSION_1_0;
     if (VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceVersion) {
         const auto [result, value] = vk::enumerateInstanceVersion();

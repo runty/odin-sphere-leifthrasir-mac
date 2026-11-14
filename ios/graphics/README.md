@@ -309,5 +309,47 @@ Both SDK builds pass: every object in fmt (2), xxHash (1), Zycore (13) and
 Zydis (18) is audited for the appropriate iOS/iOS Simulator Mach-O platform,
 in addition to arm64 architecture. Manifests retain hashes, pins and options.
 These support-library builds do not link or execute the complete mobile game
-renderer. PNG, remaining header dependencies and the full frontend integration
-still need qualification; the Mac renderer/dependency caches remain intact.
+renderer. The later renderer checkpoint below adds PNG, Boost and VMA. Runtime frontend
+integration still needs qualification; Mac caches remain intact.
+
+## Full mobile renderer archive and consumer link
+
+`build-dependencies.py` now includes libpng 1.6.50 from the existing Mac archive
+lock, using the target SDK's explicit zlib header/library. All 18 PNG objects
+per SDK are platform-audited (52 support-library objects total). An optional
+`--archive-cache` reads the hash-pinned archive without modifying that cache.
+Boost 1.92.0 headers come from the SHA-pinned release archive in
+`archive-lock.json`; VMA 3.1.0 comes from its pinned Git commit. Their source
+inventories/notices are retained in the private prefix. New Git fetches request
+only the exact shallow revision; no shared project's dependency tree is edited.
+
+```sh
+python3 ios/graphics/build-renderer.py --root "$WORK/ios-renderer" \
+    --dependencies "$WORK/ios-renderer-deps" \
+    --sdl-prefix "$WORK/ios-sdl/prefix-iphoneos" \
+    --headers "$WORK/ios-graphics/Headers" --sdk iphoneos \
+    --driver-root "$WORK/ios-graphics"
+```
+
+`OSL_BUILD_IOS_GPU_LIBRARY` builds the real renderer, GnmDriver, VideoOut and
+shader recompiler without the desktop launcher/x86 loader. iOS uses the signed
+bundled ICD directly in both renderer and device-capability enumeration; the
+existing Mac dynamic loader path is retained. SDL UIKit is accepted as a Metal
+window backend, with main-thread ownership and high-density sizing. This does
+not supply a UIKit session controller or lifecycle by itself.
+
+Both SDKs compile all renderer archives: oslgpu 149 objects, miniz 4, sirit 19
+and keys 1; all 173 objects per SDK have matching Mach-O platforms. The optional
+matching signed driver links a complete iPhoneOS consumer using the real
+allocator and clock/memory services, without unresolved renderer symbols.
+Its Mach-O platform is checked. That executable is **not installed or run**;
+it is a link/ABI check, not a UIKit app or device-renderer initialization.
+Simulator compiles the archive without a driver/consumer link, since its SDK
+still lacks the required Metal 4 driver protocols. No driver is substituted.
+
+Builder manifests retain source/header hashes, archive hashes and native shader
+tool identity. Inputs are checked before publishing; wrong-SDK SDL and a changed
+private-copy archive are rejected before configuration. No game data or saves
+are used by these library/link checks. Next: a nonblocking UIKit renderer session,
+actual physical initialization/swapchain ownership, guest GPU callback wiring,
+asset import and presentation. No mobile game draw/frame is established.

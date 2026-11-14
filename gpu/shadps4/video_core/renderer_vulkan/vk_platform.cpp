@@ -113,7 +113,7 @@ vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& e
         };
 
         if (instance.createMetalSurfaceEXT(&macos_ci, nullptr, &surface) != vk::Result::eSuccess) {
-            LOG_CRITICAL(Render_Vulkan, "Failed to initialize MacOS surface");
+            LOG_CRITICAL(Render_Vulkan, "Failed to initialize Metal surface");
             UNREACHABLE();
         }
     }
@@ -261,6 +261,12 @@ vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool e
                                   bool enable_crash_diagnostic) {
     LOG_INFO(Render_Vulkan, "Creating vulkan instance");
 
+#if defined(__APPLE__) && TARGET_OS_IOS
+    uint32_t interface_version = 7;
+    ASSERT_MSG(vk_icdNegotiateLoaderICDInterfaceVersion(&interface_version) == VK_SUCCESS,
+               "Bundled iOS Vulkan ICD negotiation failed");
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(&vk_icdGetInstanceProcAddr);
+#else
 #ifdef __APPLE__
     static vk::detail::DynamicLoader dl(OslVulkanLibraryPath());
 #else
@@ -268,6 +274,7 @@ vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool e
 #endif
     VULKAN_HPP_DEFAULT_DISPATCHER.init(
         dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
+#endif
 
     const auto [available_version_result, available_version] =
         VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceVersion

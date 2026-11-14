@@ -38,8 +38,11 @@ ${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0\n#define OSL_FILE_VERSION_S
 include(cmake/OslPinnedSources.cmake)
 osl_pinned_sources()
 
+option(OSL_BUILD_IOS_GPU_LIBRARY "Compile the iOS renderer static library without the desktop launcher/loader" OFF)
+if(OSL_BUILD_IOS_GPU_LIBRARY AND (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" OR NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64"))
+    message(FATAL_ERROR "The mobile renderer library requires an arm64 iOS SDK")
+endif()
 find_package(SDL3 CONFIG REQUIRED)
-find_package(Freetype REQUIRED)
 find_package(Threads REQUIRED)
 
 # Keyboard bindings shared by the launcher, the runtime pad and the video core.
@@ -49,6 +52,12 @@ target_link_libraries(osl_keys PUBLIC SDL3::SDL3)
 target_compile_options(osl_keys PRIVATE -Wall -Wextra -Werror)
 
 add_subdirectory(gpu)
+if(OSL_BUILD_IOS_GPU_LIBRARY)
+    # The UIKit app must supply the real driver/framework and platform services
+    # when linking this archive. This target alone does not produce a game app.
+    return()
+endif()
+find_package(Freetype REQUIRED)
 add_subdirectory(launcher)
 
 # Isolated native renderer check; this never links or executes the x86 loader.
