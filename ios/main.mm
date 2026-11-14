@@ -11,6 +11,7 @@ extern "C" NSDictionary *osl_mobile_gpu_report();
 #endif
 #if OSL_GAME_STARTUP
 extern "C" const char *osl_mobile_game_report(const char *);
+extern "C" NSDictionary *osl_mobile_memory_report();
 #endif
 
 @interface OdinProbeController : UIViewController
@@ -63,6 +64,10 @@ extern "C" const char *osl_mobile_game_report(const char *);
             game = @{@"game_booted": @NO, @"status": @"private prepared image has not been copied into Guest"};
         }
 #endif
+        NSDictionary *memory = @{@"status": @"startup library not built", @"game_frames": @NO};
+#if OSL_GAME_STARTUP
+        memory = osl_mobile_memory_report();
+#endif
         NSDictionary *graphics = @{@"status": @"GPU probe not built", @"game_frames": @NO};
 #if OSL_GPU_PROBE
         graphics = osl_mobile_gpu_report();
@@ -83,6 +88,7 @@ extern "C" const char *osl_mobile_game_report(const char *);
             @"stage": @"real-module startup experiment; full game boot pending",
             @"game_booted": @NO, @"cpu": cpu, @"machine": @(machine.machine),
             @"game_startup": game, @"graphics": graphics,
+            @"memory": memory,
             @"virtual_memory": virtualMemory,
             @"gpu_driver_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGPUDriver"] ?: @"none",
             @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",

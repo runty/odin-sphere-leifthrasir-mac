@@ -17,10 +17,10 @@ def link_options():
     return ['-framework', 'Foundation', '-framework', 'GameController', '-framework', 'CoreHaptics']
 
 
-def compile_services(repo, out, target, sdk):
+def compile_services(repo, out, target, sdk, sanitizer=None):
     out.mkdir(parents=True, exist_ok=True)
     headers = b''.join(p.read_bytes() for p in sorted(inputs(repo)))
-    common = hashlib.sha256(headers + (target + sdk).encode()).digest()
+    common = hashlib.sha256(headers + (target + sdk + (sanitizer or "")).encode()).digest()
     objects = []
     for path in sources(repo):
         obj = out / ('service-' + path.stem + '.o')
@@ -30,6 +30,7 @@ def compile_services(repo, out, target, sdk):
             is_c = path.suffix == '.c'
             command = ['xcrun', 'clang' if is_c else 'clang++', '-target', target, '-isysroot', sdk, '-std=gnu11' if is_c else '-std=c++17', '-O2', '-DOSL_AOT_CPU=1',
                        '-I' + str(repo / 'src'), '-I' + str(repo / 'launcher'), '-c', str(path), '-o', str(obj)]
+            if sanitizer: command += ['-O1','-g','-fno-omit-frame-pointer','-fsanitize='+sanitizer]
             if path.suffix == '.mm': command.append('-fobjc-arc')
             with obj.with_suffix('.log').open('w') as log:
                 subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)

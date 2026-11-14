@@ -3,6 +3,8 @@ extern "C" uintptr_t runtime_memory_resolve(const char *);
 extern "C" int osl_aot_memory_access(uintptr_t, size_t, int);
 extern "C" void osl_aot_memory_reset();
 extern "C" uint64_t osl_aot_memory_allocated();
+extern "C" uint64_t osl_aot_memory_window_size();
+extern "C" uint64_t osl_aot_memory_backing_view_size();
 static std::mutex manager;
 static constexpr int32_t invalid=static_cast<int32_t>(0x80020016u);
 static bool validSpan(uintptr_t address, uint64_t size) {
@@ -12,6 +14,8 @@ DirectMemory::DirectMemory() : lease(manager) {}
 DirectMemory::~DirectMemory() { osl_aot_memory_reset(); }
 void DirectMemory::reset() { osl_aot_memory_reset(); }
 uint64_t DirectMemory::allocated() { return osl_aot_memory_allocated(); }
+uint64_t DirectMemory::windowSize() { return osl_aot_memory_window_size(); }
+uint64_t DirectMemory::backingViewSize() { return osl_aot_memory_backing_view_size(); }
 uint64_t DirectMemory::capacity() {
     return reinterpret_cast<uint64_t (*)()>(runtime_memory_resolve("sceKernelGetDirectMemorySize"))();
 }

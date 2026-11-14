@@ -1090,6 +1090,8 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"trophy_persistence\":false"
         << ",\"native_memset_calls\":" << session->native_memset_calls << ",\"native_memset_bytes\":" << session->native_memset_bytes
         << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
+        << ",\"direct_window_bytes\":" << DirectMemory::windowSize()
+        << ",\"direct_backing_view_bytes\":" << DirectMemory::backingViewSize()
         << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
         << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")

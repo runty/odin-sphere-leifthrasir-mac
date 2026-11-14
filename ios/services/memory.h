@@ -4,7 +4,7 @@
 #include <mutex>
 
 // Serial ownership of the existing native memory manager. Guest worker threads
-// are not enabled by this startup adapter; reset runs only after guest execution.
+// share checked mappings; reset runs after guest workers and GPU work quiesce.
 class DirectMemory {
     std::unique_lock<std::mutex> lease;
 public:
@@ -15,6 +15,8 @@ public:
     DirectMemory &operator=(const DirectMemory &) = delete;
     static uint64_t capacity();
     static uint64_t allocated();
+    static uint64_t windowSize();
+    static uint64_t backingViewSize();
     static int32_t allocate(int64_t, int64_t, uint64_t, uint64_t, int, int64_t *);
     static int32_t map(void **, uint64_t, int, int, int64_t, uint64_t);
     static int32_t release(uint64_t, uint64_t);

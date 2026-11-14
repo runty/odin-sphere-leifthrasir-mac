@@ -58,11 +58,13 @@ if cpu['runtime_sha256']!=game['runtime_sha256']:
     raise SystemExit('CPU and game startup libraries use different checked runtimes; rebuild them together')
 PY
     cp "$4/$archive_platform/libodin-startup.a" "$build_dir/Source/libodin-startup.a"
+    cp "$source_dir/ios/services/memory_probe.mm" "$build_dir/Source/memory_probe.mm"
+    cp "$source_dir/ios/services/memory.h" "$build_dir/Source/memory.h"
     game_corpus=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["corpus_sha256"])' "$4/$archive_platform/manifest.json")
     game_enabled=1
     game_dependency=$'      - framework: Source/libodin-startup.a\n        embed: false'
 else
-    rm -f "$build_dir/Source/libodin-startup.a"
+    rm -f "$build_dir/Source/libodin-startup.a" "$build_dir/Source/memory_probe.mm" "$build_dir/Source/memory.h"
 fi
 gpu_enabled=0
 gpu_dependency=""

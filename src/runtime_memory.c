@@ -379,10 +379,15 @@ static int pool(void) {
     int fd=open_pool();
     if (fd<0) return pool_failure("sparse file creation",errno);
     if (ftruncate(fd,(off_t)(POOL_SIZE+FLEX_SPAN))) { int error=errno; close(fd); return pool_failure("sparse file sizing",error); }
+#ifndef OSL_AOT_CPU
     void *view=mmap(NULL,POOL_SIZE+FLEX_SPAN,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_NORESERVE,fd,0);
     if (view==MAP_FAILED) { int error=errno; close(fd); return pool_failure("backing view mapping",error); }
-    pool_fd=fd;
     backing_base=view;
+#endif
+    /* Signed AOT hosts map only bounded backing aliases when needed. The
+     * sparse file retains the full physical pool without reserving its whole
+     * second view alongside a guest window on address-limited iOS. */
+    pool_fd=fd;
     return 0;
 }
 /* The whole PS4 user range is claimed up front, so a host allocation can never land inside it;
@@ -390,20 +395,22 @@ static int pool(void) {
 void runtime_memory_reserve(void) {
 #ifdef OSL_AOT_CPU
     if (USER_MIN) return;
-    const uint64_t span=UINT64_C(8)*1024*1024*1024;
-    /* Let Darwin choose a window first: physical iOS may reject every
-     * high desktop hint despite having lower address space available. All
-     * attempts remain non-destructive. Reject windows that cannot fit the
-     * GPU's 40-bit descriptors, including high Simulator allocations. */
-    for (unsigned attempt=0; attempt<=6; ++attempt) {
-        uintptr_t hint=attempt ? UINT64_C(0x1000000000)+(attempt-1)*span : 0;
-        void *base=mmap((void *)hint,span,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
-        if (base==MAP_FAILED) continue;
-        uintptr_t address=(uintptr_t)base;
-        if (address && address<UINT64_C(0x10000000000) && span<=UINT64_C(0x10000000000)-address) {
-            aot_user_min=address; aot_user_max=address+span; return;
+    /* Keep the largest available owned window. This is a virtual capacity
+     * limit, not a change to the reported physical pool; place() rejects maps
+     * that cannot fit. All attempts are non-destructive and checked at 40 bits. */
+    const uint64_t spans[]={UINT64_C(8)<<30,UINT64_C(4)<<30,UINT64_C(2)<<30};
+    for (unsigned choice=0;choice<sizeof(spans)/sizeof(spans[0]);++choice) {
+        const uint64_t span=spans[choice];
+        for (unsigned attempt=0; attempt<=6; ++attempt) {
+            uintptr_t hint=attempt ? UINT64_C(0x1000000000)+(attempt-1)*span : 0;
+            void *base=mmap((void *)hint,span,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE,-1,0);
+            if (base==MAP_FAILED) continue;
+            uintptr_t address=(uintptr_t)base;
+            if (address && address<UINT64_C(0x10000000000) && span<=UINT64_C(0x10000000000)-address) {
+                aot_user_min=address; aot_user_max=address+span; return;
+            }
+            munmap(base,span);
         }
-        munmap(base,span);
     }
 #else
     static int reserved;
@@ -432,10 +439,44 @@ static int host_unmap(uintptr_t address, uint64_t size) { return host_map(addres
 static int host_protect(uintptr_t address, uint64_t size, int prot) {
     return in_user_range(address,size) ? mprotect((void *)address,size,prot) : -1;
 }
+#ifdef OSL_AOT_CPU
+/* Transient writable aliases bypass only the guest/GPU's page protection.
+ * The mapping lock keeps physical storage alive for the entire transfer.
+ * An alias never replaces an existing mapping or escapes into guest state. */
+static int copy_backing_alias(uint64_t phys, const void *data, uint64_t size, int zero) {
+    const uint64_t budget=UINT64_C(4)*1024*1024, total=POOL_SIZE+FLEX_SPAN;
+    if (pool_fd<0 || phys>total || size>total-phys || (!zero && !data)) return 0;
+    for (uint64_t done=0;done<size;) {
+        const uint64_t offset=phys+done, aligned=offset&~(PAGE-1), skip=offset-aligned;
+        uint64_t count=size-done;
+        if (count>budget-skip) count=budget-skip;
+        const uint64_t mapped=(skip+count+PAGE-1)&~(PAGE-1);
+        void *alias=mmap(NULL,mapped,PROT_READ|PROT_WRITE,MAP_SHARED,pool_fd,(off_t)aligned);
+        if (alias==MAP_FAILED) return 0;
+        if (zero) memset((unsigned char *)alias+skip,0,count);
+        else memcpy((unsigned char *)alias+skip,(const unsigned char *)data+done,count);
+        if (munmap(alias,mapped)) { fputs("STOP: backing alias cleanup failed\n",stderr); exit(21); }
+        done+=count;
+    }
+    return 1;
+}
+#endif
 static void host_discard(uint64_t phys, uint64_t size) {
 #ifdef __APPLE__
     fpunchhole_t hole={.fp_offset=(off_t)phys,.fp_length=(off_t)size};
-    if (fcntl(pool_fd,F_PUNCHHOLE,&hole)!=0) memset(backing_base+phys,0,size);
+#ifdef OSL_MEMORY_TEST_NO_PUNCHHOLE
+    const int punched=0; /* Qualify the real zero-on-reuse fallback. */
+#else
+    const int punched=fcntl(pool_fd,F_PUNCHHOLE,&hole)==0;
+#endif
+    if (!punched) {
+#ifdef OSL_AOT_CPU
+        /* Never silently recycle uncleared physical pages on host failure. */
+        if (!copy_backing_alias(phys,NULL,size,1)) { fputs("STOP: cannot clear released backing pages\n",stderr); exit(21); }
+#else
+        memset(backing_base+phys,0,size);
+#endif
+    }
 #else
     fallocate(pool_fd,FALLOC_FL_PUNCH_HOLE|FALLOC_FL_KEEP_SIZE,(off_t)phys,(off_t)size);
 #endif
@@ -1063,13 +1104,19 @@ void runtime_memory_set_gpu_hooks(GpuRange map, GpuRange unmap, GpuRange invalid
 }
 /* Writes through the backing view; 0 when part of the range has no backing. */
 int runtime_memory_write_backing(uintptr_t address, const void *data, uint64_t size) {
+    if (!size) return 1;
+    if (!data || size>UINTPTR_MAX-address) return 0;
     read_lock();
     int ok=1;
     for (uintptr_t at=address, end=address+size; at<end && ok;) {
         size_t i=vma_index(at);
         if (i==vma_count || vmas[i].start>at || vmas[i].kind==KIND_RESERVED) { ok=0; break; }
         uint64_t n=(vmas[i].end<end ? vmas[i].end : end)-at;
+#if defined(OSL_AOT_CPU) && !defined(_WIN32)
+        ok=copy_backing_alias(vmas[i].phys+(at-vmas[i].start),(const unsigned char *)data+(at-address),n,0);
+#else
         memcpy(backing_base+vmas[i].phys+(at-vmas[i].start),(const unsigned char *)data+(at-address),n);
+#endif
         at+=n;
     }
     read_unlock();
@@ -1128,7 +1175,7 @@ int runtime_memory_region(uintptr_t address, uintptr_t *start, uintptr_t *end, i
 #ifdef OSL_AOT_CPU
 /* Checked CPU access consults the live table on every transfer. Unmaps and
  * protection changes must never leave a stale writable Memory::Region. The
- * startup adapter serializes sessions; no guest worker threads run yet. */
+ * startup adapter owns each session and joins its workers before reset. */
 int osl_aot_memory_access(uintptr_t address, size_t size, int writing) {
     if (!size || size>UINTPTR_MAX-address) return 0;
     read_lock();
@@ -1144,6 +1191,12 @@ int osl_aot_memory_access(uintptr_t address, size_t size, int writing) {
 }
 uint64_t osl_aot_memory_allocated(void) {
     read_lock(); uint64_t bytes=live_bytes; read_unlock(); return bytes;
+}
+uint64_t osl_aot_memory_window_size(void) {
+    read_lock(); uint64_t bytes=USER_MAX-USER_MIN; read_unlock(); return bytes;
+}
+uint64_t osl_aot_memory_backing_view_size(void) {
+    read_lock(); uint64_t bytes=backing_base ? POOL_SIZE+FLEX_SPAN : 0; read_unlock(); return bytes;
 }
 /* Only called after a serialized startup session has stopped all guest work. */
 void osl_aot_memory_reset(void) {

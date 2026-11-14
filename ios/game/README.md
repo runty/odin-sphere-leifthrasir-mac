@@ -573,3 +573,34 @@ the 8 GiB allocator window. New-backend corpus `01c7d8a3` now has 1,076 entries 
 652 dispatches, both initializers zero and no memory fault, rebuilding narrower
 seed coverage; it has not yet regained the older VideoOut/four-worker checkpoint.
 The game reciprocal path and mobile gameplay remain unverified.
+
+### Bounded AOT backing aliases
+
+The AOT memory provider now keeps the full 5,056 MiB physical-pool accounting and
+sparse file, but omits the permanent 6,080 MiB backing view. Host/GPU writeback
+uses checked transient aliases of at most 4 MiB per operation chunk. Guest page
+protection remains in place. The owned guest window tries 8, 4 and 2 GiB in
+order, with non-destructive placement and the same 40-bit checks. Requests that
+do not fit the actual window still fail; no physical capacity is fabricated.
+Normal x86 native builds retain their full backing view and reservation policy.
+
+`direct_window_bytes` and `direct_backing_view_bytes` report the actual choice.
+The native `memory` probe independently checks shared alias visibility, a write
+larger than the alias chunk across read-only pages, preserved protection,
+release/zero-on-reuse and teardown. It is synthetic and reports no game frames.
+
+Allocator tests pass 138 checks normally and with all portable providers/core
+instrumented under ASan and TSan, including concurrent disjoint writebacks.
+`--force-zero-discard` qualifies bounded alias clearing when hole punching is
+unavailable; unrecoverable clear/alias cleanup failure stops rather than
+recycling uncleared storage. A native ObjC++ probe passes 19 contracts. Headless
+fixed/identity/corrupt-input qualification still passes. Actual device tests are
+pending; host success is not physical memory qualification.
+
+The isolated `ios-game-bounded-memory/` experiment reuses only hash-verified IR
+from the unchanged earlier backend, not the new reciprocal backend. It preserves
+the original frozen directory. Host startup reaches VideoOut at 1,027 entries /
+2,568 identity dispatches, both initializers zero, 1,294,155,776 bytes allocated,
+8 GiB window and zero permanent backing-view bytes, without a memory fault.
+This does not establish mobile GPU submission or game frames. New reciprocal
+coverage continues separately in `ios-game-rcpps/`.

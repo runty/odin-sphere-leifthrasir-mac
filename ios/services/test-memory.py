@@ -9,6 +9,8 @@ from service_build import compile_services, link_options
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--output',type=Path,required=True)
 p.add_argument('--remill',type=Path,required=True)
+p.add_argument('--force-zero-discard',action='store_true',help='Exercise bounded alias zeroing when hole punching is unavailable')
+p.add_argument('--sanitizer',choices=('address','thread'))
 a=p.parse_args()
 a.output=a.output.resolve()
 if len(a.output.parts)<3 or a.output.parts[1]!='Volumes' or not Path('/Volumes',a.output.parts[2]).is_mount():
@@ -16,11 +18,20 @@ if len(a.output.parts)<3 or a.output.parts[1]!='Volumes' or not Path('/Volumes',
 repo=Path(__file__).resolve().parents[2]
 a.output.mkdir(parents=True,exist_ok=True)
 sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
-objects=compile_services(repo,a.output/'objects','arm64-apple-macos15',sdk)
+instrumentation=['-O1','-g','-fno-omit-frame-pointer','-fsanitize='+a.sanitizer] if a.sanitizer else []
+objects=compile_services(repo,a.output/'objects','arm64-apple-macos15',sdk,sanitizer=a.sanitizer)
+if a.force_zero_discard:
+    replacement=a.output/'objects/service-runtime_memory-forced-zero.o'
+    with (a.output/'forced-zero-build.log').open('w') as log:
+        subprocess.run(['xcrun','clang','-target','arm64-apple-macos15','-isysroot',sdk,'-std=gnu11','-O2',
+                        '-DOSL_AOT_CPU=1','-DOSL_MEMORY_TEST_NO_PUNCHHOLE=1',*instrumentation,'-I'+str(repo/'src'),
+                        '-c',str(repo/'src/runtime_memory.c'),'-o',str(replacement)],stdout=log,stderr=subprocess.STDOUT,check=True)
+    objects=[replacement if x.name=='service-runtime_memory.o' else x for x in objects]
+
 exe=a.output/'memory-check'
 with (a.output/'build.log').open('w') as log:
     subprocess.run(['xcrun','clang++','-arch','arm64','-std=c++17','-O2',
-                    '-I'+str(a.remill/'remill/include'),str(repo/'ios/services/memory-test.cpp'),
+                    *instrumentation,'-I'+str(a.remill/'remill/include'),str(repo/'ios/services/memory-test.cpp'),
                     str(repo/'ios/cpu/runtime.cpp'),*map(str,objects),*link_options(),'-o',str(exe)],stdout=log,stderr=subprocess.STDOUT,check=True)
 result=subprocess.run([str(exe)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30)
 (a.output/'results.log').write_text(result.stdout)

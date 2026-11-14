@@ -3,9 +3,13 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <vector>
+#include <array>
+#include <thread>
 #include <mach/mach.h>
 extern "C" uint32_t __remill_read_memory_32(Memory *, uint64_t);
 extern "C" Memory *__remill_write_memory_32(Memory *, uint64_t, uint32_t);
+extern "C" int runtime_memory_write_backing(uintptr_t,const void *,uint64_t);
 extern "C" void runtime_memory_set_gpu_hooks(void (*)(uintptr_t,uint64_t),void (*)(uintptr_t,uint64_t),void (*)(uintptr_t,uint64_t));
 static uintptr_t reset_address;
 static unsigned reset_unmaps;
@@ -47,6 +51,8 @@ int main() {
             require(DirectMemory::allocate(0,DirectMemory::capacity(),size,2*1024*1024,0,&physical)==0);
             require(physical==0);
             require(DirectMemory::allocated()==size);
+            require(DirectMemory::windowSize()>=(uint64_t(2)<<30) && DirectMemory::windowSize()<=(uint64_t(8)<<30));
+            require(DirectMemory::backingViewSize()==0);
             void *first=nullptr, *alias=nullptr;
             require(DirectMemory::map(&first,size,0x33,0,physical,2*1024*1024)==0);
             require(DirectMemory::map(&alias,2*page,3,0,physical,page)==0);
@@ -83,7 +89,34 @@ int main() {
                                  (vm_region_info_t)&region,&count,&object)==KERN_SUCCESS);
             if (object!=MACH_PORT_NULL) mach_port_deallocate(mach_task_self(),object);
             require(!(region.protection&VM_PROT_EXECUTE));
+            // Host/GPU writeback must cross alias-budget and guest VMA
+            // boundaries without relaxing the original read-only pages.
+            std::vector<uint8_t> transfer(8*1024*1024+700);
+            for(size_t i=0;i<transfer.size();++i)transfer[i]=uint8_t((i*31+i/997)^0xa7);
+            require(DirectMemory::protect(first,6*1024*1024,1)==0);
+            require(runtime_memory_write_backing(stale+37,transfer.data(),transfer.size())==1);
+            require(std::memcmp(static_cast<uint8_t *>(first)+37,transfer.data(),transfer.size())==0);
+            require(std::memcmp(static_cast<uint8_t *>(alias)+37,transfer.data(),2*page-37)==0);
+            require(DirectMemory::pointer(stale,1,false)==first && !DirectMemory::pointer(stale,1,true));
+            require(DirectMemory::protect(first,6*1024*1024,3)==0);
+            std::array<bool,4> written{};
+            std::array<std::thread,4> writers;
+            for(unsigned worker=0;worker<writers.size();++worker)writers[worker]=std::thread([&,worker] {
+                std::vector<uint8_t> payload(1024*1024+19,uint8_t(0x51+worker));
+                const uintptr_t at=stale+10*1024*1024+worker*2*1024*1024+13;
+                written[worker]=runtime_memory_write_backing(at,payload.data(),payload.size())==1 &&
+                                std::memcmp(reinterpret_cast<void *>(at),payload.data(),payload.size())==0;
+            });
+            for(auto &writer:writers)writer.join();
+            for(bool ok:written)require(ok);
+            const uint8_t tail[]={1,7,3,9,5};
+            require(runtime_memory_write_backing(stale+size-5,tail,sizeof(tail))==1);
+            require(std::memcmp(static_cast<uint8_t *>(first)+size-5,tail,sizeof(tail))==0);
+            require(runtime_memory_write_backing(UINTPTR_MAX-2,tail,4)==0);
+            require(runtime_memory_write_backing(stale,nullptr,1)==0);
+            require(runtime_memory_write_backing(stale,nullptr,0)==1);
             require(DirectMemory::unmap(first,page)==0);
+            require(runtime_memory_write_backing(stale,tail,sizeof(tail))==0);
             require(!DirectMemory::pointer(stale,4,false));
             require(DirectMemory::pointer(stale+page,4,false)!=nullptr);
             require(__remill_read_memory_32(&memory,stale)==0 && !memory.fault.empty());
@@ -116,6 +149,7 @@ int main() {
             owner.reset();
             require(reset_unmaps==1 && unmap_observed_live_mapping);
             require(!DirectMemory::pointer(reset_address,1,false) && DirectMemory::allocated()==0);
+            require(DirectMemory::windowSize()==0 && DirectMemory::backingViewSize()==0);
             owner.reset();
             require(reset_unmaps==1); // Explicit reset followed by destruction is idempotent.
             runtime_memory_set_gpu_hooks(nullptr,nullptr,nullptr);
