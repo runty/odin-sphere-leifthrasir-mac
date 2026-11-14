@@ -425,13 +425,24 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
     SubmitInfo info{};
     draw_scheduler.Flush(info);
 
-    // osl: the GPU command thread runs at most one guest frame ahead of the GPU. Without the bound it
-    // ran ahead and then blocked wherever a resource ran out, so flips (and the game's frame timing)
-    // came in bursts.
-    if (previous_frame_tick) {
-        draw_scheduler.Wait(previous_frame_tick);
+    // Keep a bounded lead, while allowing a measured comparison of CPU/Metal overlap.
+    // Frame reuse still waits on its presentation fence in GetRenderFrame().
+    static const unsigned frames_ahead = [] {
+        const char* value = std::getenv("OSL_GPU_FRAMES_AHEAD");
+#ifdef __APPLE__
+        constexpr unsigned default_depth = 2;
+#else
+        constexpr unsigned default_depth = 1;
+#endif
+        const unsigned depth = value ? unsigned(std::clamp(std::atoi(value), 1, 3)) : default_depth;
+        std::printf("Presentation: GPU frame lead bound %u\n", depth);
+        return depth;
+    }();
+    if (frame_ticks.size() >= frames_ahead) {
+        draw_scheduler.Wait(frame_ticks.front());
+        frame_ticks.pop_front();
     }
-    previous_frame_tick = frame->ready_tick;
+    frame_ticks.push_back(frame->ready_tick);
     return frame;
 }
 

@@ -224,3 +224,8 @@ add_executable(osl-window-tests EXCLUDE_FROM_ALL tests/window_fit_tests.cpp)
 set_target_properties(osl-window-tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
 target_include_directories(osl-window-tests PRIVATE src)
 target_compile_options(osl-window-tests PRIVATE -Wall -Wextra -Werror)
+
+add_executable(osl-triangle-fan-tests EXCLUDE_FROM_ALL tests/triangle_fan_tests.cpp)
+set_target_properties(osl-triangle-fan-tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+target_include_directories(osl-triangle-fan-tests PRIVATE gpu/shim)
+target_compile_options(osl-triangle-fan-tests PRIVATE -Wall -Wextra -Werror)

@@ -213,8 +213,9 @@ private:
     bool FilterDraw();
     bool FilterDrawPasses() const;
     /// Everything of a direct draw after the pipeline selection (GPU thread or stage B).
+    struct FanDraw { const VideoCore::Buffer* buffer; u64 offset; u32 count; };
     void DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
-                    bool is_indexed, u32 index_offset);
+                    bool is_indexed, u32 index_offset, const FanDraw* fan = nullptr);
     static bool DrawPipeWanted();
     bool UseDrawPipe() const;
     bool OnStageA() const;
@@ -435,6 +436,7 @@ private:
         u32 size;
         vk::IndexType type;
     } index_bind{};
+    bool fan_index_override = false;
     /// The direct draw whose vertex/index buffers BindResources may resolve early.
     struct DrawInputs {
         const GraphicsPipeline* pipeline;

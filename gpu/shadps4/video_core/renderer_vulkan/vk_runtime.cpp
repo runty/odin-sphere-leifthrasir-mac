@@ -925,6 +925,11 @@ void Runtime::FlushBarriers() {
         return;
     }
 
+    if (OslStats::enabled) {
+        (dep_info.imageMemoryBarrierCount ? OslStats::image_barriers : OslStats::buffer_barriers)
+            .fetch_add(1, std::memory_order_relaxed);
+    }
+
     scheduler.EndRendering();
     scheduler.Record([memory = memory_barrier, has_memory = dep_info.memoryBarrierCount != 0,
                       images = scheduler.RecordData(std::span<const vk::ImageMemoryBarrier2>(

@@ -120,6 +120,8 @@ void Liverpool::Process(std::stop_token stoken) {
     }
 #elif defined(_WIN32)
     OslStats::gpu_thread_id.store(GetCurrentThreadId());
+#elif defined(__APPLE__)
+    OslStats::gpu_thread_id.store(pthread_mach_thread_np(pthread_self()));
 #endif
     gpu_id = std::this_thread::get_id();
 #if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)

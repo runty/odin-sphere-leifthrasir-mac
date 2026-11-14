@@ -1009,7 +1009,37 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
         }
     }
     WaitQueuedMemoryWrites();
-    const GraphicsPipeline* pipeline = pipeline_cache.GetGraphicsPipeline({}, prepared);
+    std::optional<FanDraw> fan;
+    static const bool cpu_fans = [] {
+        const char* value = std::getenv("OSL_CPU_TRIANGLE_FANS");
+#ifdef __APPLE__
+        const bool enabled = !value || value[0] == '1';
+#else
+        const bool enabled = value && value[0] == '1';
+#endif
+        std::printf("GPU: CPU triangle fan expansion %s (4096-input limit)\n", enabled ? "on" : "off");
+        return enabled;
+    }();
+    const auto& fan_regs = Regs();
+    if (cpu_fans && fan_regs.primitive_type == AmdGpu::PrimitiveType::TriangleFan &&
+        fan_regs.stage_enable.raw == AmdGpu::ShaderStageEnable::VgtStages::Vs &&
+        !fan_regs.vgt_strmout_config.raw && !(fan_regs.enable_primitive_restart & 1) &&
+        fan_regs.num_indices >= 3 && fan_regs.num_indices <= 4096 &&
+        (!is_indexed || fan_regs.num_indices <= fan_regs.max_index_size)) {
+        // Buffer ownership is stage-B state. Drain before inspecting it and record this draw
+        // inline; subsequent pipelined draws retain their ordinary ordering.
+        DrainDrawPipe();
+        const bool index16 = fan_regs.index_buffer_type.index_type == AmdGpu::IndexType::Index16;
+        const VAddr address = fan_regs.index_base_address.Address<VAddr>() +
+                              u64(index_offset) * (index16 ? sizeof(u16) : sizeof(u32));
+        const bool first = !instance.IsProvokingVertexSupported() ||
+                           fan_regs.polygon_control.provoking_vtx_last == AmdGpu::ProvokingVtxLast::First;
+        if (auto binding = buffer_cache.TriangleFanIndices(address, fan_regs.num_indices, is_indexed, index16, first)) {
+            fan = FanDraw{binding->first, binding->second, (fan_regs.num_indices - 2) * 3};
+        }
+    }
+    const GraphicsPipeline* pipeline = pipeline_cache.GetGraphicsPipeline(
+        {.expanded_fan = fan.has_value()}, fan ? nullptr : prepared);
     const PreparedDraw* used_prepared = pipeline_cache.UsedPrepared();
     if (prepared) {
         draw_prep->Count(pipeline != nullptr &&
@@ -1017,6 +1047,10 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
                          prepared->reg_checksum == liverpool->gfx_reg_checksum);
     }
     if (!pipeline) {
+        return;
+    }
+    if (fan) {
+        DrawRecord(pipeline, nullptr, true, index_offset, &*fan);
         return;
     }
     if (pipelined && FilterDrawPasses()) {
@@ -1027,12 +1061,23 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
 }
 
 void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
-                            bool is_indexed, u32 index_offset) {
+                            bool is_indexed, u32 index_offset, const FanDraw* fan) {
     if (DrawPipe::OnStageB()) {
         FrameCapture::Poll();
         scheduler.PopPendingOperations();
     }
     const auto& regs = Regs();
+    fan_index_override = fan != nullptr;
+    if (fan) {
+        const u32 size = fan->count * sizeof(u32);
+        index_bind = {fan->buffer->Handle(), fan->offset, size, vk::IndexType::eUint32};
+        needs_barrier |= runtime.IsBufferAccessed(fan->buffer, fan->offset, size);
+        bound_buffers.emplace_back(fan->buffer, fan->offset, size, vk::AccessFlagBits2::eIndexRead);
+        if (OslStats::enabled) OslStats::cpu_fans.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (OslStats::enabled) {
+        OslStats::primitive_draws[u32(regs.primitive_type) & 31].fetch_add(1, std::memory_order_relaxed);
+    }
     // The pass copying a finished frame to a display buffer starts the profiler's next frame.
     if (auto* profiler = GpuProfiler::Get(); profiler && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
@@ -1085,7 +1130,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
 
     const vk::Pipeline handle = pipeline->Handle();
     const vk::Pipeline square = SquarePass(*pipeline);
-    const u32 num_indices = regs.num_indices;
+    const u32 num_indices = fan ? fan->count : regs.num_indices;
     const u32 num_instances = regs.num_instances.NumInstances();
     const u32 first_vertex = vertex_offset;
     const u32 first_instance = instance_offset;
@@ -1802,6 +1847,7 @@ void Rasterizer::EmitIndexBuffer() {
 }
 
 void Rasterizer::ResolveIndexBuffer(u32 index_offset, bool is_indirect) {
+    if (fan_index_override && !is_indirect) return;
     const auto& regs = Regs();
 
     // Figure out index type and size.
@@ -1818,6 +1864,9 @@ void Rasterizer::ResolveIndexBuffer(u32 index_offset, bool is_indirect) {
     const u64 mapped_size =
         base_address != 0 ? memory->ClampRangeSize(index_address, requested_size) : 0;
     const u32 index_buffer_size = static_cast<u32>(Common::AlignDown(mapped_size, index_size));
+    if (OslStats::enabled && !is_indirect && u64(index_buffer_size) < u64(regs.num_indices) * index_size) {
+        OslStats::short_index_draws.fetch_add(1, std::memory_order_relaxed);
+    }
     if (index_buffer_size != 0) {
         const auto [buffer, offset] =
             buffer_cache.ObtainBuffer(index_address, index_buffer_size, false);
@@ -1834,6 +1883,7 @@ void Rasterizer::ResolveIndexBuffer(u32 index_offset, bool is_indirect) {
 }
 
 void Rasterizer::ResetBindings(bool is_compute) {
+    fan_index_override = false;
     for (auto& image_id : bound_images) {
         texture_cache.GetImage(image_id).binding = {};
     }

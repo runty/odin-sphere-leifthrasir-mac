@@ -747,7 +747,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     PublishGraphics();
     PumpWarmUp();
     used_prepared = nullptr;
-    if (prepared) {
+    if (prepared && !params.expanded_fan) {
         if (const auto* pipeline = TryPreparedPipeline(*prepared)) {
             used_prepared = prepared;
             return pipeline;
@@ -884,7 +884,8 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
     key.depth_clip_enable = regs.clipper_control.ZclipEnable();
     key.clip_space = regs.clipper_control.clip_space;
     key.provoking_vtx_last = regs.polygon_control.provoking_vtx_last;
-    key.prim_type = regs.primitive_type;
+    key.prim_type = sel.draw_indirect_params.expanded_fan
+                        ? AmdGpu::PrimitiveType::TriangleList : regs.primitive_type;
     key.polygon_mode = regs.polygon_control.PolyMode();
     key.patch_control_points =
         regs.stage_enable.hs_en ? regs.ls_hs_config.hs_input_control_points : 0;

@@ -3,6 +3,7 @@
 // OSL_FRAME_STATS.
 #pragma once
 #include <atomic>
+#include <array>
 #include <csetjmp>
 #include <chrono>
 #include <cstdint>
@@ -73,8 +74,12 @@ inline std::atomic<std::uint64_t> images_registered{0};
 inline std::atomic<std::uint64_t> image_upload_bytes{0};
 inline std::atomic<std::uint64_t> buffer_upload_bytes{0};
 inline std::atomic<int> gpu_thread_clock{-1}; ///< clockid_t of the GPU command thread
-inline std::atomic<unsigned long> gpu_thread_id{0}; ///< Windows thread id of the GPU command thread
+inline std::atomic<unsigned long> gpu_thread_id{0}; ///< Windows thread ID or borrowed Darwin Mach port
 inline std::atomic<std::uint64_t> draws{0}, dispatches{0}, submissions{0};
+inline std::atomic<std::uint64_t> render_scopes{0}, buffer_barriers{0}, image_barriers{0};
+inline std::array<std::atomic<std::uint64_t>, 32> primitive_draws{};
+inline std::atomic<std::uint64_t> short_index_draws{0};
+inline std::atomic<std::uint64_t> cpu_fans{0};
 /// Wall time spent in operations suspected of stalls (ns, all threads).
 inline std::atomic<std::uint64_t> t_resident{0}, t_protect{0}, t_image_create{0}, t_refresh{0},
     t_staging{0}, t_host_wait{0}, t_copy{0}, copy_bytes{0}, t_read_faults{0}, read_faults{0},

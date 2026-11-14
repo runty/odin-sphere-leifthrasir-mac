@@ -10,6 +10,8 @@
 #include <time.h>
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
 #endif
 #ifndef _WIN32
 #include <sys/resource.h>
@@ -399,6 +401,18 @@ void VideoOutDriver::Flip(const Request& req) {
             };
             gpu_ns = ns(kernel) + ns(user);
         }
+#elif defined(__APPLE__)
+        thread_basic_info_data_t info{};
+        mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+        const auto thread = static_cast<thread_t>(OslStats::gpu_thread_id.load());
+        if (thread && thread_info(thread, THREAD_BASIC_INFO,
+                                 reinterpret_cast<thread_info_t>(&info), &count) == KERN_SUCCESS) {
+            const u64 user_us = u64(info.user_time.seconds) * 1000000 + info.user_time.microseconds;
+            const u64 system_us = u64(info.system_time.seconds) * 1000000 + info.system_time.microseconds;
+            OslStats::gpu_user_us.store(user_us);
+            OslStats::gpu_sys_us.store(system_us);
+            gpu_ns = (user_us + system_us) * 1000;
+        }
 #else
         if (const int clock = OslStats::gpu_thread_clock.load(); clock != -1) {
             timespec ts{};
@@ -518,6 +532,18 @@ void VideoOutDriver::Flip(const Request& req) {
                         frames ? double(OslStats::reduced_draws.exchange(0)) / frames : 0.0,
                         frames ? double(OslStats::scene_draws.exchange(0)) / frames : 0.0);
             presenter->GetRasterizer().GetPipelineCache().ReportCompilerStats();
+            const double divisor = std::max(1u, frames);
+            std::printf("Render scopes: %.1f/frame, buffer-only barriers %.1f/frame, image barriers %.1f/frame\n",
+                        OslStats::render_scopes.exchange(0) / divisor,
+                        OslStats::buffer_barriers.exchange(0) / divisor,
+                        OslStats::image_barriers.exchange(0) / divisor);
+            std::printf("Primitive draws/frame:");
+            for (unsigned i = 0; i < OslStats::primitive_draws.size(); ++i) {
+                const auto count = OslStats::primitive_draws[i].exchange(0);
+                if (count) std::printf(" %u=%.1f", i, count / divisor);
+            }
+            std::printf("; short index buffers %.1f/frame\n", OslStats::short_index_draws.exchange(0) / divisor);
+            std::printf("CPU triangle fans: %.1f/frame\n", OslStats::cpu_fans.exchange(0) / divisor);
             Vulkan::WaitDiagnostics::Report();
             // Frame pacing: spread of the guest flip intervals (judder that the mean hides).
             if (intervals.size() > 2) {
@@ -532,9 +558,10 @@ void VideoOutDriver::Flip(const Request& req) {
                     spikes += ms > 1.5 * median;
                 }
                 const double mean = sum / intervals.size();
-                std::printf("Frame pacing: median %.2f ms, stddev %.2f ms, p99 %.2f ms, "
+                std::printf("Frame pacing: median %.2f ms, stddev %.2f ms, p95 %.2f ms, p99 %.2f ms, "
                             "%u frames over 1.5x median\n",
                             median, std::sqrt(std::max(0.0, sq / intervals.size() - mean * mean)),
+                            sorted[std::min(sorted.size() - 1, sorted.size() * 95 / 100)],
                             sorted[std::min(sorted.size() - 1, sorted.size() * 99 / 100)], spikes);
             }
             intervals.clear();

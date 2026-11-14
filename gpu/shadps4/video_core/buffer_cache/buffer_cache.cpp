@@ -12,6 +12,7 @@
 #include <magic_enum/magic_enum.hpp>
 #include "osl_copy_pool.h"
 #include "osl_toggles.h"
+#include "osl_triangle_fan.h"
 #include "common/alignment.h"
 #include "core/memory.h"
 #include "video_core/amdgpu/liverpool.h"
@@ -312,6 +313,31 @@ std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 s
         gpu_modified_ranges.Add(device_addr, size);
     }
     return {arena, arena->Offset(device_addr)};
+}
+
+std::optional<std::pair<const Buffer*, u64>> BufferCache::TriangleFanIndices(
+    VAddr address, u32 count, bool indexed, bool index16, bool first_provoking) {
+    if (count < 3 || count > 4096) return std::nullopt;
+    const u32 input_size = count * (index16 ? sizeof(u16) : sizeof(u32));
+    if (indexed) {
+        if (!address || memory->ClampRangeSize(address, input_size) != input_size ||
+            IsRegionGpuModified(address, input_size)) return std::nullopt;
+        texture_cache.ResolveReadbacks(address, input_size, true, ReadbackSource::BufferObtain);
+        if (IsRegionGpuModified(address, input_size)) return std::nullopt;
+    }
+    std::array<u32, 4096> input;
+    if (indexed) memory->CopySparseMemory(address, reinterpret_cast<u8*>(input.data()), input_size);
+    else for (u32 i = 0; i < count; ++i) input[i] = i;
+    const u32 output_count = (count - 2) * 3;
+    const auto [data, offset] = stream_buffer.Map(output_count * sizeof(u32), instance.UniformMinAlignment());
+    const std::span output{reinterpret_cast<u32*>(data), output_count};
+    if (indexed && index16) {
+        OslTriangleFan::Expand(std::span<const u16>{reinterpret_cast<const u16*>(input.data()), count}, output, first_provoking);
+    } else {
+        OslTriangleFan::Expand(std::span<const u32>{input.data(), count}, output, first_provoking);
+    }
+    stream_buffer.Commit();
+    return std::pair<const Buffer*, u64>{&stream_buffer, offset};
 }
 
 std::pair<const Buffer*, u64> BufferCache::ObtainBufferForImage(VAddr device_addr, u32 size) {

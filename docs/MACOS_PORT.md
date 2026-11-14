@@ -323,3 +323,17 @@ directory. This establishes one player-confirmed save/reload, not the full M4
 repeat-reload and storage-failure checks. Larger window/fullscreen changes in
 the second session also show frame-time spikes, so 60 fps gameplay acceptance
 remains open.
+
+## Combat performance follow-up
+
+The Mac triangle-fan path now avoids a per-draw compute conversion in the
+Vulkan-to-Metal driver. In selected compile-free busy windows from the player's
+early battlefield tests, median window performance improves from 34.1 fps to
+60.0 fps at native 1920x1080, with similar median draw counts. The player confirms
+smoother combat and correct sprites/effects. Geometry tests and the final
+1,800-frame default-settings smoke pass. See [the profiling method, safeguards,
+measurements and fallback switches](../macos/PERFORMANCE.md).
+
+Occasional hitches remain, and the selected optimized windows span 42.7–60.0
+fps. The M4 30-minute soak, Classic mode and other profile acceptance remain
+open. These scene measurements do not establish full-game performance.

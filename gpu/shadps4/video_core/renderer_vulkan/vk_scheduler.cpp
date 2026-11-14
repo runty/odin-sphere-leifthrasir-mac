@@ -113,6 +113,7 @@ void Scheduler::BeginRendering(const RenderState& new_state) {
         });
     }
     is_rendering = true;
+    if (OslStats::enabled) OslStats::render_scopes.fetch_add(1, std::memory_order_relaxed);
     has_render_state = true;
     render_state = new_state;
 

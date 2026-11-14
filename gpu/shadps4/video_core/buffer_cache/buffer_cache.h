@@ -7,6 +7,7 @@
 
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <boost/container/small_vector.hpp>
 
@@ -100,6 +101,11 @@ public:
     [[nodiscard]] std::pair<const Buffer*, u64> ObtainBuffer(VAddr device_addr, u32 size,
                                                              bool is_written,
                                                              bool is_texel_buffer = false);
+
+    /// Expand a bounded direct fan into CPU-written triangle-list indices.
+    /// Called only after draining the draw pipe; GPU-owned inputs fall back unchanged.
+    [[nodiscard]] std::optional<std::pair<const Buffer*, u64>> TriangleFanIndices(
+        VAddr address, u32 count, bool indexed, bool index16, bool first_provoking);
 
     /// Attempts to obtain a buffer without modifying the cache contents.
     [[nodiscard]] std::pair<const Buffer*, u64> ObtainBufferForImage(VAddr device_addr, u32 size);

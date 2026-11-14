@@ -124,7 +124,7 @@ private:
     HostPasses::PostProcessingPass pp_pass;
     AmdGpu::Liverpool* liverpool;
     Scheduler draw_scheduler;
-    u64 previous_frame_tick{}; ///< PrepareFrame's bound: one frame ahead of the GPU
+    std::deque<u64> frame_ticks; ///< Bounded guest frame lead; presentation frames also fence reuse.
     Scheduler present_scheduler;
     Scheduler flip_scheduler;
     Swapchain swapchain;
