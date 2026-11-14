@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+from guard_ir import instrument
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
@@ -34,11 +35,15 @@ def run(name, command):
         subprocess.run([str(x) for x in command], stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=180)
 
 
-for name, key in state["ir"].items():
+for name, raw_key in state["ir"].items():
+    guarded, _ = instrument((root / "traces" / name).read_text())
+    guarded_path = out / (Path(name).stem + ".guarded.ll")
+    guarded_path.write_text(guarded)
+    key = hashlib.sha256(guarded.encode()).hexdigest()
     obj = out / (Path(name).stem + ".o")
     stamp = obj.with_suffix(".sha256")
     if not obj.exists() or not stamp.exists() or stamp.read_text() != key:
-        run(obj.stem, [llvm / "clang", "-target", "arm64-apple-ios18", "-isysroot", sdk, "-O2", "-c", root / "traces" / name, "-o", obj])
+        run(obj.stem, [llvm / "clang", "-target", "arm64-apple-ios18", "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", obj])
         stamp.write_text(key)
     objects.append(obj)
 for name, path in (("runner", source / "runner.cpp"), ("thunks", root / "thunks.cpp")):

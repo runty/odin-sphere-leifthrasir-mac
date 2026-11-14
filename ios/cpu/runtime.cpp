@@ -11,15 +11,28 @@ Memory::~Memory() {
         guestAtomics.unlock();
 }
 
-void stopGuest(Memory &m, const char *reason, uint64_t pc) {
-    m.fault = reason;
-    m.missing_pc = pc;
+static void resumeFault(Memory &m) {
     if (m.recovery) {
         if (m.atomic_held) {
             m.atomic_held = false;
             guestAtomics.unlock();
         }
         std::longjmp(*m.recovery, 1);
+    }
+}
+void stopGuest(Memory &m, const char *reason, uint64_t pc) {
+    m.fault = reason;
+    m.missing_pc = pc;
+    resumeFault(m);
+}
+extern "C" void __osl_guest_tick(Memory *m, const State *s) {
+    if (++m->checkpoints > m->checkpoint_limit)
+        stopGuest(*m, "guest execution budget exhausted", s->gpr.rip.qword);
+    if ((m->checkpoints & 1023) == 0 && std::chrono::steady_clock::now() > m->deadline)
+        stopGuest(*m, "guest execution deadline exceeded", s->gpr.rip.qword);
+    if (!m->fault.empty()) {
+        resumeFault(*m);
+        std::abort(); // A guarded guest needs an enclosing checkpoint.
     }
 }
 Memory *dispatch(State &s, uint64_t pc, Memory *m) {
@@ -29,18 +42,24 @@ Memory *dispatch(State &s, uint64_t pc, Memory *m) {
     return m;
 }
 
-void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size) {
-    if (!size || size > std::numeric_limits<uint64_t>::max() - base)
+void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writable) {
+    if (!data || !size || size > std::numeric_limits<uint64_t>::max() - base)
         throw std::runtime_error("invalid guest mapping");
     for (const auto &r : m.regions)
         if (base < r.base + r.size && r.base < base + size)
             throw std::runtime_error("overlapping guest mappings");
-    m.regions.push_back({base, data, size});
+    m.regions.push_back({base, data, size, writable});
 }
-uint8_t *guestPointer(Memory &m, uint64_t address, size_t size) {
+uint8_t *guestPointer(Memory &m, uint64_t address, size_t size, bool writing) {
     for (const auto &r : m.regions)
-        if (size <= r.size && address >= r.base && address - r.base <= r.size - size)
+        if (size <= r.size && address >= r.base && address - r.base <= r.size - size) {
+            if (writing && !r.writable) {
+                m.fault_address = address;
+                stopGuest(m, "guest write to protected region");
+                return nullptr;
+            }
             return r.data + (address - r.base);
+        }
     m.fault_address = address;
     stopGuest(m, "unmapped guest memory");
     return nullptr;
@@ -49,7 +68,7 @@ static void transfer(Memory &m, uint64_t address, void *value, size_t size, bool
     auto recovery = m.recovery;
     m.recovery = nullptr;
     guestAtomics.lock();
-    if (auto p = guestPointer(m, address, size)) {
+    if (auto p = guestPointer(m, address, size, writing)) {
         if (writing)
             std::memcpy(p, value, size);
         else
@@ -57,8 +76,8 @@ static void transfer(Memory &m, uint64_t address, void *value, size_t size, bool
     }
     guestAtomics.unlock();
     m.recovery = recovery;
-    if (!m.fault.empty() && recovery)
-        stopGuest(m, "unmapped guest memory");
+    if (!m.fault.empty())
+        resumeFault(m);
 }
 #define SCALAR(BITS, TYPE)                                                                         \
     extern "C" TYPE __remill_read_memory_##BITS(Memory *m, uint64_t a) {                           \
@@ -132,7 +151,7 @@ extern "C" Memory *__remill_compare_exchange_memory_32(Memory *m, uint64_t addre
     auto recovery = m->recovery;
     m->recovery = nullptr;
     guestAtomics.lock();
-    if (auto pointer = guestPointer(*m, address, 4)) {
+    if (auto pointer = guestPointer(*m, address, 4, true)) {
         uint32_t current;
         std::memcpy(&current, pointer, 4);
         if (current == expected)
@@ -141,7 +160,7 @@ extern "C" Memory *__remill_compare_exchange_memory_32(Memory *m, uint64_t addre
     }
     guestAtomics.unlock();
     m->recovery = recovery;
-    if (!m->fault.empty() && recovery)
-        stopGuest(*m, "invalid guest compare-exchange address");
+    if (!m->fault.empty())
+        resumeFault(*m);
     return m;
 }

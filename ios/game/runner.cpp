@@ -69,7 +69,7 @@ static uint64_t load64(Memory &m, uint64_t address) {
     return value;
 }
 static void store64(Memory &m, uint64_t address, uint64_t value) {
-    if (auto p = guestPointer(m, address, 8))
+    if (auto p = guestPointer(m, address, 8, true))
         std::memcpy(p, &value, 8);
 }
 static uint64_t allocate(Session &s, uint64_t size, bool gpu_visible = false) {
@@ -306,7 +306,7 @@ static std::string bootstrap(const char *path) {
     }
     for (const auto &segment : segments)
         mapRegion(session->memory, session->image_address + segment.address,
-                  session->image.data() + segment.address, segment.size);
+                  session->image.data() + segment.address, segment.size, (segment.flags & 2) != 0 && (segment.flags & 1) == 0);
     mapRegion(session->memory, session->stack_address, session->stack.data(),
               session->stack.size());
     for (size_t i = 0; i < std::size(imports); ++i) {
@@ -332,6 +332,8 @@ static std::string bootstrap(const char *path) {
     std::jmp_buf recovery;
     active = session;
     session->memory.recovery = &recovery;
+    const auto guest_started = std::chrono::steady_clock::now();
+    session->memory.deadline = guest_started + std::chrono::seconds(2);
     if (setjmp(recovery) == 0) {
         for (const auto &module : modules) {
             session->stage =
@@ -369,10 +371,12 @@ static std::string bootstrap(const char *path) {
                 session->memory.missing_pc - session->image_address < image_size
             ? session->memory.missing_pc - session->image_address + image_base
             : session->memory.missing_pc;
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guest_started).count();
     std::ostringstream out;
     out << "{\"stage\":\"" << session->stage
         << "\",\"completed_modules\":" << session->completed_modules
         << ",\"trace_count\":" << std::size(traces)
+        << ",\"checkpoints\":" << session->memory.checkpoints << ",\"guest_elapsed_ms\":" << elapsed_ms
         << ",\"game_booted\":false,\"dispatches\":" << session->calls << ",\"error\":\""
         << session->memory.fault << "\",\"missing_pc\":" << missing
         << ",\"identity_mapping\":" << (session->identity ? "true" : "false")
@@ -380,8 +384,9 @@ static std::string bootstrap(const char *path) {
         << ",\"stack_address\":" << session->stack_address
         << ",\"fault_address\":" << session->memory.fault_address
         << ",\"flexible_bytes\":" << session->flexible_bytes << ",\"missing_service\":\""
-        << session->missing_service
-        << "\",\"heap_api_registered\":" << (session->heap_api != 0 ? "true" : "false") << "}";
+        << session->missing_service << "\",\"service_args\":[" << session->state.gpr.rdi.qword << ","
+        << session->state.gpr.rsi.qword << "," << session->state.gpr.rdx.qword
+        << "],\"heap_api_registered\":" << (session->heap_api != 0 ? "true" : "false") << "}";
     active = nullptr;
     return out.str();
 }

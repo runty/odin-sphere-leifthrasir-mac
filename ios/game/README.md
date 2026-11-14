@@ -80,3 +80,29 @@ python3 ios/game/test-startup.py --root "$WORK/ios-game" --output "$NEW_CHECK_DI
 Do not run this check while discovery is replacing the runner or its corpus.
 The isolated backend also reruns the original 414 comparisons and a synthetic
 four-thread 4,000-CAS stress/fault-recovery check through `ios/cpu/build.py`.
+
+
+## Bounded discovery and protected code
+
+Current discovery reaches 624 traces and 1,499 dispatches, stopping at the first
+unimplemented `sceSysmoduleLoadModule` request (ID 7, libSceUlt). Both original
+initializers still return zero and no memory fault is recorded. The module ID
+is checked against the upstream shadPS4
+[module table](https://github.com/shadps4-emu/shadPS4/blob/main/src/core/libraries/sysmodule/sysmodule_table.h).
+The Mac reference's blanket module-load success is not copied into this partial
+runtime. A provider needs to be implemented before advertising that module.
+
+`guard_ir.py` inserts checkpoints at lifted function entries and CFG backedges,
+so a register-only guest loop cannot bypass the dispatch limit. The shared core
+limits checkpoints and checks a two-second guest deadline. `test-guard.py`
+compiles a synthetic register loop and proves both exits; a forward-only branch
+retains its result. The real 624-trace checkpoint is unchanged with guards
+(7,419 checkpoints; approximately 3–5 ms of guest work on the reference Mac).
+That startup time is not a gameplay/frame-rate measurement.
+
+Guest read-only and executable segments reject writes, including atomic CAS.
+This also stops self-modification rather than continuing with stale translated
+instructions. Scalar/CAS protection, concurrency and atomic-fault cleanup are
+covered by `runtime-test.cpp`. The routine comparison suite still passes 414
+checks with the guarded/protected core. Rebuild both static libraries before
+linking a device app whenever their shared core changes.

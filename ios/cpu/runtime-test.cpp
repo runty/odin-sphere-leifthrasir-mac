@@ -7,6 +7,7 @@
 #include <memory>
 #include <thread>
 #include <limits>
+extern "C" Memory *__remill_write_memory_32(Memory *, uint64_t, uint32_t);
 extern "C" uint32_t __remill_read_memory_32(Memory *, uint64_t);
 extern "C" Memory *__remill_compare_exchange_memory_32(Memory *, uint64_t, uint32_t &, uint32_t);
 extern "C" Memory *__remill_atomic_begin(Memory *);
@@ -61,5 +62,23 @@ int main() {
     });
     if (probe.wait_for(std::chrono::seconds(2)) != std::future_status::ready) std::_Exit(2);
     assert(probe.get() == 4000);
-    puts("4000 concurrent CAS increments; overlap/overflow/boundary checks; atomic-fault recovery: PASS");
+    auto protected_memory = std::make_unique<Memory>();
+    mapRegion(*protected_memory, 0x2000, reinterpret_cast<uint8_t *>(&counter), 4, false);
+    protected_memory->recovery = &recovery;
+    if (setjmp(recovery) == 0) {
+        __remill_write_memory_32(protected_memory.get(), 0x2000, 99);
+        assert(false);
+    }
+    protected_memory->recovery = nullptr;
+    assert(counter == 4000 && protected_memory->fault == "guest write to protected region");
+    protected_memory->fault.clear();
+    protected_memory->recovery = &recovery;
+    if (setjmp(recovery) == 0) {
+        uint32_t expected = 4000;
+        __remill_compare_exchange_memory_32(protected_memory.get(), 0x2000, expected, 99);
+        assert(false);
+    }
+    protected_memory->recovery = nullptr;
+    assert(counter == 4000 && protected_memory->fault == "guest write to protected region");
+    puts("Protected scalar/CAS writes; 4000 concurrent CAS increments; overlap/overflow/boundary checks; atomic-fault recovery: PASS");
 }

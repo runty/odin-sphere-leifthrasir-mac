@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from guard_ir import instrument
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
@@ -126,10 +127,13 @@ for round in range(a.rounds):
             if re.search(r"\b(?:fcmp|fpext|fptrunc|fadd|fsub|fmul|fdiv|load|store|call)\b[^\n]*\bx86_fp80\b", ir.read_text()):
                 raise RuntimeError("Executed block requires unsupported x87 extended precision at " + hex(pc))
         obj = objects / (ir.stem + ".o")
-        fingerprint = hashlib.sha256(ir.read_bytes()).hexdigest()
+        guarded, _ = instrument(ir.read_text())
+        guarded_path = objects / (ir.stem + ".guarded.ll")
+        guarded_path.write_text(guarded)
+        fingerprint = hashlib.sha256(guarded.encode()).hexdigest()
         stamp = obj.with_suffix(".sha256")
         if not obj.exists() or not stamp.exists() or stamp.read_text() != fingerprint:
-            run("compile-" + ir.stem, [llvm / "clang", "-target", "arm64-apple-macos15", "-isysroot", sdk, "-O2", "-c", ir, "-o", obj])
+            run("compile-" + ir.stem, [llvm / "clang", "-target", "arm64-apple-macos15", "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", obj])
             stamp.write_text(fingerprint)
         objs.append(obj)
         for name in re.findall(r"^define ptr @sub_([0-9a-f]+)\(", ir.read_text(), re.M):
@@ -155,7 +159,7 @@ for round in range(a.rounds):
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},
              "headers": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ("image-layout.h", "traces.h", "thunks.cpp")},
              "sources": {str(path.relative_to(source.parents[1])): hashlib.sha256(path.read_bytes()).hexdigest()
-                         for path in (source / "runner.cpp", source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp")}}
+                         for path in (source / "runner.cpp", source / "guard_ir.py", source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp")}}
     attempt = len(list(root.glob("attempt-*.json")))
     name = "attempt-" + str(attempt).zfill(5)
     run(name, [root / "guest-startup", root / "image.bin"], 15,
