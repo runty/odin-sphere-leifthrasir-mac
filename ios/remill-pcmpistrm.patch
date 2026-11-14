@@ -1,0 +1,88 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+index 50b6df6..0ff99a4 100644
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -717,7 +717,7 @@ AggregateRanges(const BitMatrix<num_elems, num_elems> &bool_res,
+ 
+   for (size_t j = 0; j < src2_len; ++j, bit <<= 1) {
+ 
+-    _Pragma("unroll") for (size_t i = 0; i < (src1_len - 1); i += 2) {
++    _Pragma("unroll") for (size_t i = 0; i + 1 < src1_len; i += 2) {
+       const auto geq_lower_bound = bool_res.Test(i, j);
+       const auto leq_upper_bound = bool_res.Test(i + 1, j);
+       if (geq_lower_bound && leq_upper_bound) {
+@@ -783,7 +783,7 @@ AggregateEqualOrdered(const BitMatrix<num_elems, num_elems> &bool_res,
+   return int_res_1;
+ }
+ 
+-template <typename V, size_t num_elems>
++template <typename V, size_t num_elems, bool mask_output = false, bool vex = false>
+ DEF_SEM(DoPCMPISTRI, const V &src1, const V &src2,
+         StringCompareControl control) {
+   BitMatrix<num_elems, num_elems> bool_res;
+@@ -880,7 +880,26 @@ DEF_SEM(DoPCMPISTRI, const V &src1, const V &src2,
+       break;
+   }
+ 
+-  Write(REG_XCX, static_cast<addr_t>(index));
++  if constexpr (mask_output) {
++    uint8v16_t result = {};
++    if (!control.output_selection) {
++      result.elems[0] = static_cast<uint8_t>(int_res_2);
++      result.elems[1] = static_cast<uint8_t>(int_res_2 >> 8);
++    } else {
++      _Pragma("unroll") for (size_t i = 0; i < num_elems; ++i) {
++        uint8_t value = (int_res_2 & (1u << i)) ? 0xff : 0;
++        result.elems[i * (16 / num_elems)] = value;
++        if constexpr (num_elems == 8) result.elems[i * 2 + 1] = value;
++      }
++    }
++    state.vec[0].xmm.bytes = result;
++    if constexpr (vex) {
++      state.vec[0].ymm.qwords.elems[2] = 0;
++      state.vec[0].ymm.qwords.elems[3] = 0;
++    }
++  } else {
++    Write(REG_XCX, static_cast<addr_t>(index));
++  }
+   Write(FLAG_CF, int_res_2 != 0_u16);
+   Write(FLAG_ZF, src2_len < num_elems);
+   Write(FLAG_SF, src1_len < num_elems);
+@@ -910,12 +929,37 @@ DEF_SEM(PCMPISTRI, V128 src1, S2 src2, I8 src3) {
+   return memory;
+ }
+ 
++template <bool vex, typename S2>
++DEF_SEM(PCMPISTRM, V128 src1, S2 src2, I8 src3) {
++  const StringCompareControl control = {.flat = Read(src3)};
++  switch (static_cast<InputFormat>(control.input_format)) {
++    case kUInt8:
++      return DoPCMPISTRI<uint8v16_t, 16, true, vex>(memory, state, UReadV8(src1),
++                                         UReadV8(src2), control);
++    case kUInt16:
++      return DoPCMPISTRI<uint16v8_t, 8, true, vex>(memory, state, UReadV16(src1),
++                                        UReadV16(src2), control);
++    case kInt8:
++      return DoPCMPISTRI<int8v16_t, 16, true, vex>(memory, state, SReadV8(src1),
++                                        SReadV8(src2), control);
++    case kInt16:
++      return DoPCMPISTRI<int16v8_t, 8, true, vex>(memory, state, SReadV16(src1),
++                                       SReadV16(src2), control);
++  }
++  return memory;
++}
++
+ }  // namespace
+ 
+ DEF_ISEL(PCMPISTRI_XMMdq_XMMdq_IMMb) = PCMPISTRI<V128>;
+ DEF_ISEL(PCMPISTRI_XMMdq_MEMdq_IMMb) = PCMPISTRI<MV128>;
+ IF_AVX(DEF_ISEL(VPCMPISTRI_XMMdq_XMMdq_IMMb) = PCMPISTRI<V128>;)
+ IF_AVX(DEF_ISEL(VPCMPISTRI_XMMdq_MEMdq_IMMb) = PCMPISTRI<MV128>;)
++DEF_ISEL(PCMPISTRM_XMMdq_XMMdq_IMMb) = PCMPISTRM<false, V128>;
++DEF_ISEL(PCMPISTRM_XMMdq_MEMdq_IMMb) = PCMPISTRM<false, MV128>;
++IF_AVX(DEF_ISEL(VPCMPISTRM_XMMdq_XMMdq_IMMb) = PCMPISTRM<true, V128>;)
++IF_AVX(DEF_ISEL(VPCMPISTRM_XMMdq_MEMdq_IMMb) = PCMPISTRM<true, MV128>;)
++
+ 
+ namespace {
+ 

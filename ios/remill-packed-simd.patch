@@ -1,0 +1,64 @@
+diff --git a/lib/Arch/X86/Semantics/MMX.cpp b/lib/Arch/X86/Semantics/MMX.cpp
+index a1c2d53..6c0eb33 100644
+--- a/lib/Arch/X86/Semantics/MMX.cpp
++++ b/lib/Arch/X86/Semantics/MMX.cpp
+@@ -1789,6 +1789,8 @@ DEF_ISEL(PSHUFB_MMXq_MMXq) = PSHUFB<V64W, V64, V64>;
+ DEF_ISEL(PSHUFB_MMXq_MEMq) = PSHUFB<V64W, V64, MV64>;
+ DEF_ISEL(PSHUFB_XMMdq_XMMdq) = PSHUFB<V128W, V128, V128>;
+ DEF_ISEL(PSHUFB_XMMdq_MEMdq) = PSHUFB<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VPSHUFB_XMMdq_XMMdq_XMMdq) = PSHUFB<VV128W, VV128, VV128>;)
++IF_AVX(DEF_ISEL(VPSHUFB_XMMdq_XMMdq_MEMdq) = PSHUFB<VV128W, VV128, MV128>;)
+ 
+ DEF_ISEL(PSHUFW_MMXq_MMXq_IMMb) = PSHUFW<V64W, V64>;
+ DEF_ISEL(PSHUFW_MMXq_MEMq_IMMb) = PSHUFW<V64W, MV64>;
+@@ -2364,4 +2366,48 @@ DEF_ISEL(FEMMS) = DoEMMS;
+ // 8595:1852 PSRAD PSRAD_MMXq_MEMq MMX MMX PENTIUMMMX ATTRIBUTES: NOTSX
+ // 8599:1853 PSRAD PSRAD_MMXq_MMXq MMX MMX PENTIUMMMX ATTRIBUTES: NOTSX
+ // 8611:1856 PACKSSWB PACKSSWB_MMXq_MEMq MMX MMX PENTIUMMMX ATTRIBUTES: HALF_WIDE_OUTPUT NOTSX
+-// 8615:1857 PACKSSWB PACKSSWB_MMXq_MMXq MMX MMX PENTIUMMMX ATTRIBUTES: HALF_WIDE_OUTPUT NOTSX
+\ No newline at end of file
++// 8615:1857 PACKSSWB PACKSSWB_MMXq_MMXq MMX MMX PENTIUMMMX ATTRIBUTES: HALF_WIDE_OUTPUT NOTSX
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(PBLENDW, D dst, S1 src1, S2 src2, I8 immediate) {
++  auto first = UReadV16(src1);
++  auto second = UReadV16(src2);
++  auto result = UClearV16(UReadV16(dst));
++  auto mask = Read(immediate);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    auto value = (mask & (1u << (i % 8))) ? UExtractV16(second, i) : UExtractV16(first, i);
++    result = UInsertV16(result, i, value);
++  }
++  UWriteV16(dst, result);
++  return memory;
++}
++template <typename D, typename S1, typename S2>
++DEF_SEM(PACKUSDW, D dst, S1 src1, S2 src2) {
++  auto first = SReadV32(src1);
++  auto second = SReadV32(src2);
++  auto result = UClearV16(UReadV16(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    int32_t a = SExtractV32(first, i);
++    int32_t b = SExtractV32(second, i);
++    uint16_t a_word = static_cast<uint16_t>(std::min<int32_t>(65535, std::max<int32_t>(0, a)));
++    uint16_t b_word = static_cast<uint16_t>(std::min<int32_t>(65535, std::max<int32_t>(0, b)));
++    const size_t lane = (i / 4) * 8 + i % 4;
++    result = UInsertV16(result, lane, a_word);
++    result = UInsertV16(result, lane + 4, b_word);
++  }
++  UWriteV16(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(PBLENDW_XMMdq_XMMdq_IMMb) = PBLENDW<V128W, V128, V128>;
++DEF_ISEL(PBLENDW_XMMdq_MEMdq_IMMb) = PBLENDW<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VPBLENDW_XMMdq_XMMdq_XMMdq_IMMb) = PBLENDW<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VPBLENDW_XMMdq_XMMdq_MEMdq_IMMb) = PBLENDW<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VPBLENDW_YMMqq_YMMqq_YMMqq_IMMb) = PBLENDW<VV256W, V256, V256>;)
++IF_AVX(DEF_ISEL(VPBLENDW_YMMqq_YMMqq_MEMqq_IMMb) = PBLENDW<VV256W, V256, MV256>;)
++DEF_ISEL(PACKUSDW_XMMdq_XMMdq) = PACKUSDW<V128W, V128, V128>;
++DEF_ISEL(PACKUSDW_XMMdq_MEMdq) = PACKUSDW<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VPACKUSDW_XMMdq_XMMdq_XMMdq) = PACKUSDW<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VPACKUSDW_XMMdq_XMMdq_MEMdq) = PACKUSDW<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VPACKUSDW_YMMqq_YMMqq_YMMqq) = PACKUSDW<VV256W, V256, V256>;)
++IF_AVX(DEF_ISEL(VPACKUSDW_YMMqq_YMMqq_MEMqq) = PACKUSDW<VV256W, V256, MV256>;)

@@ -1,0 +1,16 @@
+diff --git a/bin/lift/Lift.cpp b/bin/lift/Lift.cpp
+index 96ea713..409a2eb 100644
+--- a/bin/lift/Lift.cpp
++++ b/bin/lift/Lift.cpp
+@@ -396,9 +396,9 @@ int main(int argc, char *argv[]) {
+   // TODO: this should probably be removed
+   auto hyperCall = module->getFunction("__remill_sync_hyper_call");
+   if (hyperCall != nullptr) {
+-    auto name = hyperCall->getName();
++    auto name = hyperCall->getName().str();
+     auto ty = hyperCall->getFunctionType();
+-    auto newFn = module->getOrInsertFunction(name.str() + "_", ty);
++    auto newFn = module->getOrInsertFunction(name + "_", ty);
+     hyperCall->replaceAllUsesWith(newFn.getCallee());
+     hyperCall->eraseFromParent();
+     newFn.getCallee()->setName(name);
