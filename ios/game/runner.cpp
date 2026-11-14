@@ -64,9 +64,19 @@ struct Session {
     MobileStorage storage;
     OfflineServices offline;
     MobileEventFlags event_flags;
+#ifdef OSL_GAME_CLI
+    struct TraceCloser { void operator()(FILE *stream) const { std::fclose(stream); } };
+    std::unique_ptr<FILE,TraceCloser> dispatch_trace;
+#endif
     Session() {
         memory.external_pointer = DirectMemory::pointer;
         osl_aot_user_reset();
+#ifdef OSL_GAME_CLI
+        if (const char *path=std::getenv("OSL_STARTUP_DISPATCH_TRACE")) {
+            dispatch_trace.reset(std::fopen(path,"w"));
+            if (!dispatch_trace) throw std::runtime_error("Cannot open logical dispatch trace");
+        }
+#endif
     }
     State state{};
     std::vector<uint8_t> image, stack;
@@ -643,6 +653,12 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
 }
 static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
     Session &session = *active;
+    const uint64_t lookup = pc >= session.image_address && pc - session.image_address < image_size
+                                ? pc - session.image_address + image_base : pc;
+#ifdef OSL_GAME_CLI
+    // Code targets only: never record guest registers, stack or credentials.
+    if (session.dispatch_trace) std::fprintf(session.dispatch_trace.get(),"%llx\n",(unsigned long long)lookup);
+#endif
     if (++session.calls > 100000) {
         stopGuest(*m, "guest dispatch budget exhausted", pc);
         return m;
@@ -663,9 +679,6 @@ static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
             std::longjmp(*recovery, 1);
         return result;
     }
-    const uint64_t lookup = pc >= session.image_address && pc - session.image_address < image_size
-                                ? pc - session.image_address + image_base
-                                : pc;
     for (const auto &entry : traces)
         if (entry.pc == lookup)
             return entry.function(s, pc, m);

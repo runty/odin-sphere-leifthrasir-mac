@@ -279,7 +279,12 @@ bytes. This stop is deliberate: no dummy VideoOut handle is returned and the
 AOT guest has not yet been connected to the real presenter.
 The corpus is
 `43eadb7ca8528c099d9736565a0ab8579eed1db4dcae9f10fe74a9b53a7cde4a`.
-Fixed/repeated ASLR and copied-input rejection checks pass. The unchanged CPU
+Fixed/repeated ASLR runs reach the same functional boundary, but fixed mode
+uses 2,562 dispatches while both ASLR runs use 2,568. The strict equivalence
+assertion fails; trace the six-dispatch difference before qualifying this
+checkpoint. The new combined input-rejection suite stops at that assertion,
+so its later cases are unclaimed. Earlier 751-trace rejection checks remain
+valid and separate. The unchanged CPU
 comparison core still has its separately qualified 414-check fixture archive.
 
 Discovery now snapshots native source inputs before compilation and checks
