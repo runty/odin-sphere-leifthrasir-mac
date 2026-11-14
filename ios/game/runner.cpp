@@ -11,6 +11,7 @@
 #include "../services/eventflag.h"
 #include "../services/gpu.h"
 #include "../services/system.h"
+#include "../services/crash.h"
 #include "../services/condition.h"
 #include "../services/thread_storage.h"
 #include "../services/workers.h"
@@ -70,6 +71,7 @@ struct Session {
     MobilePad pad;
     MobileStorage storage;
     OfflineServices offline;
+    GuestCrashDiagnostics crash;
     MobileEventFlags event_flags;
 #ifdef OSL_GAME_CLI
     struct TraceCloser { void operator()(FILE *stream) const { std::fclose(stream); } };
@@ -278,6 +280,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     uint64_t clock_result=0;
     if(GuestClock::call(name,s,*m,clock_result))return m->fault.empty() ? hostReturn(s,m,clock_result) : m;
     uint64_t system_result=0;
+    if(session.crash.call(name,s,system_result))return hostReturn(s,m,system_result);
     if (GuestSystem::call(name,s,*m,system_result))
         return m->fault.empty() ? hostReturn(s,m,system_result) : m;
     uint64_t tls_result=0;
@@ -1090,6 +1093,8 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"error_dialog_code\":" << uint32_t(session->error_dialog_code)
         << ",\"broadcasting\":false,\"live_streaming_initialized\":" << (session->live_streaming_initialized ? "true" : "false")
         << ",\"trophy_persistence\":false"
+        << ",\"crash_callback_supported\":false,\"crash_registration_attempts\":" << session->crash.registration_attempts
+        << ",\"crash_user_data_writes_rejected\":" << session->crash.user_data_writes_rejected
         << ",\"native_memset_calls\":" << session->native_memset_calls << ",\"native_memset_bytes\":" << session->native_memset_bytes
         << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
         << ",\"direct_window_bytes\":" << DirectMemory::windowSize()
@@ -1183,6 +1188,24 @@ static bool serviceChecks() {
         if (!value) throw std::runtime_error("Service contract check " + std::to_string(checks + 1) + " failed");
         ++checks;
     };
+    // Unavailable crash reporting returns explicit library errors and never
+    // reads callback/user-data addresses or writes caller buffers.
+    std::fill(session.stack.begin()+0x100,session.stack.begin()+0x200,0x7b);
+    require(call("sceCoredumpRegisterCoredumpHandler",0,16384,UINT64_MAX)==GuestCrashDiagnostics::invalid);
+    for(uint64_t size:{0ull,1ull,0x3fffull,0x4000ull,0x1fffffffull})
+        require(call("sceCoredumpRegisterCoredumpHandler",UINT64_MAX,size,0x20000101)==GuestCrashDiagnostics::thread_create_failed);
+    for(uint64_t size:{0x20000000ull,UINT64_MAX})
+        require(call("sceCoredumpRegisterCoredumpHandler",1,size,UINT64_MAX)==GuestCrashDiagnostics::invalid);
+    require(call("sceCoredumpRegisterCoredumpHandler",1,16384)==GuestCrashDiagnostics::thread_create_failed &&
+            call("sceCoredumpRegisterCoredumpHandler",1,16384)==GuestCrashDiagnostics::thread_create_failed);
+    require(call("sceCoredumpWriteUserData",UINT64_MAX,UINT64_MAX)==GuestCrashDiagnostics::not_in_handler);
+    require(call("sceCoredumpWriteUserData",0x20000101,64)==GuestCrashDiagnostics::not_in_handler);
+    uint64_t crash_result=0;
+    require(session.crash.call("sceCoredumpUnregisterCoredumpHandler",session.state,crash_result) && crash_result==GuestCrashDiagnostics::not_registered);
+    crash_result=0xabc;
+    require(!session.crash.call("unknown",session.state,crash_result) && crash_result==0xabc && session.crash.registration_attempts==10 && session.crash.user_data_writes_rejected==2);
+    require(session.memory.fault.empty() && session.state.gpr.rsp.qword==0x20001000 &&
+            std::all_of(session.stack.begin()+0x100,session.stack.begin()+0x200,[](auto byte){return byte==0x7b;}));
     // Immutable offline state: no guest credential pointers are dereferenced.
     require(call("sceNpSetNpTitleId",UINT64_MAX,UINT64_MAX)==0 && session.offline.title_configured);
     require(call("sceNpSetContentRestriction",UINT64_MAX)==0 && session.offline.restriction_updates==1);
