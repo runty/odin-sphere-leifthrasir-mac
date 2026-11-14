@@ -197,3 +197,20 @@ passes 38 backend and 121 service checks, and reaches **680 traces / 1,655
 dispatches** on the host. User/pad initialization and five gesture setup calls
 complete; `sceSaveDataInitialize` is the next missing service. No dialog response,
 save initialization or game frame is fabricated to advance beyond it.
+
+Clean source `89184da` now reaches that same 680-trace checkpoint on two
+Simulator launches (counts 7 and 8), with 414 CPU comparisons passing, users/pad
+initialization complete, five gesture setup calls and no memory fault. Its
+development-signed iPhoneOS app/framework also builds and verifies, staged in
+the private external tree. Physical devices retain the installed `dcd85de`
+baseline; no redundant locked-device install/launch was attempted for this
+increment. Real hardware input/haptics and mobile game frames remain unverified.
+
+The next storage adapter can reuse `src/runtime_savedata.c` and
+`src/runtime_file.c`: both compile against the actual iPhoneOS SDK in a private
+spike. The latter additionally needs the portable `runtime_guest_errno` mapping
+and existing `runtime_errno`/resolver shims. Configure an isolated app-private
+profile and map nested guest pointers through checked aligned locals before
+exposing the save APIs; initialization alone is not persistence proof. Preserve
+the existing Mac and player saves and test storage roundtrips/failures with
+disposable profiles.

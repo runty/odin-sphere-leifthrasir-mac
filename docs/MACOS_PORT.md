@@ -13,7 +13,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Three original routines pass 414 comparisons on arm64 Mac and iPhone; actual libc/Fios2 initializers plus eboot entry run on both | Wider SIMD/ABI/worker/TLS/fiber coverage and sustained CPU budget |
 | Mobile baseline | Clean CPU-only build ran on iPhone; clean `dcd85de` 664-trace startup/GPU probe installs on both devices | iPhone launch denied Locked; iPad input transfer timed out; stale hardware JSON is excluded |
-| Mobile startup/graphics | Host reaches 664 traces with checked sparse direct memory and native libc fill; iPhoneOS driver/framework builds and native submit/readback passes | Full eboot startup, physical GPU execution, captured game draw, title/battle frames and offline lifecycle |
+| Mobile startup/graphics | Host/clean Simulator reach 680 traces through shared users and GameController initialization; sparse memory/libc fill, iPhoneOS driver/framework builds and native submit/readback pass | Save/file/thread startup, physical GPU execution, captured game draw, title/battle frames and offline lifecycle |
 
 The first module-startup hardware result is explicitly a development build:
 244 traces, two zero-return initializers, 397 dispatches, missing logical PC
@@ -40,6 +40,15 @@ fixed-address and repeated ASLR runs agree. Clean `dcd85de` Simulator runs pass
 preserve their input container across app replacement.
 These later results do not turn an installation on locked hardware into an
 execution result. [Current startup scope](../ios/game/README.md).
+
+Shared users (`90056b3`) retain production behavior and pass 58 native/Rosetta
+checks; the Mac runner still resolves all 307 real imports. GameController
+`89184da` adds five checked pad APIs, passes 38 backend and 121 service checks,
+and repeats startup at 680 traces / 1,655 dispatches in the clean Simulator
+(launch counts 7 and 8). Both initializers return zero, users/pad initialization
+complete, and the next missing service is `sceSaveDataInitialize`. Its signed
+iPhoneOS app/framework is staged; physical devices retain `dcd85de`. No physical
+input/haptics or new hardware execution is claimed by those automatic checks.
 
 
 ## Unattended completion order
