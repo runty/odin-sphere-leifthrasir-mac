@@ -5,6 +5,9 @@
 #import <unistd.h>
 
 extern "C" const char *osl_mobile_cpu_report();
+#if OSL_RENDERER_SESSION
+extern "C" void osl_mobile_renderer_begin(UIWindowScene *,NSString *,void (^)(NSDictionary *));
+#endif
 extern "C" NSDictionary *osl_mobile_vm_report();
 #if OSL_SDL_SURFACE
 extern "C" NSDictionary *osl_mobile_surface_report(UIWindowScene *);
@@ -85,6 +88,17 @@ extern "C" NSDictionary *osl_mobile_memory_report();
             [NSThread sleepForTimeInterval:0.05];
         }
 #endif
+        NSDictionary *renderer = @{@"status":@"renderer session not linked",@"game_frames":@NO};
+#if OSL_RENDERER_SESSION
+        dispatch_semaphore_t rendererDone=dispatch_semaphore_create(0);
+        __block NSDictionary *rendererResult=nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            osl_mobile_renderer_begin(self.view.window.windowScene,[documents stringByAppendingPathComponent:@"RendererDiagnostics"],^(NSDictionary *result){rendererResult=result;dispatch_semaphore_signal(rendererDone);});
+        });
+        if(dispatch_semaphore_wait(rendererDone,dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC))!=0)
+            renderer=@{@"passed":@NO,@"error":@"Renderer session exceeded diagnostic deadline",@"game_frames":@NO};
+        else renderer=rendererResult;
+#endif
         struct utsname machine; uname(&machine);
         id<MTLDevice> gpu = MTLCreateSystemDefaultDevice();
 #if TARGET_OS_SIMULATOR
@@ -102,9 +116,11 @@ extern "C" NSDictionary *osl_mobile_memory_report();
             @"memory": memory,
             @"virtual_memory": virtualMemory,
             @"surface": surface,
+            @"renderer": renderer,
             @"gpu_driver_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGPUDriver"] ?: @"none",
             @"startup_corpus_sha256": NSBundle.mainBundle.infoDictionary[@"OSLGameCorpus"] ?: @"none",
             @"sdl_archive_sha256": NSBundle.mainBundle.infoDictionary[@"OSLSDLArchive"] ?: @"none",
+            @"renderer_archive_sha256": NSBundle.mainBundle.infoDictionary[@"OSLRendererArchive"] ?: @"none",
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
             @"page_size": @(getpagesize()), @"launch_count": @(count),
             @"metal_device": gpu.name ?: @"unavailable", @"bc_texture_compression": @(gpu.supportsBCTextureCompression),

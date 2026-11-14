@@ -37,7 +37,7 @@ headers=a.headers.resolve()
 if not (headers/'vulkan/vulkan.hpp').is_file():p.error('Vulkan headers missing')
 header_inputs={str(path.relative_to(headers)):digest(path) for path in sorted((headers/'vulkan').rglob('*')) if path.is_file()}
 def sources():
- paths=[repo/'CMakeLists.txt',repo/'gpu/CMakeLists.txt',repo/'cmake/OslPinnedSources.cmake',repo/'src/host_darwin.h',repo/'src/runtime_memory.c',repo/'src/runtime_errno.c',repo/'ios/services/memory_shim.c',repo/'ios/services/clock.h',repo/'ios/graphics/frontend-probe.cpp']
+ paths=[repo/'CMakeLists.txt',repo/'gpu/CMakeLists.txt',repo/'cmake/OslPinnedSources.cmake',repo/'src/host_darwin.h',repo/'src/oslgpu.h',repo/'src/runtime_memory.c',repo/'src/runtime_errno.c',repo/'ios/services/memory_shim.c',repo/'ios/services/clock.h',repo/'ios/graphics/frontend-probe.cpp']
  paths += [path for directory in (repo/'gpu/shim',repo/'gpu/shadps4') for path in sorted(directory.rglob('*')) if path.is_file() and path.suffix in ('.cpp','.h','.c','.cmake','.glsl','.vert','.frag','.comp','.hlsl')]
  return {str(path.relative_to(repo)):digest(path) for path in paths}
 source_inputs=sources();sdk=Path(subprocess.check_output(['xcrun','--sdk',a.sdk,'--show-sdk-path'],text=True).strip());build=root/('build-'+a.sdk)
@@ -73,7 +73,7 @@ if a.driver_root:
  for name,path in (('memory',repo/'src/runtime_memory.c'),('errno',repo/'src/runtime_errno.c'),('memory-shim',repo/'ios/services/memory_shim.c')):
   obj=root/(name+'-'+a.sdk+'.o');run('link-check-compile-'+name+'-'+a.sdk,['xcrun','clang',*common,'-std=c11','-c',path,'-o',obj]);objects.append(obj)
  output=root/('renderer-link-check-'+a.sdk)
- command=['xcrun','clang++',*common,'-std=c++23','-I'+str(sdl_prefix/'include'),repo/'ios/graphics/frontend-probe.cpp',*objects,
+ command=['xcrun','clang++',*common,'-std=c++23','-I'+str(sdl_prefix/'include'),'-I'+str(repo/'gpu/shadps4'),repo/'ios/graphics/frontend-probe.cpp',*objects,
   *[build/name for name in archives],*[prefix/'lib'/name for name in deps['libraries']],library,'-lz','-F'+str(framework.parent),'-framework','KosmicKrisp','-Wl,-rpath,@executable_path/Frameworks','-o',output]
  for name in ('UIKit','Foundation','Metal','QuartzCore','GameController','CoreHaptics','CoreMedia','CoreVideo','CoreAudio','AudioToolbox','AVFoundation','CoreBluetooth','CoreGraphics','CoreMotion'):
   command.extend(['-framework',name])

@@ -353,3 +353,41 @@ private-copy archive are rejected before configuration. No game data or saves
 are used by these library/link checks. Next: a nonblocking UIKit renderer session,
 actual physical initialization/swapchain ownership, guest GPU callback wiring,
 asset import and presentation. No mobile game draw/frame is established.
+
+## Polled renderer session and explicit shutdown
+
+The Apple C API now supplies `oslgpu_poll_main_thread()` without the idle wait
+and `oslgpu_shutdown_main_thread()`. Callers must stop/join guest CPUs and close
+their queues first, retaining a foreground drawable while GPU work drains.
+Shutdown stops kernel/GPU/presentation workers, clears IRQ handlers and guest
+mapping callbacks, synchronizes the pipeline cache, releases overlay/device
+resources and destroys the SDL window. iOS bypasses desktop display-mode sync.
+Heavy-content background/resume behavior is not qualified by this API check.
+
+Real native Mac lifecycle tests pass three init/open/close/poll/shutdown cycles,
+reject wrong-thread polling/shutdown and duplicate starts, verify no named
+session workers remain and all SDL video/gamepad leases are released. All 192
+queued private cache records are read back byte-for-byte after shutdown. The
+same three cycles pass with the core instrumented by AddressSanitizer; driver/
+system libraries are uninstrumented, and leak sanitizer is disabled. Tests
+exit normally, without relying on process termination for renderer cleanup.
+No guest code/game frame is involved in this lifecycle check.
+
+Testing found and fixed a stale IRQ registration across restarts, Apple warm-up
+workers previously left parked, the cache I/O worker retained until process exit,
+and cache close stopping before accepted writes completed. Other-host warm-up
+workarounds are retained. Generated diagnostic records remain in disposable
+private profiles; real game saves/caches are untouched.
+
+Set `OSL_PROBE_RENDERER_ROOT` alongside matching GPU/SDL inputs to build the UIKit
+session check. It uses CADisplayLink for 30 polls, native VideoOut open/close,
+explicit teardown and original key-window restoration. Stages are persisted
+before initialization for failure diagnosis. The inactive observer stops this
+short diagnostic on loss of foreground; this does not qualify full gameplay
+background/resume. The signed engineering candidate builds as separate
+`com.wadscorp.odinsphere.renderer` / “Odin Renderer Check” using optional
+`OSL_PROBE_BUNDLE_ID` and `OSL_PROBE_DISPLAY_NAME`, keeping the normal probe's
+container independent. Renderer archives/support inputs and source hashes are
+validated before packaging. Both mobile SDK libraries/phone consumer link pass.
+The UIKit candidate is staged only, not installed or device-executed; hardware
+validation follows when it can preserve the other active game session.

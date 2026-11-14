@@ -9,6 +9,9 @@ source_dir=$(cd "$(dirname "$0")/.." && pwd)
 build_dir=$1
 team=$2
 fixtures=$3
+bundle_id=${OSL_PROBE_BUNDLE_ID:-com.wadscorp.odinsphere.probe}
+[[ $bundle_id =~ ^[A-Za-z0-9.-]+$ ]] || { echo 'Invalid probe bundle identifier' >&2; exit 1; }
+display_name=$(python3 -c 'import json,os; print(json.dumps(os.environ.get("OSL_PROBE_DISPLAY_NAME","Odin Sphere Probe")))')
 probe_sdk=${OSL_PROBE_SDK:-iphoneos}
 if [[ $probe_sdk == iphonesimulator ]]; then
     archive_platform=simulator
@@ -114,6 +117,46 @@ PYSDL
 else
     rm -f "$build_dir/Source/libSDL3.a" "$build_dir/Source/surface_probe.mm"
 fi
+renderer_enabled=0
+renderer_dependency=""
+renderer_corpus=none
+if [[ -n ${OSL_PROBE_RENDERER_ROOT:-} ]]; then
+    [[ $game_enabled == 1 && $gpu_enabled == 1 && $sdl_enabled == 1 ]] || { echo 'Renderer session requires the real game runtime, driver and matching SDL prefix' >&2; exit 1; }
+    renderer_corpus=$(python3 - "$OSL_PROBE_RENDERER_ROOT" "$probe_sdk" "$source_dir" "$build_dir/Source" "$OSL_PROBE_SDL_PREFIX" <<'PYRENDERER'
+from pathlib import Path
+import hashlib,json,shutil,sys
+root=Path(sys.argv[1]).resolve();sdk=sys.argv[2];repo=Path(sys.argv[3]);output=Path(sys.argv[4]);sdl=Path(sys.argv[5]).resolve()
+def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+d=json.loads((root/('inputs-'+sdk+'.json')).read_text())
+if d['platform']!=sdk or not d['renderer_library_compiled'] or not d['driver_linked']:raise SystemExit('Renderer is not compiled/consumer-linked for this SDK')
+for name,wanted in d['sources'].items():
+ if digest(repo/name)!=wanted:raise SystemExit('Renderer source changed: '+name)
+if digest(sdl.parent/('inputs-'+sdk+'.json'))!=d['sdl_manifest_sha256']:raise SystemExit('Renderer SDL metadata changed')
+options=d['options'];prefix=Path(next(x.split('=',1)[1] for x in options if x.startswith('-DCMAKE_PREFIX_PATH=')).split(';')[0])
+dep_path=prefix.parent/('inputs-'+sdk+'.json');deps=json.loads(dep_path.read_text())
+if digest(dep_path)!=d['dependency_manifest_sha256']:raise SystemExit('Renderer dependency metadata changed')
+for name,item in d['archives'].items():
+ path=root/('build-'+sdk)/name
+ if digest(path)!=item['sha256']:raise SystemExit('Renderer archive changed: '+name)
+ shutil.copy2(path,output/path.name)
+for name,item in deps['libraries'].items():
+ path=prefix/'lib'/name
+ if digest(path)!=item['sha256']:raise SystemExit('Renderer dependency changed: '+name)
+ shutil.copy2(path,output/path.name)
+print(d['archives']['gpu/liboslgpu.a']['sha256'])
+PYRENDERER
+)
+    cp "$source_dir/ios/graphics/renderer-session.mm" "$build_dir/Source/renderer_session.mm"
+    cp "$source_dir/src/oslgpu.h" "$build_dir/Source/oslgpu.h"
+    cp "$source_dir/ios/services/clock.h" "$build_dir/Source/clock.h"
+    for library in oslgpu miniz sirit osl_keys fmt xxhash Zycore Zydis png16; do
+        renderer_dependency+=$'      - framework: Source/lib'"$library"$'.a\n        embed: false\n'
+    done
+    renderer_dependency+=$'      - sdk: libz.tbd'
+    renderer_enabled=1
+else
+    rm -f "$build_dir/Source/renderer_session.mm" "$build_dir/Source/oslgpu.h" "$build_dir/Source/clock.h"
+fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi
 cat > "$build_dir/project.yml" <<YAML
@@ -140,9 +183,10 @@ targets:
 $game_dependency
 $gpu_dependency
 $sdl_dependency
+$renderer_dependency
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.probe
+        PRODUCT_BUNDLE_IDENTIFIER: '$bundle_id'
         DEVELOPMENT_TEAM: '$team'
         CODE_SIGN_STYLE: Automatic
         ARCHS: arm64
@@ -150,7 +194,7 @@ $sdl_dependency
         CLANG_ENABLE_OBJC_ARC: YES
 $entitlements_setting
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
-        GCC_PREPROCESSOR_DEFINITIONS: 'OSL_GAME_STARTUP=$game_enabled OSL_GPU_PROBE=$gpu_enabled OSL_SDL_SURFACE=$sdl_enabled'
+        GCC_PREPROCESSOR_DEFINITIONS: 'OSL_GAME_STARTUP=$game_enabled OSL_GPU_PROBE=$gpu_enabled OSL_SDL_SURFACE=$sdl_enabled OSL_RENDERER_SESSION=$renderer_enabled'
         HEADER_SEARCH_PATHS: '\$(PROJECT_DIR)/Source/Headers'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CURRENT_PROJECT_VERSION: 1
@@ -158,11 +202,12 @@ $entitlements_setting
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: Odin Sphere Probe
+        CFBundleDisplayName: $display_name
         OSLBuildID: '$revision'
         OSLGameCorpus: '$game_corpus'
         OSLGPUDriver: '$gpu_corpus'
         OSLSDLArchive: '$sdl_corpus'
+        OSLRendererArchive: '$renderer_corpus'
         GCSupportsControllerUserInteraction: true
         GCSupportedGameControllers:
           - ProfileName: ExtendedGamepad
