@@ -12,6 +12,7 @@ extern "C" uint32_t __remill_read_memory_32(Memory *, uint64_t);
 extern "C" Memory *__remill_compare_exchange_memory_32(Memory *, uint64_t, uint32_t &, uint32_t);
 extern "C" Memory *__remill_atomic_begin(Memory *);
 extern "C" Memory *__remill_atomic_end(Memory *);
+extern "C" Memory *__remill_sync_hyper_call(State &, Memory *, uint32_t);
 
 int main() {
     uint32_t counter = 0;
@@ -71,6 +72,19 @@ int main() {
     }
     protected_memory->recovery = nullptr;
     assert(counter == 4000 && protected_memory->fault == "guest write to protected region");
+    // An unsupported instruction in a broad, unused trace can link, but actual
+    // execution must leave the guest at its precise PC rather than continue.
+    State state{};
+    state.gpr.rip.qword = 0x106abbc5;
+    protected_memory->fault = {};
+    protected_memory->recovery = &recovery;
+    if (setjmp(recovery) == 0) {
+        __remill_sync_hyper_call(state, protected_memory.get(), 0x101);
+        assert(false);
+    }
+    protected_memory->recovery = nullptr;
+    assert(protected_memory->fault == "unsupported AMD64 instruction fallback");
+    assert(protected_memory->missing_pc == state.gpr.rip.qword);
     protected_memory->fault = {};
     protected_memory->recovery = &recovery;
     if (setjmp(recovery) == 0) {

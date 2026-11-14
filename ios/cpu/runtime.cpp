@@ -114,6 +114,11 @@ extern "C" Memory *__remill_async_hyper_call(State &, uint64_t pc, Memory *m) {
     stopGuest(*m, "unsupported guest async hypercall", pc);
     return m;
 }
+extern "C" Memory *__remill_sync_hyper_call(State &s, Memory *m, uint32_t kind) {
+    stopGuest(*m, kind == 0x101 ? "unsupported AMD64 instruction fallback"
+                              : "unsupported guest synchronous hypercall", s.gpr.rip.qword);
+    return m;
+}
 extern "C" Memory *__remill_error(State &, uint64_t pc, Memory *m) {
     stopGuest(*m, "unsupported guest instruction", pc);
     std::abort();

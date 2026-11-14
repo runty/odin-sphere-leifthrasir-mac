@@ -17,12 +17,12 @@ mkdir -p "$root"
 if [[ ! -d $root/remill ]]; then
     git clone --no-checkout https://github.com/lifting-bits/remill.git "$root/remill"
     git -C "$root/remill" checkout --detach "$pin"
-    for name in llvm23 lifter-lifetime packed-simd pcmpistrm; do
+    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps; do
         git -C "$root/remill" apply "$source_dir/remill-$name.patch"
     done
 else
     [[ $(git -C "$root/remill" rev-parse HEAD) == "$pin" ]] || { echo 'Unexpected backend revision; leaving it untouched' >&2; exit 1; }
-    for name in llvm23 lifter-lifetime packed-simd pcmpistrm; do
+    for name in llvm23 lifter-lifetime packed-simd pcmpistrm vpermilps; do
         git -C "$root/remill" apply --reverse --check "$source_dir/remill-$name.patch"
     done
 fi

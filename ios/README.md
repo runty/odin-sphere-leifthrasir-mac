@@ -113,3 +113,14 @@ built with `ios/game/build-ios.py --sdk iphonesimulator`. Its guest addresses
 are explicitly virtual because ordinary Simulator malloc can exceed the native
 GPU frontend's range. Metal 4 encoder APIs are absent from the Simulator SDK,
 so the actual graphics driver does not have a Simulator result.
+
+
+The isolated backend now includes immediate-form `VPERMILPS` selectors. The
+four register/memory and XMM/YMM forms reuse bitwise dword shuffles, preserve
+flags and clear upper YMM bits for VEX XMM destinations. Run
+`python3 ios/cpu/test-vpermilps.py --root "$WORK/ios-vpermilps-tests" --remill "$WORK/cpu-backends"`
+for all 256 immediates: 8,192 lane values match bounded native x86 execution,
+including NaN/signed-zero bit patterns and upper-lane canaries. Unsupported
+synchronous instruction fallbacks still stop at the exact guest PC; they never
+silently succeed. Changing semantics requires a new startup trace directory;
+`advance.py --seed-from` re-lifts the old executed PC list without copying IR.
