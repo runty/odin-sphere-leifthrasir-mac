@@ -709,3 +709,34 @@ Checkpoint `567743a3224459a4899cdc23376d854aae74cdab571f421de7d90966ea1220dd`
 has 1,113 entries and continues past crash registration to missing CPU block
 `0x106adf60`. The packet adapters are qualified independently; that guest path
 has not called them yet. Further native discovery is extending the executed path.
+
+### Interruptible event waits and the 1,178-entry checkpoint
+
+`facb6f5` lets native event waiters observe frontend/session cancellation without
+waiting for the full two-second startup deadline. Their queue identity remains
+intact, and host interruption never becomes a fabricated guest timeout or EINTR.
+[Native and checked-bridge evidence](../services/README.md#interrupting-a-parked-event-waiter).
+
+Checkpoint `532589e301a7b99c7952b44e63ff271eb816255ef72fa11d838d245c641e8e40`
+contains 1,178 entries. The current native arm64 renderer run passes both module
+initializers, starts/joins 17 workers, registers three buffers and stops at the
+next untranslated block `0x10745e30`, with no memory fault or game frame. The
+strict renderer replay takes 350.250 ms and passes 109 bridge checks plus queue/
+mapping cleanup. Concurrent/timing-dependent paths may stop at other executable
+gaps; this does not establish complete startup or equivalence across schedules.
+
+The separate ASan boundary/fixture run passes the bridge and normal/pre-stop/
+live-stop lifecycle modes plus five image/pointer validation cases. Its normal
+run reaches an earlier executable gap with zero child workers; it does not
+qualify seventeen-worker boundary cancellation. Renderer, game archive, guest IR,
+driver and system libraries remain uninstrumented in that test. Evidence is in
+`eventflag-stop-qualified/{native-gpu,guest-session-address}/verification.json`.
+After refreshing all three SDK game archives, the stricter boundary verifier
+also pins linked archive hashes, checks the actual trace count and rejects a
+normal stop without a genuine untranslated executable gap. That ASan rerun is
+`guest-session-address-refreshed/`. iPhoneOS/Simulator game archives now contain
+all 1,178 entries; sampled runner, thunks and eventflag objects have the expected
+SDK platform. Separately compiled boundary objects pass their SDK platform audit
+at `ios-guest-session-event-stop/`. Compilation is not device execution.
+Physical iPad remains on the earlier 1,059-entry startup app. No later iPhone,
+iPad or mobile gameplay/frame result is inferred from these host checks.

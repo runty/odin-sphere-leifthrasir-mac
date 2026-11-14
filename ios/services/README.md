@@ -212,6 +212,29 @@ result is inferred. Private evidence is under `ios-eventflag-tests/`,
 `ios-eventflag-{asan,tsan}/` and `ios-eventflag-mac-smoke/` below the Odin build
 root. The clean packaged Mac update has its own delivery checks.
 
+### Interrupting a parked event waiter
+
+The host-only `runtime_eventflag_wait_guarded` entrypoint checks cancellation
+every five milliseconds while keeping the same waiter in the native queue.
+It preserves FIFO, clear modes and single-waiter exclusion across those checks;
+the original guest export and ABI retain their existing wait implementation.
+The guard only reads atomic cancellation state. The checked bridge restores
+its memory/state leases before stopping the guest, outside the native lock,
+and leaves caller result/timeout bytes unchanged on host interruption.
+
+`test-eventflag-stop.py` exercises 28 cancellation, FIFO, cancel/delete, timeout
+and guest-output checks. Canonical arm64 ASan/TSan and Rosetta runs pass, along
+with the existing 4,792-check suite (200 deletion races) in all three modes.
+HLE/core checks remain 4,336 with three worker cleanup fixtures under ASan/TSan;
+translated IR is uninstrumented. The Mac synchronization executable also passes.
+Private evidence: `eventflag-stop-qualified/` under the Odin build root.
+
+A frozen 1,113-entry real startup replay, with 17 game-created workers in each
+run, took 2,004.860 ms before the change and 284.337 ms with guarded waits.
+Both stopped at the same explicit untranslated block, with all children joined
+and GPU mappings released. This is one startup/stop comparison, not a gameplay
+frame-rate measurement. Evidence: `eventflag-stop-experiment/game-replay/`.
+
 ## Checked condition variables
 
 `condition.h` supplies session-owned real pthread conditions with opaque,

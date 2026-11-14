@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run the actual shared guest boundary against an isolated native Mac renderer."""
-import argparse,hashlib,json,os,shlex,shutil,subprocess
+import argparse,hashlib,json,os,re,shlex,shutil,subprocess,sys
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 for name in ('root','build','output','driver-manifest'):p.add_argument('--'+name,type=Path,required=True)
@@ -10,6 +10,7 @@ if len(out.parts)<3 or out.parts[1]!='Volumes' or not Path('/Volumes',out.parts[
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 state_bytes=(root/'build-state.json').read_bytes();state=json.loads(state_bytes)
 sources={name:digest(repo/name) for name in ('ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-session-test.cpp','ios/graphics/guest-gpu.h')}
+linked_inputs={}
 def current():
  if (root/'build-state.json').read_bytes()!=state_bytes:raise RuntimeError('Discovery changed; stop it before testing')
  for inputs in (state['sources'],sources):
@@ -17,6 +18,8 @@ def current():
    if digest(repo/name)!=wanted:raise RuntimeError('Source changed: '+name)
  for name,wanted in state['headers'].items():
   if digest(root/name)!=wanted:raise RuntimeError('Header changed: '+name)
+ for name,wanted in linked_inputs.items():
+  if digest(Path(name))!=wanted:raise RuntimeError('Linked archive changed: '+name)
 current();out.mkdir(parents=True)
 def command_for(target):
     commands=subprocess.check_output(['ninja','-C',build,'-t','commands',target],text=True).splitlines()
@@ -33,6 +36,12 @@ for name in ('guest-session','guest-session-test'):
  current();obj=out/(name+'.o');objects.append(obj)
  with (out/(name+'-compile.log')).open('w') as log:subprocess.run([*compile,'-c',str(repo/'ios/graphics'/(name+'.cpp')),'-o',str(obj)],cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=120)
 link=shlex.split(command_for('bin/osl-aot-gpu-probe').split(' && ')[1]);link.remove('CMakeFiles/osl-aot-gpu-probe.dir/ios/graphics/aot-frontend.cpp.o')
+game_archives=[Path(value).resolve() for value in link if value.endswith('/libodin-startup.a')]
+if game_archives!=[(root/'mac/libodin-startup.a').resolve()]:raise RuntimeError('Renderer links a different game archive')
+for value in link:
+ if value.endswith('.a'):
+  path=(build/value).resolve();linked_inputs[str(path)]=digest(path)
+current()
 link[link.index('-o')+1]=str(out/'check');link.extend(map(str,objects))
 if a.sanitizer:link+=['-fsanitize='+a.sanitizer]
 with (out/'link.log').open('w') as log:subprocess.run(link,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=120)
@@ -56,6 +65,7 @@ for mode in ('bridge','normal','pre-stop','live-stop'):
   assert result['bridge_checks']>=109 and result['game_frames'] is False
   reports[mode]={'bridge_checks':result['bridge_checks'],'ownership':ownership[0]};continue
  guest=result['guest'];cleanup=result['cleanup'];assert cleanup['passed'] and cleanup['guest_resources_released']
+ assert guest['trace_count']==len(state['ir']), 'Linked game archive has a different trace corpus'
  assert cleanup['opened']==cleanup['closed'] and cleanup['queues_created']==cleanup['queues_deleted']
  assert guest['fault_address']==0 and guest['workers_started']==guest['workers_finished']
  if mode=='pre-stop':assert guest['completed_modules']==0 and guest['error']=='guest execution interrupted' and cleanup['opened']==0
@@ -71,6 +81,13 @@ for mode in ('bridge','normal','pre-stop','live-stop'):
    offset=guest['missing_pc']-state['trace_inputs']['base']
    layout=json.loads((root/'image.json').read_text())
    assert any(flags&1 and start<=offset<start+size for start,size,flags in layout['segments'])
+  if mode=='normal':
+   sys.path.insert(0,str(repo/'ios/game'))
+   from discovery_targets import missing_targets
+   layout=json.loads((root/'image.json').read_text())
+   known={int(value) for value in re.findall(r'\{([0-9]+),&sub_[0-9a-f]+\}',(root/'traces.h').read_text())}
+   pending=missing_targets(guest,layout['base'],layout['segments'],known)
+   assert guest['error']=='missing translated block' and pending, 'Expected a real untranslated executable gap'
  assert result['presented_frames']==0 and result['game_frames'] is False
  reports[mode]={'guest':guest,'cleanup':cleanup,'ownership':ownership[0],
                 'cpu_interruption_observed':guest['error']=='guest execution interrupted'}
@@ -85,5 +102,5 @@ with image.open('r+b') as file:file.truncate(image.stat().st_size-1)
 validate('truncated-image',False);shutil.copy2(root/'image.bin',image)
 with pointers.open('r+b') as file:byte=file.read(1);file.seek(0);file.write(bytes([byte[0]^1]))
 validate('corrupt-pointers',False);pointers.rename(fixtures/'invalid-pointers.bin');validate('missing-pointers',False)
-current();report={'passed':True,'corpus_sha256':state['corpus_sha256'],'sessions':reports,'validation':validation,'sources':sources,'binary_sha256':digest(out/'check'),'driver_sha256':digest(driver),'platform':'native arm64 macOS','sanitizer':a.sanitizer,'instrumented':'guest-session boundary and fixture only; renderer, game archive and system/driver libraries uninstrumented','physical_device':False,'game_frames':False}
+current();report={'passed':True,'corpus_sha256':state['corpus_sha256'],'sessions':reports,'validation':validation,'sources':sources,'linked_archives':linked_inputs,'binary_sha256':digest(out/'check'),'driver_sha256':digest(driver),'platform':'native arm64 macOS','sanitizer':a.sanitizer,'instrumented':'guest-session boundary and fixture only; renderer, game archive and system/driver libraries uninstrumented','physical_device':False,'game_frames':False}
 (out/'verification.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({'passed':True,'sessions':list(reports),'validation_cases':len(validation),'game_frames':False}))
