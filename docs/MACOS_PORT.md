@@ -13,8 +13,17 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac installer | Clean pinned source/build, staged app update, config rollback, interrupted app/library recovery and copied-save preservation | Fresh full dependency reproduction and public distribution signing/notarization |
 | Mobile CPU | Original eboot/libc/Fios2 routines pass 414 comparisons; fresh iPad repeats them. Packed reciprocal/square-root semantics pass six forms / 1,572,864 lanes per CPU path against ISA contracts; packed-double blend/shuffle each match 12,288 native output lanes | Wider SIMD/ABI, callbacks/fibers, full title CPU budget and fresh updated iPhone execution |
 | Mobile baseline | Clean `1376d6a` installed/listed on both devices after Documents backups; iPad launches 12/13 pass CPU 414, native memory 19 and actual GPU readback 64 words | iPhone current launch denied Locked; older physical execution is historical, not a fresh result |
-| Mobile memory/startup | Bounded backing aliases remove the full-pool view, preserve physical accounting and adapt 8/4/2 GiB windows. Actual iPad allocates 1,294,155,776 sparse-pool bytes in a 4 GiB window and reaches VideoOut without the former fault; inputs survive relaunch | Full resident-memory/GPU workload and lifecycle qualification; mobile assets remain unimported |
-| Mobile graphics/workers | Native arm64 host corpus joins four guest workers and registers three 1080p buffers. Clean iPad startup now connects the actual guest to the full UIKit renderer, joins four workers, registers three 1080p buffers and tears down cleanly; controlled foreground-change cancellation and copied assets are verified | Extend executed CPU/Gnm paths to real submissions/draw, title/battle frames, input/audio/new in-game saves and gameplay lifecycle |
+| Mobile memory/startup | Bounded backing aliases remove the full-pool view, preserve physical accounting and adapt 8/4/2 GiB windows. Actual iPad allocates 1,294,155,776 sparse-pool bytes in a 4 GiB window and reaches VideoOut without the former fault; inputs survive relaunch | Full resident-memory/GPU workload and gameplay lifecycle qualification; 33 selected private assets have round-trip hash evidence, while the product Files import flow remains open |
+| Mobile graphics/workers | Qualified 1,288-entry native arm64 host corpus completes both initializers, joins 17 workers and registers three 1080p buffers. Clean iPad startup connects the earlier actual guest corpus to the full UIKit renderer, joins four workers, registers three buffers and tears down cleanly; controlled foreground-change cancellation and copied assets are verified | Extend executed CPU/Gnm paths to real submissions/draw, title/battle frames, input/audio/new in-game saves and gameplay lifecycle |
+
+The immediate mobile sequence remains: finish executed startup translation,
+observe the first real Gnm submission and presented guest image on the host,
+qualify that exact corpus for both SDKs, then repeat on the iPad before broader
+input/audio/save work. Diagnostic packet/readback/presentation fixtures do not
+satisfy the real-game draw gate. Keep the iPhone's old result separate until
+the device is available. Full title/battle execution and device timing can
+still reveal CPU, service, shader or memory gaps; no mobile delivery date or
+60 fps result is established.
 
 Earlier bring-up checkpoints below are retained as history; the table above
 is current. The first module-startup hardware result is explicitly a development build:
