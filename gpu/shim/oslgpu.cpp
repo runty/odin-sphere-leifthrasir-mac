@@ -416,6 +416,22 @@ extern "C" void oslgpu_choice_set_input(uint32_t (*buttons)(void)) {
     OslOverlay::SetChoiceInput(buttons);
 }
 
+extern "C" int oslgpu_message_begin(const char* title, const char* message,
+                                    const char* const* buttons, int count, int error,
+                                    int enable_back, uint32_t initial_buttons) {
+    if (!g_window || count < 0 || count > 2 || (count && !buttons)) return 0;
+    std::vector<std::string> labels;
+    for (int i = 0; i < count; ++i) {
+        if (!buttons[i]) return 0;
+        labels.emplace_back(buttons[i]);
+    }
+    OslOverlay::BeginMessage(title ? title : "", message ? message : "", labels,
+                              error != 0, enable_back != 0, initial_buttons);
+    return 1;
+}
+extern "C" int oslgpu_message_poll(uint32_t buttons) { return OslOverlay::PollMessage(buttons); }
+extern "C" void oslgpu_message_end(void) { OslOverlay::EndMessage(); }
+
 extern "C" int oslgpu_text_input_poll(char* out, uint64_t size) {
     if (!g_window) return 2;
     std::string text;

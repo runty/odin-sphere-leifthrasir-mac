@@ -2,6 +2,7 @@
 // UIKit-facing ownership boundary; all guest pointers use the shared adapter.
 #include "guest-session.h"
 #include "guest-gpu.h"
+#include "save-message-presenter.h"
 #include "image-layout.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
@@ -113,6 +114,7 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
             },[](void *opaque){NativeGpu::finish(&static_cast<OslGuestSession *>(opaque)->gpu);},&session->stop};
         services.execution_budget_ms=session->budget_ms;
         services.frame_count=[](void *){return oslgpu_presented_frames();};
+        services.save_message=nativeSaveMessagePresenter();
         services.audio_context=&audio;services.audio_call=GuestAudio::call;
         const std::string guest=osl_mobile_game_report_with_gpu(path,&services);
         audio.finish();

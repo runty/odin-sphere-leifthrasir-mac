@@ -1197,3 +1197,47 @@ It does not depict the next dialog. The profile remains three empty directories,
 and exact owned PID 44104 is stopped and absent. Both SDK game/boundary archives
 compile. Evidence is `scripted-input-ipad/device/verification.json`. The iPhone
 was not contacted; production Mac and player saves are untouched.
+
+## Save-data user messages
+
+The AOT runner now marshals mode-2 save messages into a host-owned string and
+an explicit presenter. The guest's title/display type, error style, OK/Yes-No/
+None/OK-Cancel buttons and back option are preserved. Guest parameter, message
+and result pointers are checked; malformed headers, oversized strings, aliasing
+output ranges and invalid nested destinations cannot partially write a result.
+The result preserves caller pointer fields, reserved bytes and opaque user data.
+Save items/lists, system/error and progress modes remain explicit gaps; no item
+selection or metadata is silently discarded as success.
+
+The presenter reuses Odin's overlay, with wrapped message text and clickable
+buttons. Controller/script input is polled by the guest worker after releasing
+guest state/memory leases; the rendering thread never calls the pad provider.
+An opening held button must release before confirmation. NONE remains pending
+until Close. Input is held neutral for the game while the OS message is open;
+closing, terminating and session cleanup retire the UI. Touch events are
+normalized to the rendered viewport, secondary fingers are ignored, and a
+cancelled touch releases outside the button. Physical touch acceptance remains
+separate from injected-event checks.
+
+`ios/services/test-save-dialog.py` passes 388 checks normally and under
+ASan/UBSan, plus both SDK fixture compilations. The actual native renderer API
+passes 69 checks across two initialization/shutdown cycles, including held-input
+suppression, deliberate Yes/No/cancel, disabled Back, NONE and injected touch
+transitions. These checks do not claim pixel or physical-touch verification.
+The unchanged 4,342 HLE and 38 pad regression cases also pass. Evidence:
+`save-message-contracts-final/`, `save-message-presenter-check/` and
+`save-message-startup/{service-check,pad-regression}.log` under the build root.
+
+Actual native attempt 11 opens a pending Yes/No message: **“Create new save
+data? Save data is needed in order to begin.”** It records one open and zero
+completions, reaches 120 seconds / 1,828 presentations, joins all 23 workers and
+passes cleanup without a memory fault. This verifies the real marshal/open/
+pending path, not visible dialog pixels or completed save creation. Its exact
+input remains the prior two-frame Cross press at frame 1,100. The iPad renderer
+archive and signed-driver consumer link compile; installation of this adapter
+is a subsequent checkpoint. The installed iPad evidence above still names
+`6608d05`.
+
+ABI/state reference: [pinned shadPS4 dialog headers](https://github.com/shadps4-emu/shadPS4/blob/4e22b3ba29d0133ef97477e5740df0c85c61c2be/src/core/libraries/save_data/dialog/savedatadialog_ui.h),
+cross-checked with Odin's desktop marshaling. OpenCrown's generic headless
+auto-success behavior is intentionally not used for this adapter.

@@ -52,6 +52,7 @@ extern "C" const unsigned char osl_font_ttf[];
 extern "C" const unsigned char osl_font_ttf_end[];
 
 namespace OslOverlay {
+void ChoiceStep(int move, int finish);
 
 namespace {
 
@@ -88,6 +89,12 @@ std::string choice_title;
 std::vector<std::string> choice_items;
 int choice_index = 0;
 std::atomic<int> choice_result{-1}; // -1 open, -2 cancelled, else the chosen index
+std::atomic<bool> choice_message{false};
+std::string choice_body;
+bool message_error=false, message_back=true;
+uint32_t message_previous=0;
+SDL_FingerID message_finger=0;
+bool message_touch_active=false;
 // Save pictures: decoded by BeginChoice, made textures on the present thread (null = none).
 // Closed lists' textures wait in choice_retired until the backend has destroyed them.
 std::vector<OslPng::Image> choice_pictures;
@@ -226,7 +233,37 @@ void TextEntryBox() {
     ImGui::End();
 }
 
+void MessageBox() {
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
+                                  viewport->WorkPos.y + viewport->WorkSize.y * 0.5f),
+                           ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    const float width = viewport->WorkSize.x * 0.7f;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0), ImVec2(width, viewport->WorkSize.y * 0.85f));
+    ImGui::SetNextWindowBgAlpha(0.96f);
+    ImGui::Begin("##save-message", nullptr, ImGuiWindowFlags_NoDecoration |
+                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::TextColored(AccentHotColor(), "%s", choice_title.c_str());
+    ImGui::Separator();
+    if (message_error) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1,0.4f,0.4f,1));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width - ImGui::GetStyle().WindowPadding.x * 2);
+    ImGui::TextUnformatted(choice_body.c_str());
+    ImGui::PopTextWrapPos();
+    if (message_error) ImGui::PopStyleColor();
+    ImGui::Spacing();
+    for (int i=0;i<int(choice_items.size());++i) {
+        if (i) ImGui::SameLine();
+        const bool selected=i==choice_index;
+        if (selected) ImGui::PushStyleColor(ImGuiCol_Button, AccentHotColor());
+        if (ImGui::Button(choice_items[i].c_str(), ImVec2(150.0f*base_scale, 48.0f*base_scale))) {
+            choice_index=i;ChoiceStep(0,1);
+        }
+        if (selected) ImGui::PopStyleColor();
+    }
+    ImGui::End();
+}
 void ChoiceBox() {
+    if (choice_message) { MessageBox(); return; }
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
                                    viewport->WorkPos.y + viewport->WorkSize.y * 0.5f),
@@ -425,6 +462,7 @@ void Shutdown() {
     }
     choice_textures.clear(); choice_retired.clear(); choice_pictures.clear();
     choice_items.clear(); choice_title.clear(); choice_index = 0;
+    choice_message=false;choice_body.clear();message_previous=0;
     choice_active = false; choice_retiring = false; choice_result = -1;
     text_entry_active = false; text_entry_prompt.clear(); text_entry_text.clear();
     loading = false; loading_done = loading_total = 0;
@@ -482,6 +520,7 @@ void ChoiceStep(int move, int finish) {
         return;
     }
     const int count = int(choice_items.size());
+    if (choice_message && (!count || (finish==2 && !message_back))) return;
     if (move && count) {
         choice_index = (choice_index + move + count) % count;
     }
@@ -503,7 +542,7 @@ void PollChoiceInput() {
     static uint32_t previous = 0;
     static bool open = false;
     static std::chrono::steady_clock::time_point repeat_at{};
-    if (!choice_input) {
+    if (choice_message || !choice_input) {
         return;
     }
     if (!choice_active) {
@@ -543,7 +582,7 @@ bool HandleChoiceEvent(const SDL_Event& event) {
                  : key == SDLK_ESCAPE || key == SDLK_BACKSPACE                   ? 2
                                                                                  : 0;
     } else if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
-        if (choice_input) {
+        if (choice_message || choice_input) {
             return true; // PollChoiceInput reads the gamepad
         }
         const u8 button = event.gbutton.button;
@@ -564,6 +603,37 @@ bool HandleEvent(const SDL_Event& event) {
     std::scoped_lock lock{imgui_mutex};
     if (!initialized || !choice_active) {
         return false;
+    }
+    if (choice_message) {
+        auto &io=ImGui::GetIO();
+        if (event.type==SDL_EVENT_FINGER_DOWN || event.type==SDL_EVENT_FINGER_UP ||
+            event.type==SDL_EVENT_FINGER_MOTION || event.type==SDL_EVENT_FINGER_CANCELED) {
+            const auto &f=event.tfinger;
+            if(event.type==SDL_EVENT_FINGER_DOWN && !message_touch_active) {
+                message_finger=f.fingerID;message_touch_active=true;
+            }
+            if(message_touch_active && message_finger==f.fingerID) {
+                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+                if(event.type==SDL_EVENT_FINGER_CANCELED)io.AddMousePosEvent(-1000000,-1000000);
+                else io.AddMousePosEvent(f.x*io.DisplaySize.x,f.y*io.DisplaySize.y);
+                const bool down=event.type!=SDL_EVENT_FINGER_UP && event.type!=SDL_EVENT_FINGER_CANCELED;
+                io.AddMouseButtonEvent(0,down);message_touch_active=down;
+            }
+            return true;
+        }
+        if(event.type==SDL_EVENT_MOUSE_MOTION || event.type==SDL_EVENT_MOUSE_BUTTON_DOWN || event.type==SDL_EVENT_MOUSE_BUTTON_UP) {
+            const bool motion=event.type==SDL_EVENT_MOUSE_MOTION;
+            if((motion ? event.motion.which : event.button.which)==SDL_TOUCH_MOUSEID)return true;
+            int width=0,height=0;
+            SDL_GetWindowSize(SDL_GetWindowFromID(motion ? event.motion.windowID : event.button.windowID),&width,&height);
+            if(width>0 && height>0) {
+                io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
+                const float x=motion ? event.motion.x : event.button.x,y=motion ? event.motion.y : event.button.y;
+                io.AddMousePosEvent(x*io.DisplaySize.x/width,y*io.DisplaySize.y/height);
+                if(!motion && event.button.button==SDL_BUTTON_LEFT)io.AddMouseButtonEvent(0,event.type==SDL_EVENT_MOUSE_BUTTON_DOWN);
+            }
+            return true;
+        }
     }
     return HandleChoiceEvent(event);
 }
@@ -612,6 +682,8 @@ void BeginChoice(const std::string& title, const std::vector<std::string>& items
     choice_pictures = std::move(pictures);
     choice_pictures.resize(items.size());
     choice_title = title;
+    choice_message = false;
+    choice_body.clear();
     choice_items = items;
     choice_index = focus >= 0 && focus < int(items.size()) ? focus : 0;
     choice_result = -1;
@@ -620,6 +692,34 @@ void BeginChoice(const std::string& title, const std::vector<std::string>& items
 
 int PollChoice() {
     return choice_result;
+}
+
+void BeginMessage(const std::string& title, const std::string& message,
+                  const std::vector<std::string>& buttons, bool error, bool enable_back,
+                  uint32_t initial_buttons) {
+    std::scoped_lock lock{imgui_mutex};
+    RetireChoiceTextures();
+    choice_message=true;choice_title=title;choice_body=message;choice_items=buttons;
+    message_error=error;message_back=enable_back;message_previous=initial_buttons;
+    message_touch_active=false;ImGui::GetIO().AddMouseButtonEvent(0,false);
+    choice_index=0;choice_result=-1;choice_active=true;
+}
+int PollMessage(uint32_t buttons) {
+    std::scoped_lock lock{imgui_mutex};
+    if (!choice_message) return -1;
+    const uint32_t pressed=buttons & ~message_previous;
+    message_previous=buttons;
+    const int move=(pressed & (0x10|0x80)) ? -1 : (pressed & (0x40|0x20)) ? 1 : 0;
+    const int finish=(pressed & 0x4000) ? 1 : (pressed & 0x2000) ? 2 : 0;
+    ChoiceStep(move,finish);
+    return choice_result;
+}
+void EndMessage() {
+    std::scoped_lock lock{imgui_mutex};
+    if (!choice_message) return;
+    choice_active=false;choice_message=false;choice_body.clear();choice_items.clear();
+    message_previous=0;choice_result=-1;RetireChoiceTextures();
+    message_touch_active=false;ImGui::GetIO().AddMouseButtonEvent(0,false);
 }
 
 void SetTextEntry(bool active, const std::string& prompt, const std::string& text) {

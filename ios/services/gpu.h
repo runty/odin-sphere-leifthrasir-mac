@@ -1,6 +1,7 @@
 #pragma once
 #include "../cpu/runtime.h"
 #include "wait_scope.h"
+#include "save-dialog.h"
 
 // Installed by the native frontend before a bounded guest session starts.
 // The context and function table must remain valid until the report returns.
@@ -19,5 +20,6 @@ struct MobileGpuServices {
     // Completed guest presentations, monotonic over a bounded session. Only
     // explicitly enabled startup scripts consume this optional clock.
     uint64_t (*frame_count)(void *)=nullptr;
+    SaveMessagePresenter save_message;
 };
 extern "C" const char *osl_mobile_game_report_with_gpu(const char *,const MobileGpuServices *);

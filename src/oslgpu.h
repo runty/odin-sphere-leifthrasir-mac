@@ -52,6 +52,13 @@ int oslgpu_choice_begin(const char *title, const char *const *items, const char 
 int oslgpu_choice_poll(void);
 /* The choice list reads PS4 pad button bits from this callback every frame while it is open. */
 void oslgpu_choice_set_input(uint32_t (*buttons)(void));
+/* A copied message with explicit buttons. Input is supplied by the guest-side
+ * poller; the render thread never calls GameController/guest services. NONE
+ * (count zero) remains open until end. Back cancellation is independently gated. */
+int oslgpu_message_begin(const char *title, const char *message, const char *const *buttons,
+                        int count, int error, int enable_back, uint32_t initial_buttons);
+int oslgpu_message_poll(uint32_t buttons);
+void oslgpu_message_end(void);
 /* 1 while a game dialog is open: the game's pad input should be held neutral. */
 int oslgpu_ui_captures_input(void);
 #ifdef __cplusplus

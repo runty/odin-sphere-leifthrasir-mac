@@ -160,6 +160,16 @@ int32_t MobilePad::read(int32_t handle,PadData *out) {
 uint64_t MobilePad::fallbackReads() const {
     std::lock_guard<std::mutex> lock(impl->mutex);return impl->fallback_reads;
 }
+uint32_t MobilePad::dialogButtons() {
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    auto p=impl->sample(0);if(!p.connected)return 0;
+    uint32_t buttons=p.buttons;
+    if(p.left_y<-0.5f)buttons|=BTN_UP;
+    if(p.left_y>0.5f)buttons|=BTN_DOWN;
+    if(p.left_x<-0.5f)buttons|=BTN_LEFT;
+    if(p.left_x>0.5f)buttons|=BTN_RIGHT;
+    return buttons;
+}
 uint64_t MobilePad::fallbackActiveReads() const {
     std::lock_guard<std::mutex> lock(impl->mutex);return impl->fallback_active_reads;
 }

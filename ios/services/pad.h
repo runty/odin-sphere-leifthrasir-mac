@@ -25,6 +25,9 @@ public:
     int32_t check(int32_t handle);
     int32_t info(int32_t handle,ControllerInfo *out);
     int32_t read(int32_t handle,PadData *out);
+    // OS-dialog input is sampled without opening/consuming a game pad handle.
+    // Call only from a guest worker with guest state/memory leases released.
+    uint32_t dialogButtons();
     int32_t vibration(int32_t handle,const uint8_t *motors);
     uint64_t fallbackReads() const;
     uint64_t fallbackActiveReads() const;

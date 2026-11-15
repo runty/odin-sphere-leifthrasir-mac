@@ -4,6 +4,7 @@
 // deliberately supports only the VideoOut calls whose marshalling is defined.
 #include "../services/gpu.h"
 #include "oslgpu.h"
+#include "save-message-presenter.h"
 #include "image-layout.h"
 #include <SDL3/SDL.h>
 #include <atomic>
@@ -73,6 +74,7 @@ int main(int argc,char **argv) {
     MobileGpuServices services{&context,NativeGpu::call,NativeGpu::finish};
     services.execution_budget_ms=budget_ms;
     services.frame_count=[](void *){return oslgpu_presented_frames();};
+    services.save_message=nativeSaveMessagePresenter();
     services.audio_context=&audio;services.audio_call=GuestAudio::call;
     std::thread guest([&] {
         if(check_bridge) {

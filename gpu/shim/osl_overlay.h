@@ -69,5 +69,10 @@ void SetTextEntry(bool active, const std::string& prompt, const std::string& tex
 void BeginChoice(const std::string& title, const std::vector<std::string>& items,
                  std::vector<OslPng::Image> pictures, int focus);
 int PollChoice();
+void BeginMessage(const std::string& title, const std::string& message,
+                  const std::vector<std::string>& buttons, bool error, bool enable_back,
+                  uint32_t initial_buttons);
+int PollMessage(uint32_t buttons);
+void EndMessage();
 
 } // namespace OslOverlay

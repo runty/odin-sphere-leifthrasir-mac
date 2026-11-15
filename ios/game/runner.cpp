@@ -50,6 +50,12 @@ static bool matchesHash(const std::vector<uint8_t> &bytes, const char *expected)
         std::snprintf(hex + i * 2, 3, "%02x", digest[i]);
     return !std::strcmp(hex, expected);
 }
+static std::string hexText(const std::string &text) {
+    static constexpr char digits[]="0123456789abcdef";
+    std::string hex;hex.reserve(text.size()*2);
+    for(unsigned char c:text){hex+=digits[c>>4];hex+=digits[c&15];}
+    return hex;
+}
 
 struct HostMutex {
     pthread_mutex_t mutex;
@@ -101,6 +107,7 @@ struct Session {
         stopping=true;
         releaseThreadMutexes(*this,0x40000000);
         if(workers)workers->stopAndJoin();
+        save_dialog.terminate();
         if (gpu) gpu->finish(gpu->context);
         direct_memory.reset();
     }
@@ -116,6 +123,7 @@ struct Session {
     std::map<uint16_t, unsigned> compatibility_modules;
     unsigned gesture_setup_calls = 0;
     bool save_dialog_initialized = false, common_dialog_initialized = false, live_streaming_initialized = false, error_dialog_initialized = false;
+    MobileSaveDialog save_dialog;
     uint32_t save_dialog_mode=0,save_dialog_display_type=0;
     int32_t error_dialog_code = 0;
     osl::trophies::TrophyService trophies;
@@ -268,6 +276,8 @@ static bool saveDialogFunction(const char *name) {
     return !std::strcmp(name, "sceSaveDataDialogInitialize") ||
            !std::strcmp(name, "sceSaveDataDialogTerminate") ||
            !std::strcmp(name, "sceSaveDataDialogUpdateStatus") ||
+           !std::strcmp(name, "sceSaveDataDialogGetStatus") ||
+           !std::strcmp(name, "sceSaveDataDialogClose") ||
            !std::strcmp(name, "sceSaveDataDialogGetResult") ||
            !std::strcmp(name, "sceSaveDataDialogOpen");
 }
@@ -440,9 +450,7 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         return hostReturn(s, m, 0);
     }
     if (!std::strcmp(name, "sceCommonDialogIsUsed")) {
-        // OpenCrown's idle common-dialog query also returns zero. This frontend
-        // stops on Open until a presenter is connected, so none can be active.
-        return hostReturn(s, m, 0);
+        return hostReturn(s, m, session.save_dialog.status()==MobileSaveDialog::Running);
     }
     if (saveDialogFunction(name)) {
         if (!session.compatibility_modules[160]) {
@@ -451,28 +459,51 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             return m;
         }
         if (!std::strcmp(name, "sceSaveDataDialogInitialize")) {
-            if (session.save_dialog_initialized) return hostReturn(s, m, 0x80b80004u);
-            session.save_dialog_initialized = true;
-            return hostReturn(s, m, 0);
+            const auto result=session.save_dialog.initialize();
+            session.save_dialog_initialized=session.save_dialog.status()!=MobileSaveDialog::None;
+            return hostReturn(s, m, result);
         }
         if (!std::strcmp(name, "sceSaveDataDialogTerminate")) {
-            if (!session.save_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
-            session.save_dialog_initialized = false;
-            return hostReturn(s, m, 0);
+            const auto result=session.save_dialog.terminate();
+            session.save_dialog_initialized=false;
+            return hostReturn(s, m, result);
         }
-        if (!std::strcmp(name, "sceSaveDataDialogUpdateStatus"))
-            return hostReturn(s, m, session.save_dialog_initialized ? 1 : 0);
-        if (!std::strcmp(name, "sceSaveDataDialogGetResult"))
-            return hostReturn(s, m, 0x80b80005u); // No completed selection exists.
+        if (!std::strcmp(name, "sceSaveDataDialogGetStatus"))
+            return hostReturn(s,m,session.save_dialog.status());
+        if (!std::strcmp(name, "sceSaveDataDialogClose"))
+            return hostReturn(s,m,session.save_dialog.close());
+        if (!std::strcmp(name, "sceSaveDataDialogUpdateStatus")) {
+            if(session.save_dialog.status()!=MobileSaveDialog::Running)
+                return hostReturn(s,m,session.save_dialog.status());
+            scope.release();
+            uint32_t buttons=0;
+            try {buttons=session.pad.dialogButtons();}catch(...){scope.acquire();throw;}
+            scope.acquire();
+            return hostReturn(s,m,session.save_dialog.poll(buttons));
+        }
+        if (!std::strcmp(name, "sceSaveDataDialogGetResult")) {
+            const auto result=session.save_dialog.getResult(*m,s.gpr.rdi.qword);
+            return m->fault.empty() ? hostReturn(s,m,result) : m;
+        }
         if (!session.save_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
         if (!s.gpr.rdi.qword) return hostReturn(s, m, 0x80b8000du);
         auto parameter=guestPointer(*m,s.gpr.rdi.qword,60);
         if(!parameter)return m;
         std::memcpy(&session.save_dialog_mode,parameter+52,4);
         std::memcpy(&session.save_dialog_display_type,parameter+56,4);
-        missingService(session) = name;
-        stopGuest(*m, "save dialog presenter unavailable", pc);
-        return m;
+        const auto presenter=session.gpu ? session.gpu->save_message : SaveMessagePresenter{};
+        if(!presenter.available()) {
+            missingService(session)=name;stopGuest(*m,"save dialog presenter unavailable",pc);return m;
+        }
+        scope.release();
+        uint32_t buttons=0;
+        try {buttons=session.pad.dialogButtons();}catch(...){scope.acquire();throw;}
+        scope.acquire();
+        const auto result=session.save_dialog.open(*m,s.gpr.rdi.qword,presenter,buttons);
+        if(result==MobileSaveDialog::NotSupported && m->fault.empty()) {
+            missingService(session)=name;stopGuest(*m,"save dialog mode or presentation unsupported",pc);return m;
+        }
+        return m->fault.empty() ? hostReturn(s,m,result) : m;
     }
     if (trophyFunction(name)) {
         if (!session.compatibility_modules[173]) {
@@ -601,6 +632,10 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             if (!result) std::memcpy(output,&value,sizeof(value));
         } else {
             PadData value{}; result=session.pad.read(handle,&value);
+            if(session.save_dialog.status()==MobileSaveDialog::Running) {
+                value.buttons=0;value.left_x=value.left_y=value.right_x=value.right_y=128;
+                value.l2=value.r2=value.touch_count=0;
+            }
             if (!result) std::memcpy(output,&value,sizeof(value));
         }
         return hostReturn(s,m,uint32_t(result));
@@ -1157,6 +1192,13 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
         << ",\"save_dialog_mode\":" << session->save_dialog_mode
         << ",\"save_dialog_display_type\":" << session->save_dialog_display_type
+        << ",\"save_dialog_status\":" << session->save_dialog.status()
+        << ",\"save_dialog_opens\":" << session->save_dialog.opens()
+        << ",\"save_dialog_completions\":" << session->save_dialog.completions()
+        << ",\"save_dialog_button_type\":" << session->save_dialog.message().button_type
+        << ",\"save_dialog_button\":" << session->save_dialog.button()
+        << ",\"save_dialog_result\":" << session->save_dialog.result()
+        << ",\"save_dialog_text_hex\":\"" << hexText(session->save_dialog.message().text) << "\""
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
         << ",\"flexible_reserved_bytes\":" << session->flexible_reserved_bytes
