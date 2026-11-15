@@ -1186,3 +1186,14 @@ empty. Evidence is `scripted-startup/native-verification.json`. This is input
 progress, not a completed save dialog or playable-game claim. The next adapter
 must marshal that dialog and present its actual choices; auto-accepting it
 without a presenter does not satisfy this milestone.
+
+The same immutable script is now verified on the physical iPad mini A20 Pro.
+Signed `6608d05`, corpus `628467a7`, launch 21 delivers two active Cross reads
+and stops at the same actual mode-2/save dialog after 41.59 seconds and 1,119
+presentations. CPU 414, memory 19, GPU readback 64 and renderer cleanup pass;
+all 23 workers join without a memory fault. The frame-1,000 PNG is byte-for-byte
+the previously verified no-save notice, before the press at frame 1,100.
+It does not depict the next dialog. The profile remains three empty directories,
+and exact owned PID 44104 is stopped and absent. Both SDK game/boundary archives
+compile. Evidence is `scripted-input-ipad/device/verification.json`. The iPhone
+was not contacted; production Mac and player saves are untouched.
