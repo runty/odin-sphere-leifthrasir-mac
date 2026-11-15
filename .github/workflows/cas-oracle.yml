@@ -1,0 +1,25 @@
+name: Native x86 atomic oracle
+on:
+  push:
+    branches: [codex/macos-port]
+    paths:
+      - ios/cpu/check-cas-instructions.py
+      - .github/workflows/cas-oracle.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Observe original x86 instructions without Rosetta
+        run: python3 ios/cpu/check-cas-instructions.py --native-only --output "$RUNNER_TEMP/cas-oracle"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cas-native-oracle
+          path: |
+            ${{ runner.temp }}/cas-oracle/native-observations.json
+            ${{ runner.temp }}/cas-oracle/native-results.bin
+          retention-days: 7
