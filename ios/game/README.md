@@ -1450,3 +1450,38 @@ index proof remains **unproven**. Observing one case does not prove index bounds
 these candidates do not relax the strict validator, clamp indices or change
 runtime jump policy. Evidence: `observed-abi-switch/`. The next native replay,
 not these availability counts, determines whether startup actually advances.
+
+### Checked native bulk libc adapters — 2026-11-15
+
+The OpenCrown bulk-libc/RET contract is adapted for Odin's removable mappings,
+external physical aliases, recursive memory scope and longjmp fault recovery.
+The exact prepared image selects only original libc exports `memcpy` at
+`0x10cd0ba0`, `memmove` at `0x10cd0c40` and existing `memset` at `0x10cd0ce0`.
+`verify-libc-exports.py` independently checks their NIDs, one defined executable
+export each, original byte spans, pinned module hash and prepared-image equality.
+Other libc routines, including `strcmp` and `strlen`, remain translated.
+
+The full destination/source and RET slot are checked before writing. The helper
+holds the existing memory scope once; zero count touches neither byte argument.
+It reads the saved return value after copying/filling, including an overlapping
+return slot. Successful return changes only RAX/RIP/RSP; fill uses RSI's low byte.
+Failed validation leaves bytes and return State untouched. Cancellation after a
+committed bulk operation can leave bytes committed with RET pending; this is
+cooperative cancellation, not rollback. Overlapping memcpy uses deterministic
+memmove bytes, outside the standard memcpy overlap contract. Per-session reports
+retain fill counters and add copy/move call and byte counters. Raw guest IR and
+backend semantics remain unchanged; only the exact export's guarded wrapper is
+substituted, with the existing entry budget/cancellation guard.
+
+`test-libc-bulk.py` imports the production IR instrumenter and checked helper,
+compiles the actual generated LLVM shims and verifies 686,279 checks on arm64,
+Rosetta x86-64, arm64 ASan/UBSan and TSan. Its thin fixture exports mirror the
+session wrappers; the complete runner/service integration is verified separately.
+It covers all alignments modulo 64, size edges, both overlap directions, a 16 MiB
+copy, whole-buffer guards, every other State byte, RET-slot overlap, zero/invalid
+arguments, protected and exact-end mappings, physical alias overlap, cancellation
+before and after commit, atomic-region fault cleanup and eight concurrent CPUs.
+Both mobile SDK helper/IR fixture archives compile; these are not physical-device
+or gameplay performance results. Sanitized IR and C++ use the same Apple
+compiler-rt ABI; normal shims use the production Homebrew LLVM compiler.
+Private evidence: `native-libc-bulk/{exports.json,final-checks/verification.json}`.

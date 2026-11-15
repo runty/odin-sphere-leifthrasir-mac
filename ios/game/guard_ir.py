@@ -8,15 +8,19 @@ def instrument(text, libc_helpers=False, image_sha256=None):
     if '@__osl_guest_tick' in text:
         raise ValueError('Input IR is already guarded')
     count = 0
+    used_helpers = set()
     def function(match):
         nonlocal count
         header, body = match.group(1), match.group(2)
         if not re.fullmatch(r'define ptr @sub_[0-9a-f]+\(ptr noalias %state, i64 %program_counter, ptr noalias %memory\) \{', header):
             raise ValueError('Unexpected lifted function ABI')
-        if libc_helpers and header.startswith('define ptr @sub_10cd0ce0('):
-            # Public memset export in the hash-checked CUSA05083 base image.
+        helpers={'10cd0ba0':'memcpy','10cd0c40':'memmove','10cd0ce0':'memset'}
+        helper=helpers.get(re.search(r'@sub_([0-9a-f]+)\(',header)[1]) if libc_helpers else None
+        if helper:
+            used_helpers.add(helper)
+            # Public libc exports in the hash-checked CUSA05083 base image.
             # This is a C ABI substitution, not an instruction/flags shortcut.
-            body = '\n  %native_result = call ptr @__osl_libc_memset(ptr %state, i64 %program_counter, ptr %memory)\n  ret ptr %native_result\n'
+            body = f'\n  %native_result = call ptr @__osl_libc_{helper}(ptr %state, i64 %program_counter, ptr %memory)\n  ret ptr %native_result\n'
         labels = {m.group(1): i + 1 for i, m in enumerate(re.finditer(r'^([A-Za-z0-9_.]+):', body, re.M))}
         labels.setdefault('0', 0)
         block = 0
@@ -52,4 +56,5 @@ def instrument(text, libc_helpers=False, image_sha256=None):
     result, functions = re.subn(r'^(define [^\n]+)\n(.*?)^}', function, text, flags=re.M | re.S)
     if not functions:
         raise ValueError('No lifted function')
-    return result + '\ndeclare void @__osl_guest_tick(ptr, ptr)\n' + ('declare ptr @__osl_libc_memset(ptr, i64, ptr)\n' if libc_helpers else ''), count
+    declarations = ['memset'] + [name for name in ('memcpy','memmove') if name in used_helpers]
+    return result + '\ndeclare void @__osl_guest_tick(ptr, ptr)\n' + (''.join(f'declare ptr @__osl_libc_{name}(ptr, i64, ptr)\n' for name in declarations) if libc_helpers else ''), count

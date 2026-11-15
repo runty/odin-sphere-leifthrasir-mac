@@ -3,6 +3,7 @@
 #include "image-layout.h"
 #include "traces.h"
 #include "trace_lookup.h"
+#include "libc-bulk.h"
 #include "trophies/trophy_service.h"
 #include "../services/memory.h"
 #include "../services/user.h"
@@ -140,6 +141,7 @@ struct Session {
     MobileConditions conditions;
     uint64_t flexible_bytes = 0, flexible_reserved_bytes = 0;
     std::atomic<uint64_t> native_memset_calls{0},native_memset_bytes{0};
+    std::atomic<uint64_t> native_memcpy_calls{0},native_memmove_calls{0},native_copy_bytes{0};
     bool users_initialized = false;
     bool pad_initialized = false;
     bool saves_initialized = false;
@@ -253,17 +255,22 @@ static Memory *hostReturn(State &s, Memory *m, uint64_t value) {
     return m;
 }
 extern "C" Memory *__osl_libc_memset(State &s, uint64_t pc, Memory *m) {
-    const uint64_t size=s.gpr.rdx.qword,destination=s.gpr.rdi.qword;
-    auto recovery=m->recovery;m->recovery=nullptr;
-    {
-        GuestMemoryScope scope;
-        if(size>DirectMemory::capacity())stopGuest(*m,"libc memset exceeds direct pool capacity",pc);
-        else if(size){if(auto bytes=guestPointer(*m,destination,size,true))std::memset(bytes,static_cast<uint8_t>(s.gpr.rsi.qword),size);}
-        if(m->fault.empty() && active){++active->native_memset_calls;active->native_memset_bytes+=size;}
+    if(libcBulkReturn(s,*m,LibcBulk::Fill,pc,DirectMemory::capacity()) && active) {
+        ++active->native_memset_calls;active->native_memset_bytes+=s.gpr.rdx.qword;
     }
-    m->recovery=recovery;
-    if(!m->fault.empty()){resumeGuestFault(*m);return m;}
-    return hostReturn(s,m,destination);
+    return m;
+}
+extern "C" Memory *__osl_libc_memcpy(State &s, uint64_t pc, Memory *m) {
+    if(libcBulkReturn(s,*m,LibcBulk::Copy,pc,DirectMemory::capacity()) && active) {
+        ++active->native_memcpy_calls;active->native_copy_bytes+=s.gpr.rdx.qword;
+    }
+    return m;
+}
+extern "C" Memory *__osl_libc_memmove(State &s, uint64_t pc, Memory *m) {
+    if(libcBulkReturn(s,*m,LibcBulk::Move,pc,DirectMemory::capacity()) && active) {
+        ++active->native_memmove_calls;active->native_copy_bytes+=s.gpr.rdx.qword;
+    }
+    return m;
 }
 static bool gestureSetupFunction(const char *name) {
     return !std::strcmp(name, "sceSystemGestureOpen") ||
@@ -1168,6 +1175,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"crash_callback_supported\":false,\"crash_registration_attempts\":" << session->crash.registration_attempts
         << ",\"crash_user_data_writes_rejected\":" << session->crash.user_data_writes_rejected
         << ",\"native_memset_calls\":" << session->native_memset_calls << ",\"native_memset_bytes\":" << session->native_memset_bytes
+        << ",\"native_memcpy_calls\":" << session->native_memcpy_calls << ",\"native_memmove_calls\":" << session->native_memmove_calls << ",\"native_copy_bytes\":" << session->native_copy_bytes
         << ",\"direct_allocated_bytes\":" << DirectMemory::allocated()
         << ",\"direct_window_bytes\":" << DirectMemory::windowSize()
         << ",\"direct_backing_view_bytes\":" << DirectMemory::backingViewSize()
