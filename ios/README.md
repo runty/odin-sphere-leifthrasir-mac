@@ -417,9 +417,9 @@ lifted with the new backend before replay or device installation. Private eviden
 is `runtime-bridges/{cas-hardware-fixed,cas-hardware-baseline-rdx,cpu-cmpxchg8b,
 startup-simd-cmpxchg8b}/`, plus both hardware-oracle artifacts and audit JSON.
 
-## Qualified registered-memory lock stripes — 2026-11-15
+## Experimental registered-memory lock stripes — 2026-11-15
 
-A candidate adapts OpenCrown's 64 ordered, 256 KiB lock stripes to Odin's stricter
+The isolated `014f8cc` candidate adapts OpenCrown's 64 ordered, 256 KiB lock stripes to Odin's stricter
 memory ownership. Only a registered descriptor already in the calling thread's
 cache can use selected host-address stripes. It checks the mapping generation
 again **after** acquiring those stripes, before dereferencing storage. Removal
@@ -447,7 +447,17 @@ normal host and sanitizer run. Bulk-libc's 686,279 checks pass in all four modes
 with both SDK fixture archives compiled. CPU 414, both SDK CPU/runtime archives,
 4,371 complete runner service checks and four injected cleanup cases also pass.
 
-These are memory ownership, ABI and concurrency qualifications. The candidate
-still needs an isolated real-game comparison before any startup/gameplay speed
-claim or physical iPad update. Previous global-lock sources/binaries/caches stay
-preserved. Evidence: `memory-stripes/` at the external Odin build root.
+These are memory ownership, ABI and concurrency qualifications. The actual
+same-PC-set game comparison does not pass the delivery gate: it ends at the
+300.004-second deadline with 41 joined workers, without reaching baseline
+`0x105d0b45` (164.248 seconds / 43 joins). Its fresh frame-3,200 readback remains
+black; cleanup, unchanged raw/backend/renderer and save hashes pass. Different
+scheduling and frame-indexed input timing remain possible explanations; the
+precise cause is unproven. The late process sample is from shutdown and is not
+a valid startup hot-path profile. No performance benefit is claimed.
+
+The default runtime is restored to the prior recursive global lock (`3217a61a`)
+while original-code discovery continues. The stripe candidate, tests, binary,
+checkpoint and reports remain preserved in the isolated worktree and
+`memory-stripes/`; the iPad was never updated with it. A future revision needs
+a new real-game comparison and input/readiness evidence before adoption.
