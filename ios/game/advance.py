@@ -11,12 +11,14 @@ import tempfile
 import time
 from trace_preparation import TracePreparationCache
 from discovery_targets import missing_targets
+from trace_candidates import candidates, nearest
 from service_build import compile_services, inputs as service_inputs, link_options
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
 p.add_argument("--rounds", type=int, default=16)
+p.add_argument("--prefetch", type=int, default=0, help="Extra speculative direct-call/relocation candidates per round (0 to 256); never execution evidence")
 p.add_argument("--window-bytes", type=int, default=16384, help="Maximum executed trace window, clipped at instruction boundaries")
 p.add_argument("--seed-from", type=Path, help="Re-lift only the PC list from a matching old build-state; never reuse its IR")
 p.add_argument("--decoder-prefix", type=Path)
@@ -34,6 +36,8 @@ if not 256 <= a.window_bytes <= 65536:
     p.error("--window-bytes must be between 256 and 65536")
 if a.rounds < 1:
     p.error("--rounds must be positive")
+if not 0 <= a.prefetch <= 256:
+    p.error("--prefetch must be between 0 and 256")
 layout = json.loads((root / "image.json").read_text())
 image = (root / "image.bin").read_bytes()
 if hashlib.sha256(image).hexdigest() != layout["image_sha256"]:
@@ -98,6 +102,16 @@ def atomic_json(path, value):
         temporary.unlink(missing_ok=True)
 
 
+def atomic_bytes(path, value):
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name+'.', suffix='.tmp', delete=False) as stream:
+        temporary=Path(stream.name)
+        try:
+            stream.write(value);stream.flush();os.fsync(stream.fileno())
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 def decode_size(code, window=False):
     decoder = root / "block-size"
     key = hashlib.sha256((source / "block-size.cpp").read_bytes()).hexdigest()
@@ -135,7 +149,7 @@ if a.seed_from:
 
 
 repo = source.parents[1]
-source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",
+source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None
 if a.gpu_build:
@@ -169,6 +183,30 @@ service_objects = compile_services(repo, objects / "services", "arm64-apple-maco
 check_sources()
 
 preparation = TracePreparationCache(libc_helpers=True,image_sha256=layout['image_sha256'])
+static_ledger_path=root/'static-traces.json'
+static_ledger={'trace_inputs':identity,'entries':{}}
+if static_ledger_path.exists():
+    static_ledger=json.loads(static_ledger_path.read_text())
+    if static_ledger.get('trace_inputs')!=identity:
+        p.error('Speculative trace ledger belongs to different image/backend inputs')
+    for name,record in static_ledger['entries'].items():
+        if (not re.fullmatch(r'0x[0-9a-f]{1,16}\.ll',name)
+                or record.get('status') not in ('accepted','skipped')):
+            p.error('Malformed speculative trace ledger record')
+        if record['status']!='accepted':continue
+        staged=root/'speculative-traces'/name
+        if hashlib.sha256(staged.read_bytes()).hexdigest()!=record['raw_sha256']:
+            p.error('Speculative staged trace changed: '+name)
+        target=cache/name
+        if target.exists():
+            if hashlib.sha256(target.read_bytes()).hexdigest()!=record['raw_sha256']:
+                p.error('Speculative promoted trace changed: '+name)
+        else:
+            # The ledger is published first, leaving a checked recovery source
+            # if the process stops before the raw trace is promoted.
+            atomic_bytes(target,staged.read_bytes())
+pointer_bytes=(root/'image-pointers.bin').read_bytes() if a.prefetch else None
+if a.prefetch:candidates(layout,image,pointer_bytes,())  # validate before executing
 # A successful narrowing is deterministic for this process's pinned image and
 # lifter. Reuse only its exact resulting file hash; x87 remains an explicit gap.
 narrowed_traces=set()
@@ -243,6 +281,7 @@ for round in range(a.rounds):
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},
              "headers": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ("image-layout.h", "traces.h", "thunks.cpp")},
              "sources": compiled_sources}
+    state['static_translation']=static_ledger
     command = [root / "guest-startup",root / "image.bin"]
     prefix = "OSL_STARTUP_RESULT:"
     if a.gpu_build:
@@ -286,7 +325,7 @@ for round in range(a.rounds):
     if runtime_inputs()!=state["runtime_inputs"]:raise RuntimeError("Asset root changed during the startup attempt")
     report["trace_count"] = len(entries)
     state["reference"] = report
-    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs") + (("runner_mode","native_gpu") if a.gpu_build else ())
+    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs","static_translation") + (("runner_mode","native_gpu") if a.gpu_build else ())
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in corpus_keys}, sort_keys=True).encode()).hexdigest()
     atomic_json(root / "build-state.json", state)
     atomic_json(root / (name + ".json"), report)
@@ -302,3 +341,37 @@ for round in range(a.rounds):
         segment=next(s for s in layout["segments"] if s[2]&1 and s[0]<=offset<s[0]+s[1])
         length=min(a.window_bytes,segment[0]+segment[1]-offset)
         lift(pc,image[offset:offset+length],cache/(hex(pc)+".ll"))
+    if a.prefetch:
+        catalog=candidates(layout,image,pointer_bytes,(int(symbol,16) for symbol in declarations))
+        attempted={int(Path(name).stem,16) for name in static_ledger['entries']}
+        known={int(path.stem,16) for path in cache.glob('*.ll')}
+        batch=nearest(catalog,pending,known|attempted,a.prefetch)
+        staging=root/'speculative-traces';staging.mkdir(exist_ok=True)
+        for pc in batch:
+            offset=pc-layout['base']
+            segment=next(s for s in layout['segments'] if s[2]&1 and s[0]<=offset<s[0]+s[1])
+            name=hex(pc)+'.ll';staged=staging/name
+            record={'classification':'static candidate; execution unverified','provenance':catalog[pc]}
+            try:
+                lift(pc,image[offset:min(offset+a.window_bytes,segment[0]+segment[1])],staged)
+            except RuntimeError as error:
+                # Never suppress an actual demand failure. Speculative failures
+                # remain in the ledger and their private logs for investigation.
+                record.update(status='skipped',reason=str(error))
+            except subprocess.CalledProcessError as error:
+                record.update(status='skipped',reason='speculative decoder rejected byte range (exit '+str(error.returncode)+')')
+            else:
+                raw=staged.read_text();analysis=preparation.analyze(raw)
+                record['raw_sha256']=analysis.raw_sha256
+                if analysis.extended_precision or analysis.remill_error:
+                    record.update(status='skipped',reason='speculative unsupported/error path; actual demand remains authoritative')
+                elif analysis.definitions!=(format(pc,'x'),):
+                    raise RuntimeError('Unexpected speculative lifted definition at '+hex(pc))
+                else:
+                    # Guards and native compilation still run through the same
+                    # checked path next round. This changes code coverage only.
+                    record['status']='accepted'
+            static_ledger['entries'][name]=record
+            atomic_json(static_ledger_path,static_ledger)
+            if record['status']=='accepted':atomic_bytes(cache/name,staged.read_bytes())
+            print('STATIC_TRANSLATION:'+json.dumps(dict(pc=pc,**record)),flush=True)

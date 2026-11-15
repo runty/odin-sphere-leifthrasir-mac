@@ -80,7 +80,7 @@ for the remaining host imports. `advance.py` runs a bounded arm64 Mac attempt,
 lifts the next executed missing block and retains a hashed build-state ledger.
 The ledger binds image, backend, IR, headers and runtime source. A changed
 backend requires a new work directory. `--seed-from OLD/build-state.json`
-reuses only an executed PC list and re-lifts every block with the new backend;
+reuses only the compiled PC list (including any static candidates) and re-lifts every block with the new backend;
 it never copies the old IR or bypasses provenance validation.
 
 ## Addressing and service boundary
@@ -848,3 +848,66 @@ Evidence is under `discovery-profile/{cache-analysis-contract,full-analysis-audi
 final-corpus,native-gpu,guest-session-address}/`, with frozen state/headers/SDK
 metadata in `ios-game-uikit-next/checkpoint-trace-cache/`. Native CPU discovery
 continues toward the first actual game draw.
+
+### Static candidates alongside executed demands
+
+`catalog-traces.py` reads a frozen checkpoint plus the exact hashed prepared
+image and pointer ledger. It inventories explicit unresolved-call declarations
+and aligned executable destinations in checked relocation fields. It does not
+scan arbitrary code bytes for guessed entries. Every output is labeled a static
+candidate, with reachability/execution unverified. On the current private image,
+the frozen 1,288-entry checkpoint supplies 22,168 unique candidates: 107 explicit
+call references and 22,064 relocation destinations, with three in both sets.
+
+```sh
+python3 ios/game/catalog-traces.py --root "$ROOT" \
+    --checkpoint "$ROOT/checkpoint-trace-cache" --output "$WORK/static-catalog"
+# Optional extra compilation per discovery attempt; default remains zero:
+python3 ios/game/advance.py --root "$ROOT" --remill "$BACKEND" \
+    --rounds 64 --window-bytes 65536 --prefetch 12 --identity \
+    --gpu-build "$NATIVE_GPU" --gpu-driver-manifest "$DRIVER_MANIFEST" \
+    --stop-file "$ROOT/stop-after-checkpoint"
+```
+
+Mandatory parent/worker missing PCs retain their original checked selection and
+lift path, including unaligned executed addresses. Optional candidates are ranked
+by distance from those PCs, staged separately and admitted only when their raw
+IR has the exact expected definition and no extended-precision/Remill-error
+path. Rejected candidates remain recorded; an actual later demand is still
+authoritative and is never skipped because of a speculative rejection.
+Accepted raw IR goes through the same guard insertion, compilation and exact-PC
+dispatch as demanded code. This precompiles more code without relaxing runtime
+checks or claiming that every compiled function executed.
+
+`static-traces.json` records input identity, each candidate's provenance,
+accept/reject disposition and accepted raw hash. The accepted staged file is
+retained as a verified recovery source. The ledger is published before atomic
+promotion; a new process recovers a missing promotion only after checking its
+hash, and rejects changed staged/promoted IR or different image/backend inputs.
+The completed build state includes the static ledger in its corpus hash. As
+before, a final prefetched raw file need not be part of the last compiled
+checkpoint; SDK builders use only the frozen state's exact IR inventory.
+
+The owned candidate matrix passes 39 checks, including invalid image/pointer
+hashes and bounds, sorted/duplicate pointer offsets, malformed thunk source,
+unaligned actual/direct targets and separation of known/demanded/speculative PCs.
+The independent executed-target matrix still passes 22 checks. Actual game
+frames remain a separate acceptance gate.
+
+The first four-attempt native trial records 46 accepted and two skipped static
+candidates, growing the compiled corpus from 1,362 to 1,399 entries. A new
+process restores one deliberately missing pending promotion from its checked
+staged file, then an existing stop marker ends exactly one completed attempt at
+1,412 entries. All 1,399 prior raw hashes are unchanged, all 46 accepted static
+files are in the frozen inventory, and the completed static ledger matches it.
+The corpus is `7ed52c1a666bc906be8a1399b1a92f9063c17f6447b235df873ee0e7c317eb31`.
+
+Strict native replay takes 557.880 ms, completes both initializers, starts/joins
+17 workers, registers three buffers and stops at `0x106c0f6e`. Bridge 109 and
+boundary ASan bridge/normal/pre-stop/live-stop plus five image negatives pass.
+Both SDK game archives compile with this same corpus. Eight separate catalog
+input tests accept the frozen input and reject changed base/size/segments,
+pointer hash/count or generated header/thunk hash, preserving original inputs.
+Private evidence: `static-prefetch-qualified/`,
+`ios-game-uikit-next/checkpoint-static-prefetch/`. Actual game Gnm submissions
+and frames remain zero; compiled-entry growth alone is not gameplay coverage.
