@@ -11,10 +11,10 @@ in Git. Never distribute the game-derived fixture library with the source.
 ## Build
 
 The reference backend is Remill `66c488c9911fd9b368e4d0c9647d74239f8bba8b`
-with LLVM 23.1.5 and the nineteen ordered patches listed in
+with LLVM 23.1.5 and the twenty ordered patches listed in
 `audit-backend.py`. Those compatibility/semantics
-patches were developed in the OpenCrown port and are retained here so this
-experiment has reproducible source inputs. Existing matching OpenCrown backend
+patches include nineteen from the OpenCrown port plus Odin’s qualified
+CMPXCHG8B register-write correction, with reproducible source inputs. Existing matching OpenCrown backend
 caches may be read without modifying them. To build an isolated backend:
 
 ```sh
@@ -372,3 +372,47 @@ results, not execution of the new bridges on a physical iPad or gameplay proof.
 Evidence: `runtime-bridges/` at the private external build root. Runtime source
 hash changes normally invalidate host objects; the backend and guest State/
 memory header ABI are unchanged, so matching raw translated IR remains valid.
+
+### Independent atomic instruction oracle — 2026-11-15
+
+`check-cas-instructions.py` compares actual lifted locked/unlocked CMPXCHG
+byte/word/dword/qword and CMPXCHG8B/16B with native x86 output: 32 routines,
+256 vectors, full result bytes, arithmetic flags, implicit registers, canaries,
+RBX preservation and return-stack recovery. Nonwide cases include unaligned
+spans; CMPXCHG16B is aligned. This does not qualify alignment faults or game reachability.
+
+A separate x86-64 AMD EPYC 7763 runner avoids depending entirely on Rosetta.
+[Oracle run 43719095874](https://github.com/runty/odin-sphere-leifthrasir-pc/actions/runs/43719095874)
+uses exact checker source `9683e937`, whose hash and result hash are checked
+before a hardware reference is accepted. The artifact contains only generated
+test output, never game bytes. The workflow uses pinned checkout/artifact actions,
+read-only repository permission and a five-minute ceiling. Download its artifact
+before it expires; rerun the workflow at the same checker revision if necessary.
+
+```sh
+python3 ios/cpu/check-cas-instructions.py --native-only --output "$NATIVE_OUTPUT"
+# Run the native-only command on x86 hardware, then transfer its verified output:
+python3 ios/cpu/check-cas-instructions.py --output "$WORK/cas-hardware"   --backends "$WORK/cpu-backends-cmpxchg8b" --native-reference "$NATIVE_OUTPUT"
+```
+
+The previous backend fails 3,888 byte/condition comparisons with deliberately
+nonzero upper EDX state. `remill-cmpxchg8b.patch` writes zero-extended EDX:EAX
+only after a failed CMPXCHG8B, preserving full RDX:RAX on success. The independent
+hardware reference passes all 1,056,768 checks after this correction. This is an
+actual backend defect found by qualification, not evidence of a reached game fault.
+
+Rosetta separately disagrees with that hardware runner on failed scalar-CAS
+non-ZF flags and successful dword-CAS upper RAX bits. Standalone CMP controls
+agree with lifted flags, while Rosetta CMPXCHG disagrees in 3,072 observations.
+No backend adjustment is made to imitate those Rosetta-only differences. A
+Rosetta-only checker invocation retains its failing output for diagnosis; it is
+not the acceptance oracle for these instructions. All flags/data are compared
+against the source/hash-matched hardware output for final qualification.
+
+The twenty-patch backend is isolated at `cpu-backends-cmpxchg8b`, leaving the
+nineteen-patch backend and its raw IR/cache unchanged. Complete source audit,
+238-routine / 1,584,128-dword SIMD regression and 414 original-module comparisons
+pass; both mobile CPU fixture archives compile. Whole-game IR must be freshly
+lifted with the new backend before replay or device installation. Private evidence
+is `runtime-bridges/{cas-hardware-fixed,cas-hardware-baseline-rdx,cpu-cmpxchg8b,
+startup-simd-cmpxchg8b}/`, plus both hardware-oracle artifacts and audit JSON.

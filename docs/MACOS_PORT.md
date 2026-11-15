@@ -34,10 +34,10 @@ OpenCrown port and its regression tests before building an Odin implementation.
 Record the revision, relevant source and Odin verification in the milestone log.
 The imported nineteen-patch backend and mapped-cache comparison used [OpenCrown 9ca8945c](https://github.com/runty/OpenCrown-PC/tree/9ca8945c10e913260b1b3e22a6c680f0396e05e6).
 For upcoming work also inspect the active mobile branch, currently
-[4d90913](https://github.com/runty/OpenCrown-PC/commit/4d909139f4d442d69cf96750f77d1ab46a3d1f74)
+[ce065bb](https://github.com/runty/OpenCrown-PC/commit/ce065bbb9e58337d64eedc3e580becf94fb26ba0)
 (`OpenCrown-town` / `codex/ios-town-performance`); the older main port checkout
-remains frozen at `9ca8945c`. The newer MOVBE-store patch and differential tests
-are available there if Odin reaches that instruction. Backend changes still
+remains frozen at `9ca8945c`. The newer MOVBE-store patch/differential tests
+and read-only cursor feedback are available there for future Odin qualification. Backend changes still
 need Odin qualification and a fresh re-lifted corpus. Do not replace a live
 backend/cache in place.
 
@@ -644,3 +644,22 @@ input work, not directly transferable Odin cursor addresses or game layouts.
 The primary imported OpenCrown baseline stays `9ca8945c`. Inspect both worktrees
 for upcoming lifecycle/input/audio/packaging work and qualify each adopted adapter
 against Odin's own ABI, original-image identities and actual execution evidence.
+
+
+## Independent x86 atomic qualification — 2026-11-15
+
+A dedicated x86 hardware oracle exposes a CMPXCHG8B upper-register write defect.
+The corrected twenty-patch backend passes all 1,056,768 instruction checks,
+1,584,128 SIMD dword comparisons and 414 original-module checks; both mobile
+CPU archives compile. Rosetta-only CAS flag/register disagreements are retained
+as separate evidence, without modifying semantics to match them. Fresh game IR
+is required; neither the nineteen-patch raw cache nor the installed iPad is
+silently upgraded. [Exact oracle, tests and scope](../ios/README.md#independent-atomic-instruction-oracle--2026-11-15).
+
+The last nineteen-patch native checkpoint has 42,107 compiled entries and stops
+at actual missing block `0x105c04b1` after 158.430 seconds, without a memory fault
+and with 42 joined workers. It finishes before the requested frame-3,200 image,
+so there is no fresh snapshot from that run. Production Mac, original saves,
+iCloud and the away phone remain untouched. The iPad stays available for the
+next qualified corpus; recognizable title/gameplay, nonempty audio and character
+progress reload still need actual device verification.

@@ -17,14 +17,19 @@ Launch 28's 158.987-second converted PCM capture is entirely silent, with five
 sampled empty-queue observations; music/voice output remains unqualified.
 The iPhone is away and untouched. [Physical evidence and limits](../graphics/README.md).
 
-Native original-image discovery has a verified 19,535-entry checkpoint,
+Native original-image discovery has a verified 42,107-entry checkpoint,
 with copied player data, no memory fault and all 42 workers joined. It reaches
-`0x1056ac97` at 152.895 seconds. A later runner link exposed missing FP exception
-bridges; it did not publish a new execution checkpoint. Host adapters now pass
-[atomic and FP qualification](../README.md#atomic-widths-and-floating-point-control-bridges--2026-11-15).
-A larger qualified seed set is available for the next replay, not yet executed.
+`0x105c04b1` at 158.430 seconds on the nineteen-patch backend. All 42,105 initial
+raw entries compile/link with the new runtime, and actual stops add two more.
+The run ends before snapshot frame 3,200, so it supplies no fresh game image.
+Static availability is distinct from execution of every entry.
+
+An independent x86 oracle then exposes a CMPXCHG8B register-write defect in that
+backend. The qualified correction passes 1,056,768 instruction comparisons;
+all game IR must be freshly lifted in a separate twenty-patch cache before
+replay or hardware updates. [CPU evidence](../README.md#independent-atomic-instruction-oracle--2026-11-15).
 Title/town/combat, physical input, audible output and character-progress save/load
-acceptance remain open.
+acceptance remain open. The physical iPad stays on the separately frozen build.
 
 ### Earlier initial-notice checkpoint
 

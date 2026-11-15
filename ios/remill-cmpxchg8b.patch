@@ -1,0 +1,18 @@
+--- a/lib/Arch/X86/Semantics/SEMAPHORE.cpp
++++ b/lib/Arch/X86/Semantics/SEMAPHORE.cpp
+@@ -46,8 +46,13 @@
+   auto check_val = UOr(UShl(ZExt(xdx), 32), ZExt(xax));
+   auto swap_flag = UCmpXchg(dst, check_val, desired_val);
+   Write(FLAG_ZF, swap_flag);
+-  Write(REG_EDX, Trunc(UShr(check_val, 32)));
+-  Write(REG_EAX, Trunc(check_val));
++  // Only a failed comparison writes EDX:EAX. On a 64-bit host, those
++  // architectural 32-bit writes must clear both registers' upper halves.
++  // A successful CMPXCHG8B preserves the complete RDX:RAX input registers.
++  if (!swap_flag) {
++    WriteZExt(REG_XDX, Trunc(UShr(check_val, 32)));
++    WriteZExt(REG_XAX, Trunc(check_val));
++  }
+   return memory;
+ }
+ 
