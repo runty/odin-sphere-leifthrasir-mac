@@ -82,6 +82,38 @@ Only an allowlisted, hash-verified copy of the working Mac save is prepared for
 future disposable gameplay tests; original player files are unchanged. The
 iPhone remains away and untouched. No shader/dependency caches are reclaimed.
 
+## Native engineering event pump — 2026-11-15
+
+The bounded native AOT frontend now calls `oslgpu_poll_main_thread()` every
+2 ms, matching UIKit's non-idling event pump. A sampled discovery run spent
+much of its main thread in the desktop background-idle wait while guest pad
+queries waited synchronously for the main queue. The production desktop loop
+and GameController adapter are unchanged. OpenCrown `9ca8945c` was consulted;
+its CPU memory-cache work does not address this observed wait, so the checked
+memory runtime is unchanged too.
+
+The comparison uses identical 9,918-entry game/renderer archives, fresh
+byte-identical private copies of the Mac player's save, the same pinned native
+Vulkan driver and an idle input script. Baseline: 529 presentations in
+50.003 seconds, stopping at its deadline. Updated: 772 in 45.208 seconds,
+stopping at the existing CPU-step guard. Both clean up; the original player
+files remain unchanged. The different reached phases and stop guards prevent
+a matched combat-FPS claim. This is engineering-run throughput evidence only.
+The guard's reported PC `0x10735435` is not a missing-block discovery target.
+All 109 actual native bridge checks pass with the pinned driver. An initial
+invocation without that driver failed `ErrorIncompatibleDriver` and is kept
+separately in the evidence. Evidence: `input-pump-profile/verification.json`,
+`bridge-verification.json`, and the baseline/updated one-second thread samples
+at the external build root.
+
+Actual copied-save discovery before this change reached observed missing
+blocks `0x106a3720` and then `0x105bfc80`, joining all 42 workers each time.
+The latter run used 9,918 compiled entries and stopped after 223.32 seconds.
+Its startup image remains black; neither loaded character progress nor later
+gameplay is established. Rebuild through `advance.py` before publishing a
+checkpoint with the new frontend. Mobile hardware retains the independently
+verified 9,754-entry iPad build; the away iPhone is untouched.
+
 ## Initial driver experiment (historical)
 
 The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with

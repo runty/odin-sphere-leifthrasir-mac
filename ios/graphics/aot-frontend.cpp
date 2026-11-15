@@ -101,5 +101,15 @@ int main(int argc,char **argv) {
         runtime_log_flush();
         SDL_Event quit{}; quit.type=SDL_EVENT_QUIT; SDL_PushEvent(&quit);
     });
-    oslgpu_run_main_loop();
+    // This bounded engineering frontend must service the main queue even when
+    // its window lacks focus. The desktop game loop deliberately idles in the
+    // background; using it here delays synchronous GameController queries and
+    // makes unattended startup captures depend on window focus. UIKit already
+    // uses this non-idling main-thread poll. Keep the desktop policy unchanged.
+    for (;;) {
+        const int open=oslgpu_poll_main_thread();
+        if(open!=1) {if(open<0)checked=false;break;}
+        SDL_Delay(2);
+    }
+    runtime_exit_clean();
 }
