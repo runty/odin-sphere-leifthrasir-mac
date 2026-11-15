@@ -1489,11 +1489,25 @@ Private evidence: `native-libc-bulk/{exports.json,final-checks/verification.json
 The complete candidate runner links against the frozen, ABI-matching 60,317-entry
 object corpus and passes 4,371 service checks plus all four injected worker/host
 cleanup cases. This includes actual copy/move wrapper State/bytes and per-session
-counter checks. It is a service integration result, separate from executing the
-new helpers through the actual game. An isolated normal native comparison is
-started from the exact frozen 60,317-PC raw set, same backend/input/profile,
-with no new candidates published into that comparison. Its outcome and timing
-must be checked before making any startup or gameplay performance claim.
-Evidence: `native-libc-bulk/{baseline/verification.json,services/verification.json,
-native-progress.log}`. Baseline `634f4cd5` reaches `0x105d0b0b` at 170.964 seconds,
-2,911 presentations, 43 joined workers and full cleanup; frame 3,200 is not reached.
+counter checks. The isolated normal native comparison then executes the actual
+game with exactly the same raw PC hashes, backend, CPU State/runtime, renderer,
+driver, input script and copied save bytes. All 43 workers join, cleanup passes,
+and it reaches the same `0x105d0b0b` gap. Candidate `8346836e` takes 149.667 seconds
+and presents 3,425 buffers; baseline `634f4cd5` takes 170.964 seconds / 2,911 buffers.
+These are single host-startup observations, not sustained gameplay/FPS evidence.
+The candidate executes 545,927 copy and 3,049 move calls over 447,897,985 bytes,
+plus 104,095 fill calls over 1,255,747,974 bytes. A fresh frame-3,200 game PNG is
+960×540 opaque black, independently decoded and visually inspected. Original
+player save hashes and all three disposable existing-save hashes stay unchanged;
+character-progress loading is not verified by retaining file hashes.
+
+The first preparation process exits 1 without output or a new checkpoint, cause
+unknown. A supervised unbuffered retry finishes normally; that completed run is
+the accepted evidence, with raw/header/source/backend validation. After it ends,
+41 further original-byte candidates from two actually reached owners are audited
+and published separately, growing availability to 60,358. Their six incomplete
+tables retain explicit proof limitations; no strict guard/index or runtime branch
+policy changes. New native replay remains separate from these static counts.
+Evidence: `native-libc-bulk/{comparison.json,snapshot-verification.json,
+services/verification.json,next-owner-seeds/published.json}`. The original global-
+lock baseline and production Mac/iPad versions stay preserved.

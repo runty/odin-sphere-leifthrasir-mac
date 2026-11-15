@@ -8,9 +8,63 @@
 #include <limits>
 #include <mutex>
 #include <stdexcept>
+#ifdef __APPLE__
+#include <os/lock.h>
+#endif
 
-static std::recursive_mutex guestAtomics;
 namespace {
+// OpenCrown's ordered lock stripes, with Odin's stronger slow path: external
+// physical aliases and host/mapping operations always exclude every stripe.
+// Only generation-checked registered descriptors use a selected host-address
+// stripe. No external-pointer result is cached or assigned a guessed identity.
+constexpr size_t stripeCount=64;
+constexpr uintptr_t stripeBytes=256*1024;
+#ifdef __APPLE__
+struct StripeMutex {
+    os_unfair_lock value=OS_UNFAIR_LOCK_INIT;
+    void lock() noexcept {os_unfair_lock_lock(&value);}
+    void unlock() noexcept {os_unfair_lock_unlock(&value);}
+};
+#else
+using StripeMutex=std::mutex;
+#endif
+struct alignas(128) Stripe {StripeMutex mutex;};
+std::array<Stripe,stripeCount> stripes;
+thread_local unsigned exclusiveDepth=0;
+static unsigned stripeFor(uintptr_t band){return (band^(band>>6)^(band>>12))%stripeCount;}
+static uint64_t stripeMask(uintptr_t address,size_t size) {
+    if(size>stripeCount*stripeBytes)return UINT64_MAX;
+    const size_t extra=size ? (address%stripeBytes+size-1)/stripeBytes : 0;
+    uint64_t mask=0;for(size_t i=0;i<=extra;++i)mask|=uint64_t(1)<<stripeFor(address/stripeBytes+i);
+    return mask;
+}
+class StripeScope {
+    uint64_t held_=0;
+public:
+    StripeScope(uintptr_t address,size_t size) {
+        uint64_t mask=stripeMask(address,size);
+        try {while(mask){const unsigned bit=__builtin_ctzll(mask);stripes[bit].mutex.lock();held_|=uint64_t(1)<<bit;mask&=mask-1;}}
+        catch(...){release();throw;}
+    }
+    StripeScope(const StripeScope &)=delete;
+    ~StripeScope(){release();}
+private:
+    void release() noexcept {while(held_){const unsigned bit=__builtin_ctzll(held_);stripes[bit].mutex.unlock();held_&=held_-1;}}
+};
+class GuestAtomicMutex {
+public:
+    void lock() {
+        if(exclusiveDepth++){return;}
+        size_t held=0;
+        try {for(;held<stripes.size();++held)stripes[held].mutex.lock();}
+        catch(...){while(held)stripes[--held].mutex.unlock();--exclusiveDepth;throw;}
+    }
+    void unlock() noexcept {
+        if(!exclusiveDepth)std::abort();
+        if(!--exclusiveDepth)for(auto it=stripes.rbegin();it!=stripes.rend();++it)it->mutex.unlock();
+    }
+};
+GuestAtomicMutex guestAtomics;
 // OpenCrown's bounded, strongly-owned descriptor cache, adapted for Odin's
 // removable/protected mappings. Never cache the external direct-memory table:
 // it contains physical aliases and changes permissions independently.
@@ -73,7 +127,7 @@ Memory *dispatch(State &s, uint64_t pc, Memory *m) {
 void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writable) {
     if (!data || !size || size > std::numeric_limits<uint64_t>::max() - base)
         throw std::runtime_error("invalid guest mapping");
-    std::lock_guard<std::recursive_mutex> access(guestAtomics);
+    std::lock_guard<GuestAtomicMutex> access(guestAtomics);
     std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
     for (const auto &r : m.mappings->regions)
         if (base < r.base + r.size && r.base < base + size)
@@ -82,7 +136,7 @@ void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writab
     m.mappings->generation.fetch_add(1,std::memory_order_release);
 }
 bool unmapRegion(Memory &m,uint64_t base) {
-    std::lock_guard<std::recursive_mutex> access(guestAtomics);
+    std::lock_guard<GuestAtomicMutex> access(guestAtomics);
     std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
     auto &regions=m.mappings->regions;
     for(auto it=regions.begin();it!=regions.end();++it)if(it->base==base){regions.erase(it);m.mappings->generation.fetch_add(1,std::memory_order_release);return true;}
@@ -128,17 +182,43 @@ uint8_t *guestPointer(Memory &m, uint64_t address, size_t size, bool writing) {
     stopGuest(m, "unmapped guest memory");
     return nullptr;
 }
+static bool cachedTransfer(Memory &m,uint64_t address,void *value,size_t size,bool writing) {
+    if(exclusiveDepth || !size)return false;
+    auto &cache=regionCache;
+    const uint64_t generation=m.mappings->generation.load(std::memory_order_acquire);
+    if(cache.mappings!=m.mappings || cache.generation!=generation)return false;
+    for(size_t i=0;i<cache.entries.size();++i)if(contains(cache.entries[i],address,size)) {
+        const auto region=cache.entries[i];
+        // This address may belong to freed storage until the lock/generation
+        // recheck succeeds. Compute integer bits only; never dereference stale
+        // storage or perform pointer arithmetic on an expired array object.
+        const uintptr_t native=reinterpret_cast<uintptr_t>(region.data)+(address-region.base);
+        StripeScope scope(native,size);
+        // Removal invalidates the generation under every stripe before the
+        // owner releases backing. If it won, reject this descriptor before
+        // touching its bytes, even if destruction followed the unlock.
+        if(m.mappings->generation.load(std::memory_order_acquire)!=generation)return false;
+        if(i)std::swap(cache.entries[0],cache.entries[i]);
+        if(writing && !region.writable){m.fault_address=address;stopGuest(m,"guest write to protected region");return true;}
+        auto pointer=reinterpret_cast<void *>(native);
+        if(writing)std::memcpy(pointer,value,size);else std::memcpy(value,pointer,size);
+        return true;
+    }
+    return false;
+}
 static void transfer(Memory &m, uint64_t address, void *value, size_t size, bool writing) {
     auto recovery = m.recovery;
     m.recovery = nullptr;
-    guestAtomics.lock();
-    if (auto p = guestPointer(m, address, size, writing)) {
-        if (writing)
-            std::memcpy(p, value, size);
-        else
-            std::memcpy(value, p, size);
+    if(!cachedTransfer(m,address,value,size,writing)) {
+        guestAtomics.lock();
+        if (auto p = guestPointer(m, address, size, writing)) {
+            if (writing)
+                std::memcpy(p, value, size);
+            else
+                std::memcpy(value, p, size);
+        }
+        guestAtomics.unlock();
     }
-    guestAtomics.unlock();
     m.recovery = recovery;
     if (!m.fault.empty())
         resumeGuestFault(m);

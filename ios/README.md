@@ -416,3 +416,38 @@ pass; both mobile CPU fixture archives compile. Whole-game IR must be freshly
 lifted with the new backend before replay or device installation. Private evidence
 is `runtime-bridges/{cas-hardware-fixed,cas-hardware-baseline-rdx,cpu-cmpxchg8b,
 startup-simd-cmpxchg8b}/`, plus both hardware-oracle artifacts and audit JSON.
+
+## Qualified registered-memory lock stripes — 2026-11-15
+
+A candidate adapts OpenCrown's 64 ordered, 256 KiB lock stripes to Odin's stricter
+memory ownership. Only a registered descriptor already in the calling thread's
+cache can use selected host-address stripes. It checks the mapping generation
+again **after** acquiring those stripes, before dereferencing storage. Removal
+invalidates the generation under every stripe before backing is destroyed; a
+stale descriptor falls back to a fresh lookup. Integer address bits alone are computed before the
+lifetime check. The memory/State ABI and current twenty-patch backend are unchanged.
+
+All cache misses, external-pointer accesses, host `GuestMemoryScope` leases,
+mapping mutations, guest atomic regions and compare-exchanges continue to take
+**every stripe** in ascending order. In particular, different virtual mappings of
+one physical pool page are never assigned a guessed independent stripe. External
+pointers/permissions remain uncached. Nested host/atomic scopes retain per-thread
+recursive ownership, and fault recovery releases native scopes before longjmp.
+This deliberately conservative external path differs from OpenCrown's simpler
+registered native-address memory model.
+
+The new stress fixture performs 5,000 backing replacement/free cycles against
+320,000 racing reads, 160,000 cross-band transfers, and a real shared-file page
+mapped at two distinct host virtual addresses. It verifies the external access
+excludes a warmed registered alias. It passes 5,024 checks on arm64/Rosetta and
+under arm64 ASan/UBSan/TSan. Existing 1,564 shared-memory checks, 20,000 atomic
+updates and 2,000 map cycles pass normally on both architectures and under both
+sanitizers. All five CAS widths pass 40 cases / 16,160 concurrent increments per
+normal host and sanitizer run. Bulk-libc's 686,279 checks pass in all four modes,
+with both SDK fixture archives compiled. CPU 414, both SDK CPU/runtime archives,
+4,371 complete runner service checks and four injected cleanup cases also pass.
+
+These are memory ownership, ABI and concurrency qualifications. The candidate
+still needs an isolated real-game comparison before any startup/gameplay speed
+claim or physical iPad update. Previous global-lock sources/binaries/caches stay
+preserved. Evidence: `memory-stripes/` at the external Odin build root.
