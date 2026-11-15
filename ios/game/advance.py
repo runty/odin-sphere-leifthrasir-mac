@@ -24,8 +24,9 @@ p.add_argument("--remill", required=True, type=Path)
 p.add_argument("--guest-budget-ms", type=int, default=2000, help="GPU guest attempt duration, 100 to 600000 ms")
 p.add_argument("--jobs", type=int, default=4, help="Independent trace lifters and compilers (1 to 32)")
 p.add_argument("--rounds", type=int, default=16)
-p.add_argument("--prefetch", type=int, default=0, help="Extra speculative direct-call/relocation candidates per round (0 to 256); never execution evidence")
+p.add_argument("--prefetch", type=int, default=0, help="Extra static candidates per round (0 to 256, or 4096 with --prefetch-unwind); never execution evidence")
 p.add_argument("--function-bounds",type=Path,help="Verified original unwind ranges limiting new lifts, with segment fallback for unindexed code")
+p.add_argument("--prefetch-unwind",action="store_true",help="Include verified original unwind function entries in static candidates; requires --function-bounds and positive --prefetch")
 p.add_argument("--retain-error-paths",action="store_true",help="Keep compilable Remill error/trap branches; executing one still stops explicitly")
 p.add_argument("--window-bytes", type=int, default=16384, help="Maximum executed trace window, clipped at instruction boundaries")
 p.add_argument("--seed-from", type=Path, help="Re-lift only the PC list from a matching old build-state; never reuse its IR")
@@ -50,8 +51,11 @@ if not 1 <= a.jobs <= 32:
     p.error("--jobs must be between 1 and 32")
 if a.rounds < 1:
     p.error("--rounds must be positive")
-if not 0 <= a.prefetch <= 256:
-    p.error("--prefetch must be between 0 and 256")
+prefetch_cap=4096 if a.prefetch_unwind else 256
+if not 0 <= a.prefetch <= prefetch_cap:
+    p.error("--prefetch must be between 0 and "+str(prefetch_cap))
+if a.prefetch_unwind and (not a.function_bounds or not a.prefetch):
+    p.error("--prefetch-unwind requires --function-bounds and positive --prefetch")
 layout = json.loads((root / "image.json").read_text())
 image = (root / "image.bin").read_bytes()
 if hashlib.sha256(image).hexdigest() != layout["image_sha256"]:
@@ -319,7 +323,8 @@ for round in range(a.rounds):
              "sources": compiled_sources}
     state['static_translation']=static_ledger
     state['translation_policy']={'retain_error_paths':a.retain_error_paths,
-        'function_bounds':function_bounds.manifest if function_bounds else None}
+        'function_bounds':function_bounds.manifest if function_bounds else None,
+        'prefetch_unwind_entries':a.prefetch_unwind}
     command = [root / "guest-startup",root / "image.bin"]
     prefix = "OSL_STARTUP_RESULT:"
     if a.gpu_build:
@@ -407,7 +412,9 @@ for round in range(a.rounds):
         length=min(a.window_bytes,segment[0]+segment[1]-offset)
         lift(pc,image[offset:offset+length],cache/(hex(pc)+".ll"))
     if a.prefetch:
-        catalog=candidates(layout,image,pointer_bytes,(int(symbol,16) for symbol in declarations))
+        catalog=candidates(layout,image,pointer_bytes,(int(symbol,16) for symbol in declarations),
+            function_entries=function_bounds.entries if a.prefetch_unwind else None,
+            bounds_sha256=function_bounds.manifest['sha256'] if a.prefetch_unwind else None)
         attempted={int(Path(name).stem,16) for name,record in static_ledger['entries'].items()
                    if record['status']=='accepted' or not a.retain_error_paths or record.get('retain_error_paths',False)}
         known={int(path.stem,16) for path in cache.glob('*.ll')}

@@ -1,7 +1,8 @@
 """Static translation candidates, never proof of reachability or execution.
 
-Only checked relocation fields and explicit lifted-call declarations supply
-addresses. Arbitrary executable bytes are not searched for guessed functions.
+Checked relocation fields, explicit lifted-call declarations and optional
+verified unwind entries supply addresses. Arbitrary executable bytes are not
+searched for guessed functions. Unwind metadata establishes bounds, not execution.
 """
 import hashlib
 import re
@@ -26,7 +27,7 @@ def thunk_targets(text):
     return targets
 
 
-def candidates(layout, image, pointers, declarations):
+def candidates(layout, image, pointers, declarations, *, function_entries=None, bounds_sha256=None):
     """Return deterministic candidate provenance from immutable prepared inputs."""
     size, base = layout['size'], layout['base']
     if (isinstance(size, bool) or not isinstance(size, int) or size < 8
@@ -75,13 +76,31 @@ def candidates(layout, image, pointers, declarations):
         record = result.setdefault(pc, {'direct_reference': False, 'relocation_fields': 0})
         record['relocation_fields'] += 1
         record.setdefault('first_relocation_field', offset)
+    if function_entries is not None:
+        if not isinstance(bounds_sha256,str) or not re.fullmatch(r'[0-9a-f]{64}',bounds_sha256):
+            raise ValueError('Verified function entries require their bounds manifest hash')
+        previous=-1
+        for row in function_entries:
+            if (not isinstance(row,(tuple,list)) or len(row)!=2
+                    or any(isinstance(n,bool) or not isinstance(n,int) for n in row)):
+                raise ValueError('Malformed verified function entry')
+            start,end=row
+            if (start<previous or not 0<=start<end<1<<64
+                    or not any(low<=start<end<=high for low,high in executable)):
+                raise ValueError('Unsorted, overlapping or non-executable function range')
+            previous=end
+            record=result.setdefault(start,{'direct_reference':False,'relocation_fields':0})
+            record['verified_unwind_entry']=True
+            record['unwind_bounds_sha256']=bounds_sha256
+    elif bounds_sha256 is not None:
+        raise ValueError('Bounds hash requires verified function entries')
     return result
 
 
 def nearest(catalog, demanded, known, limit):
     """Select extra static candidates; mandatory executed demands stay separate."""
-    if isinstance(limit, bool) or not isinstance(limit, int) or not 0 <= limit <= 256:
-        raise ValueError('Static candidate batch must be between 0 and 256')
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 0 <= limit <= 4096:
+        raise ValueError('Static candidate batch must be between 0 and 4096')
     if not demanded or not limit:
         return []
     demands = set(demanded)

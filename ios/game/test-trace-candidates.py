@@ -34,7 +34,22 @@ check(nearest(c, [base+66], set(), 2) == [base+65, base+64])
 check(nearest(c, [base+65], {base+64}, 12) == [base+80])
 check(nearest(c, [], set(), 12) == [])
 check(nearest(c, [base+64], set(), 0) == [])
-for limit in (-1, 257, True, 1.5): reject(nearest, c, [base], set(), limit)
+for limit in (-1, 4097, True, 1.5): reject(nearest, c, [base], set(), limit)
+bounds_hash='1'*64
+entries=[[base+32,base+48],[base+64,base+80],[base+81,base+89]]
+catalog=candidates(layout,image,pointers,declarations,function_entries=entries,bounds_sha256=bounds_hash)
+check(set(catalog)==set(c)|{base+32,base+81})
+check(catalog[base+64]['relocation_fields']==1 and catalog[base+64]['verified_unwind_entry'])
+check(catalog[base+81]['unwind_bounds_sha256']==bounds_hash and not catalog[base+81]['direct_reference'])
+check(nearest(catalog,[base+65],{base+64},1024)==[base+80,base+81,base+32])
+check(c==candidates(layout,image,pointers,declarations))
+for rows in ([[base+32,base+32]],[[base+48,base+32]],[[base+32,base+129]],
+             [[base+32,base+48],[base+40,base+64]],[[base+32,base+48],[base+32,base+48]],
+             [[base+160,base+180]],[[True,base+48]],[[base+32]],[[base+32,'bad']]):
+ reject(lambda: candidates(layout,image,pointers,declarations,function_entries=rows,bounds_sha256=bounds_hash))
+for manifest_hash in (None,'','f'*63,'F'*64,1):
+ reject(lambda: candidates(layout,image,pointers,declarations,function_entries=entries,bounds_sha256=manifest_hash))
+reject(lambda: candidates(layout,image,pointers,declarations,bounds_sha256=bounds_hash))
 for field, value in [('size', 255), ('size', True), ('base', -1), ('base', (1<<64)-128),
                      ('image_sha256', 'bad'), ('image_pointer_count', 3),
                      ('image_pointer_count', True), ('image_pointer_sha256', 'bad'),

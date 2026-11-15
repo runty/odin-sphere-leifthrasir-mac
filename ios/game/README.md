@@ -1266,3 +1266,34 @@ Native discovery is continuing from the reached PC using the unchanged
 physical touches remain open; the existing game-frame PNG captures precede the
 host overlay. The iPhone remains excluded, and the production Mac/player saves
 are untouched.
+
+### Bounded prefetch from verified unwind entries — 2026-11-15
+
+Fourteen of fifteen actual missing-block stops in native attempts 17–36 are
+exact function entries in the independently verified original unwind atlas.
+OpenCrown `9ca8945c` supplied the unwind reader/bounds qualification and its
+nearby-callee prefetch was rechecked. Odin now optionally includes those known
+entries in its static candidate catalog, alongside explicit call declarations
+and checked relocation fields. It never scans arbitrary bytes for function
+starts. This does not establish reachability or execution of candidate code.
+
+Use `--prefetch-unwind --function-bounds VERIFIED_BOUNDS --prefetch 1024` with
+`advance.py`. The flag requires positive prefetch and the existing strict
+image/module/reader-verified `FunctionBounds` adapter. Extra static batches are
+capped at 4,096 with this flag; the default mode retains its 256 cap. The
+nearest candidate selection keeps actual executed demands mandatory and
+separate, excludes known code, and preserves deterministic tie ordering.
+Each entry records its verified-unwind provenance and exact bounds-manifest
+hash. Existing operand/error-path analysis, function/window clipping, complete
+instruction decoding, checked-memory instrumentation, native compilation and
+atomic ledger/checkpoint publication remain in force. Unsupported static
+candidates are logged/skipped; an actual unsupported demand still fails.
+
+59 candidate checks cover provenance merging, unaligned atlas entries, large
+bounded batches, malformed/overlapping/out-of-executable ranges and missing/
+malformed manifest hashes, plus the previous image/pointer/declaration rejects.
+Four CLI cases reject invalid flag/cap combinations before any build. Original
+function-bounds fixtures pass 28 checks; discovery/stop tests pass 22 target and
+7 deadline cases. Evidence: `unwind-prefetch/` at the external build root.
+Runtime/backend/State ABI are unchanged. Only real replay can establish the
+next title/gameplay transition; static entry counts alone cannot.
