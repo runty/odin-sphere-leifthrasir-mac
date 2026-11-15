@@ -114,6 +114,33 @@ gameplay is established. Rebuild through `advance.py` before publishing a
 checkpoint with the new frontend. Mobile hardware retains the independently
 verified 9,754-entry iPad build; the away iPhone is untouched.
 
+## Invalidating cache on the iPad — 2026-11-15
+
+Signed `94a5cd7` launch 27 uses the frozen 9,920-entry corpus `ce2f4220` and
+300-second bounded guest budget. Actual cold startup mounts the existing
+system data read-only, opens no creation dialog and delivers zero active input.
+It advances to the same observed `0x105bc240` missing-block stop as the native
+9,920-entry replay: 160.752 seconds / 2,817 presentations on iPad versus
+149.623 seconds / 2,884 on native Mac. These are different hardware/save/input
+runs and are not a controlled FPS comparison. Each joins all 42 workers and
+releases its resources without a memory fault. The iPad additionally passes
+CPU 414, memory 19, Vulkan readback 64, renderer/window/SDL teardown and fault
+handler restoration. Its three system-save files retain their creation hashes
+through the app update and cold run. Owned PID 46003 is stopped and absent;
+the other probe bundle is untouched.
+
+The physical frame-1,300 PNG is uniformly black (1512×850, opaque alpha), as
+confirmed visually and by independent decoding. The native frame-2,100 image
+is also black. There are 30,066 guest audio API calls on iPad, but no captured
+PCM or audible-output qualification. Title/town/combat, touch/controller
+acceptance and character-progress save/load remain open. Both SDK game and
+guest-boundary archives compile with the final cache runtime. Evidence:
+`mapped-cache-ipad/device/verification.json` and
+`checked-memory-scaling/native-final-verification.json` at the external build
+root. Original Mac-player files keep their exact hashes; the production Mac
+app, iCloud and the away iPhone remain untouched. Native demand discovery
+continues separately with later frame-indexed controls against disposable data.
+
 ## Initial driver experiment (historical)
 
 The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with

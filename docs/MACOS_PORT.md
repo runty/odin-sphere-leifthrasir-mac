@@ -12,15 +12,15 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
 | Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. Reused OpenCrown MOVMSKPS/PD semantics passed 38,400 comparisons. Its ROUND patch passed 13,824,000 native comparisons and the separate suppression/fault checks in OpenCrown's reference harness with Odin's backend. | The native original-game replay passes VROUNDSS after fixing initial MXCSR/x87 controls and worker inheritance. Continue CPU/ABI qualification through combat. |
-| Mobile startup | Physical iPad `8ccd913`, corpus `69737ea1` (9,754 entries), cold mounts existing system data. The prior build's actual display snapshot shows the complete readable save prompt and Yes/No buttons. CPU 414, memory 19, GPU readback 64 and cleanup pass; 25 workers join on cold startup. The iPhone retains `460ecdb` while away and is excluded from testing. | Recognizable title/town/combat, audible output, physical touch/controller gameplay and sustained pacing. |
+| Mobile startup | Physical iPad `94a5cd7`, corpus `ce2f4220` (9,920 entries), cold mounts existing system data and reaches `0x105bc240` after 160.75 seconds / 2,817 presentations. The prior build's actual display snapshot shows the complete readable save prompt and Yes/No buttons. CPU 414, memory 19, GPU readback 64 and cleanup pass; 42 workers join on the latest cold startup. The iPhone retains `460ecdb` while away and is excluded from testing. | Recognizable title/town/combat, audible output, physical touch/controller gameplay and sustained pacing. |
 | Mobile storage and lifecycle | The guest creates three system-save files on iPad; their exact hashes survive quitting, an app update and cold read-only mounting. Native copied-player-save discovery reaches 42 joined workers and later missing CPU blocks. | Character-progress save/load, interruption recovery, and suspend/resume during gameplay. |
 | Mobile engineering harness | Both SDK renderer/game/boundary archives compile. Native AOT background event pumping matches UIKit; 109 native bridge checks pass. The optional iPad UI-test runner compiles/signs but times out enabling automation before any test runs. | Physical touch acceptance, Simulator GPU execution and remaining UIKit appearance warnings. |
 
 Hardware system-data persistence is distinct from loading character progress.
-The iPad frame-600 cold-start game snapshot is black; the independently verified
-prompt is a display snapshot from the earlier dialog run. Native startup
-discovery has 9,918 compiled entries and reaches `0x105bfc80` using an isolated
-copy of the working Mac save. Candidate availability is not execution evidence.
+The latest iPad frame-1,300 cold-start game snapshot is black; the independently verified
+prompt is a display snapshot from the earlier dialog run. The native 9,920-entry
+checkpoint reaches the same missing block with an isolated copy of the working
+Mac save; discovery continues beyond it. Candidate availability is not execution evidence.
 The bounded native frontend now pumps events without background idling; its
 startup comparison advances faster but ends at a different CPU guard, so this
 is not a combat-FPS result. [Current evidence and limits](../ios/graphics/README.md).
