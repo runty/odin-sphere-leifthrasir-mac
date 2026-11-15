@@ -1495,6 +1495,22 @@ static bool serviceChecks() {
     __osl_libc_memset(session.state,0x10cd0ce0,&session.memory);
     require(!session.memory.fault.empty() && session.stack.back()==0);
     session.memory.fault = {};
+    const uint64_t copy_before=session.native_memcpy_calls,move_before=session.native_memmove_calls;
+    const uint64_t bytes_before=session.native_copy_bytes;
+    uint64_t copied=0;
+    for(unsigned kind=0;kind<2;++kind)for(uint64_t size:{0,1,7,8,31,64,129}) {
+        for(size_t i=0;i<256;++i)session.stack[0x200+i]=uint8_t(i*173);
+        std::fill(session.stack.begin()+0x600,session.stack.begin()+0x800,0x7b);
+        session.state=State{};session.state.gpr.rsp.qword=0x20000ff8;
+        store64(session.memory,session.state.gpr.rsp.qword,0xfeedface);
+        session.state.gpr.rdi.qword=0x20000601;session.state.gpr.rsi.qword=0x20000201;session.state.gpr.rdx.qword=size;
+        State expected=session.state;expected.gpr.rax.qword=0x20000601;expected.gpr.rsp.qword=0x20001000;expected.gpr.rip.qword=0xfeedface;
+        (kind ? __osl_libc_memmove : __osl_libc_memcpy)(session.state,kind ? 0x10cd0c40 : 0x10cd0ba0,&session.memory);
+        require(session.memory.fault.empty() && !std::memcmp(&session.state,&expected,sizeof(State)));
+        bool correct=true;for(size_t i=0;i<512;++i)correct&=session.stack[0x600+i]==(i>=1 && i<1+size ? session.stack[0x200+i] : 0x7b);
+        require(correct);copied+=size;
+    }
+    require(session.native_memcpy_calls==copy_before+7 && session.native_memmove_calls==move_before+7 && session.native_copy_bytes==bytes_before+copied);
     uint64_t allocation = allocate(session, 4096, true);
     auto bytes = guestPointer(session.memory, allocation, 4096);
     require(bytes && reinterpret_cast<uint64_t>(bytes) % 16384 == 0);
