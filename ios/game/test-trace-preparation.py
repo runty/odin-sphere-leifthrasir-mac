@@ -30,6 +30,21 @@ fallback=raw.replace('  ret ptr %memory','  call void @__remill_error()\n  ret p
 require(cache.analyze(x87).extended_precision and not cache.analyze(x87).remill_error)
 require(cache.analyze(fallback).remill_error and not cache.analyze(fallback).extended_precision)
 require(not cache.analyze(raw+'declare void @__remill_error()\n').remill_error)
+# Keep lexical shortcuts from changing guard placement or malformed-IR refusal.
+tabbed=raw.replace('  br label %loop','\tbr label %loop')
+require(instrument(tabbed)[1]==2)
+ordinary=raw.replace('entry:\n','entry:\n  %branch_value = add i32 1, 2\n  ; switch is a comment\n')
+require(instrument(ordinary)[1]==2)
+header='define ptr @sub_1000(ptr noalias %state, i64 %program_counter, ptr noalias %memory) {\n'
+switch=header+"entry:\n  switch i32 0, label %done [\n    i32 1, label %entry\n  ]\ndone:\n  ret ptr %memory\n}\n"
+indirect=header+"entry:\n  indirectbr ptr blockaddress(@sub_1000, %entry), [label %entry, label %done]\ndone:\n  ret ptr %memory\n}\n"
+for text in [switch,indirect]:
+ guarded,n=instrument(text)
+ require(n==2 and guarded.count('call void @__osl_guest_tick(ptr %memory, ptr %state)')==2)
+for bad_text in [raw.replace('label %loop','label %absent'),switch.replace('  ]\n',''),indirect.replace('label %entry','label %absent')]:
+ try:instrument(bad_text)
+ except ValueError:require(True)
+ else:raise AssertionError('Malformed LLVM branch was accepted')
 prepared=cache.prepare(raw,output)
 require(output.read_text()==expected and prepared.guards_inserted==count and count==2)
 require(prepared.definitions==('1000',) and prepared.declarations==('2000',))

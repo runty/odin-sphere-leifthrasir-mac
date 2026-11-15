@@ -1,6 +1,14 @@
 """Insert a bounded-runtime checkpoint at trace entries and every CFG backedge."""
 import re
 
+_ABI = re.compile('define ptr @sub_[0-9a-f]+\\(ptr noalias %state, i64 %program_counter, ptr noalias %memory\\) \\{')
+_SYMBOL = re.compile('@sub_([0-9a-f]+)\\(')
+_LABELS = re.compile('^([A-Za-z0-9_.]+):', re.M)
+_BRANCH = re.compile('\\s*(?:br|switch|indirectbr)\\b')
+_TABLE_BRANCH = re.compile('\\s*(?:switch|indirectbr)\\b')
+_TARGETS = re.compile('label %([A-Za-z0-9_.]+)')
+_FUNCTIONS = re.compile('^(define [^\\n]+)\\n(.*?)^}', re.M | re.S)
+
 
 def instrument(text, libc_helpers=False, image_sha256=None):
     if libc_helpers and image_sha256 != '51a38d7dc7476f0163c27273eccd0c37b4861e53b17a5e48b7e1234749602f22':
@@ -12,16 +20,16 @@ def instrument(text, libc_helpers=False, image_sha256=None):
     def function(match):
         nonlocal count
         header, body = match.group(1), match.group(2)
-        if not re.fullmatch(r'define ptr @sub_[0-9a-f]+\(ptr noalias %state, i64 %program_counter, ptr noalias %memory\) \{', header):
+        if not _ABI.fullmatch(header):
             raise ValueError('Unexpected lifted function ABI')
         helpers={'10cd0ba0':'memcpy','10cd0c40':'memmove','10cd0ce0':'memset'}
-        helper=helpers.get(re.search(r'@sub_([0-9a-f]+)\(',header)[1]) if libc_helpers else None
+        helper=helpers.get(_SYMBOL.search(header)[1]) if libc_helpers else None
         if helper:
             used_helpers.add(helper)
             # Public libc exports in the hash-checked CUSA05083 base image.
             # This is a C ABI substitution, not an instruction/flags shortcut.
             body = f'\n  %native_result = call ptr @__osl_libc_{helper}(ptr %state, i64 %program_counter, ptr %memory)\n  ret ptr %native_result\n'
-        labels = {m.group(1): i + 1 for i, m in enumerate(re.finditer(r'^([A-Za-z0-9_.]+):', body, re.M))}
+        labels = {m.group(1): i + 1 for i, m in enumerate(_LABELS.finditer(body))}
         labels.setdefault('0', 0)
         block = 0
         lines = body.splitlines(keepends=True)
@@ -30,18 +38,18 @@ def instrument(text, libc_helpers=False, image_sha256=None):
         i = 0
         while i < len(lines):
             line = lines[i]
-            label = re.match(r'^([A-Za-z0-9_.]+):', line)
+            label = _LABELS.match(line) if not line.startswith((' ', '\t')) else None
             if label:
                 block = labels[label.group(1)]
-            if re.match(r'\s*(?:br|switch|indirectbr)\b', line):
+            if ('br' in line or 'switch' in line) and _BRANCH.match(line):
                 end = i + 1
-                if re.match(r'\s*(?:switch|indirectbr)\b', line):
+                if _TABLE_BRANCH.match(line):
                     while ']' not in ''.join(lines[i:end]):
                         if end == len(lines):
                             raise ValueError('Unterminated branch table')
                         end += 1
                 terminator = ''.join(lines[i:end])
-                targets = re.findall(r'label %([A-Za-z0-9_.]+)', terminator)
+                targets = _TARGETS.findall(terminator)
                 if not targets or any(target not in labels for target in targets):
                     raise ValueError('Unresolved LLVM branch destination')
                 if any(labels[target] <= block for target in targets):
@@ -53,7 +61,7 @@ def instrument(text, libc_helpers=False, image_sha256=None):
                 out.append(line)
                 i += 1
         return header + ''.join(out) + '}'
-    result, functions = re.subn(r'^(define [^\n]+)\n(.*?)^}', function, text, flags=re.M | re.S)
+    result, functions = _FUNCTIONS.subn(function, text)
     if not functions:
         raise ValueError('No lifted function')
     declarations = ['memset'] + [name for name in ('memcpy','memmove') if name in used_helpers]

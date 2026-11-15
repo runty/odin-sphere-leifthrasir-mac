@@ -7,27 +7,44 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest native execution uses **67,546 entries**: corpus `fc0deff0`, 171.070
-seconds / 3,010 presentations, next missing PC `0x106e297e`, 43 joined workers,
+Latest native execution uses **68,472 entries**: corpus `d8620c65`, 166.925
+seconds / 2,946 presentations, next missing PC `0x106e29f9`, 43 joined workers,
 no memory fault, renderer cleanup and unchanged original/copied player saves.
-The fresh frame-2,600 image is decoded and visually inspected opaque black.
-The input file hash matches, but no guest input reads occur before the worker
-stop. The input gate explicitly fails; this establishes startup/integrity only,
-not a timing comparison, scripted route, visible scene or physical controls.
-The failed input-required verifier and a separate limited report are preserved
-in `inrange-jbe-discovery/` and `checkpoint-67546/`.
+The fresh frame-2,900 image is decoded and visually inspected opaque black.
+The input file hash matches but there are no guest input reads. This establishes
+startup/integrity only, not a scripted route, timing comparison, recognizable
+scene or physical controls. Evidence: `inrange-jbe-discovery/checkpoint-68472/`.
+The prior 67,546-entry input gate remains explicitly failed and preserved.
 
-Both actual worker gaps, `0x106e297e` and `0x106af835`, are included in the next
-batch. A read-only survey now includes historical worker missing-PC reports:
-23 gap owners, 492 statically selected owners within two direct-call hops.
-This is selection, not a claim that all selected owners execute. All **926**
-new first blocks accept and pass independent XED checks, **5,325 instructions**,
-including two retained fatal UD2 stops. Audited publication preserves every
-prior raw hash and grows availability to **68,472 entries**. Its bounded native
-build/replay is running, with a unique frame-2,900 capture and post-checkpoint
-freeze; no execution result is claimed yet. Phase:
-`observed-owner-batches/after-67546-worker-two-hop/`, inputs `33717ed4`,
-records `30279b91`. The previous 5,718-entry audit remains immutable.
+The latest gap is a direct branch from a previously observed entry in the same
+routine. The older CFG inventory did not include that observed entry component.
+A separate inventory reruns the unchanged OpenCrown-derived validator with
+actual top-level and worker missing-PC roots. All 30,612 original owners remain
+classified as before; 30 observed components pass decode/overlap checks, with
+no merged conflicts. External edges and unresolved exits remain explicit.
+These roots do not prove whole-owner control flow or guard dominance.
+
+The private producer's `--cfg-directory` selects and pins that new inventory
+without rewriting the old one. Four newly exposed original first blocks pass
+independent XED checks, 16 instructions, and audited publication preserves every
+prior raw hash: **68,476 available entries**. Phase
+`observed-owner-batches/after-68472-observed-components/`, inputs `3bc294c7`,
+records `6fe8ed3b`; inventory `all-owner-cfg-after-68472/`. Its bounded native
+build/replay is running, with no execution result yet.
+
+### Preparation cost without changing guarded code
+
+The previous build spent 294.764 seconds preparing 6.6 GB of LLVM text.
+Compiled regular expressions and necessary-token checks avoid repeated parsing;
+no persistent metadata trust or runtime behavior is added. Before promotion,
+all **68,472** inputs are compared against production metadata and the actual
+compiled guarded LLVM: text and counts are identical, **613,216 guards** retained.
+The four new prefixes also match the previous transform exactly. All 25 cache/
+grammar checks pass, including missing labels, unterminated tables and helper-
+image refusal; the compiled register-only loop still stops at its budget and
+deadline. Reports: `preparation-profile/{equivalence.json,new-prefix-equivalence.json,
+grammar-cache-tests,guard-fixture,promotion.json}`. This qualifies build-text
+preparation only, not game FPS. The next actual build measures its cost.
 
 The revised boundary audit is separately versioned: exact original 0f0b,
 XED ud2/length 2 and a retained remill-error stop are required. Its qualified

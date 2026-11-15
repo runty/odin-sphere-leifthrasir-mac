@@ -49,7 +49,7 @@ class TracePreparationCache:
         if previous:
             self.analysis_hits+=1
             return previous
-        analysis=TraceAnalysis(raw_sha,bool(_EXTENDED.search(raw)),bool(_REMILL_ERROR.search(raw)),
+        analysis=TraceAnalysis(raw_sha,('x86_fp80' in raw and bool(_EXTENDED.search(raw))),('__remill_error' in raw and bool(_REMILL_ERROR.search(raw))),
                                tuple(_DEFINITIONS.findall(raw)),tuple(_DECLARATIONS.findall(raw)))
         self._analysis[raw_sha]=analysis
         self.analysis_misses+=1
