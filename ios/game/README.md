@@ -7,6 +7,40 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
+Latest native execution uses 61,828 entries: corpus `61fdb44a`, 158.292
+seconds / 3,390 presentations, next missing PC `0x106e0968`, 43 joined workers,
+no memory fault, renderer cleanup and unchanged original/copied player saves.
+Its fresh frame-2,600 PNG is decoded and visually inspected opaque black.
+Evidence is frozen in `inrange-jbe-discovery/checkpoint-61828/`.
+
+A read-only inventory of 30,612 original owners identifies 334,522 missing
+entry candidates. Bounded prefetch selects 307 original owners within two
+direct-call hops from historically observed owners plus the actual missing
+owner. Validated alternate CFG roots contribute instruction boundaries; failed
+or overlapping components are excluded. This is static selection, not a claim
+that those owners execute. All 5,718 selected first blocks accept and pass
+independent XED checks, 24,187 instructions. Audited publication preserves every
+prior raw hash and grows availability to **67,546 entries**. That cohort's
+bounded native build/replay is running; it has no new execution result yet.
+Phase: `observed-owner-batches/after-61828-two-hop-v2/`, inputs `1f00861a`,
+records `4dbdd8d4`.
+
+Three original UD2 fatal traps expose a narrow audit assumption: XED classifies
+them as MISC. A separately versioned audit accepts only exact original 0f0b,
+XED ud2/length 2 and a retained remill-error stop. The original prepared phase
+remains immutable. A fixture using actual staged LLVM, production guarding
+and runtime confirms that the guest stops without returning or changing
+RAX/RSP. Invalid bytes/mnemonic/length/missing stop, optimized Python and wrong
+parent hashes are rejected. This adds no instruction semantics or runtime jump
+policy. Full original-byte/backend/bridge/ledger checks precede publication.
+Evidence: phase `audit-ud2-v1/` and `entry-prefetch-survey/ud2-stop-test/`.
+
+The iPad is available over USB and Developer Mode is enabled; only its explicit
+UDID is queried. The phone remains excluded. **The installed device build is
+still the separate 60,361-entry checkpoint below.** No recognizable mobile
+scene, audible output, physical gameplay input or character-progress save/load
+acceptance follows from static preparation or native startup.
+
 The current physical iPad checkpoint is signed `e5cbb68`, corpus `f55967f7`,
 with 60,361 entries, the twenty-patch backend and restored recursive global
 memory locking. Launches 33/34 pass CPU 414, memory 19 and GPU readback 64,
