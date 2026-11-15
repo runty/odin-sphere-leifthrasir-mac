@@ -11,7 +11,8 @@ in Git. Never distribute the game-derived fixture library with the source.
 ## Build
 
 The reference backend is Remill `66c488c9911fd9b368e4d0c9647d74239f8bba8b`
-with LLVM 23.1.5 and the four adjacent patches. Those compatibility/semantics
+with LLVM 23.1.5 and the nineteen ordered patches listed in
+`audit-backend.py`. Those compatibility/semantics
 patches were developed in the OpenCrown port and are retained here so this
 experiment has reproducible source inputs. Existing matching OpenCrown backend
 caches may be read without modifying them. To build an isolated backend:
@@ -257,3 +258,35 @@ The native VideoOut/event adapter is shared in `graphics/guest-gpu.h`; it retain
 checked marshalling and ordered worker/GPU/mapping cleanup. GPU discovery hashes
 that header as part of its frozen inputs. UIKit guest integration remains a
 separate step from the existing physical renderer-only check.
+
+### Startup SIMD reused from OpenCrown — 2026-11-15
+
+The native 9,521-entry cache stopped on `VEXTRACTPS` at `0x106b796c`.
+OpenCrown `9ca8945c` supplies lane insert/extract, variable packed blends,
+128-bit extraction/permutation and safe dword shifts. The five patches retain
+OpenCrown's added implementations; only SSE append context differs. The full
+backend audit expects nineteen ordered patches. Existing backend/cache trees
+remain frozen; use a new directory and re-lift guest IR after any semantics
+change.
+
+```sh
+python3 ios/cpu/check-startup-simd.py --output "$WORK/startup-simd-check" \
+  --backends "$WORK/cpu-backends-startup-simd"
+```
+
+The generic checker needs no game bytes. It compares 238 routines over 256
+vectors against native x86 under Rosetta using Odin's checked-memory runtime.
+It covers operand aliases, masked immediates, high shift counts, VEX upper
+lanes, preserved source registers, full GPR outputs, unaligned stores and
+memory guards. Unsupported instructions use the actual guest recovery path
+and fail the test. An optional `--observed-matrix-span PRIVATE_FILE` adds the
+84-byte, twelve-store sequence observed in Odin; that private input is never
+included in the repository.
+
+The audited built backend passes all 1,590,784 dword comparisons with that
+optional case (239 routines), with source/lifter/semantics unchanged during
+execution. All 414 real-module comparisons and both mobile SDK archives also
+pass. Evidence is `extract-reuse/startup-final/` and
+`cpu-backends-startup-simd/` at the external build root. This establishes CPU
+semantics for the covered cases. Whole-game execution and physical-device
+results with this backend remain separate checks.

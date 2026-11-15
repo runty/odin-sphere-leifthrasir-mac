@@ -1,0 +1,47 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2778,3 +2778,43 @@
+ IF_AVX(DEF_ISEL(VPINSRD_XMMdq_XMMdq_MEMd_IMMb) = VPINSRD<M32>;)
+ IF_AVX(DEF_ISEL(VEXTRACTPS_GPR32_XMMdq_IMMb) = VEXTRACTPS<R32W>;)
+ IF_AVX(DEF_ISEL(VEXTRACTPS_MEMd_XMMdq_IMMb) = VEXTRACTPS<M32W>;)
++
++
++namespace {
++template <typename D, typename S1, typename S2, typename M>
++DEF_SEM(BLENDVPS, D dst, S1 src1, S2 src2, M mask) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto selection = UReadV32(mask);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    bool choose_second = UShr(UExtractV32(selection, i), 31_u32) != 0;
++    result = UInsertV32(result, i, Select(choose_second,
++        UExtractV32(second, i), UExtractV32(first, i)));
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++template <typename D, typename S1, typename S2, typename M>
++DEF_SEM(BLENDVPD, D dst, S1 src1, S2 src2, M mask) {
++  auto first = UReadV64(src1);
++  auto second = UReadV64(src2);
++  auto selection = UReadV64(mask);
++  auto result = UClearV64(UReadV64(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    bool choose_second = UShr(UExtractV64(selection, i), 63_u64) != 0;
++    result = UInsertV64(result, i, Select(choose_second,
++        UExtractV64(second, i), UExtractV64(first, i)));
++  }
++  UWriteV64(dst, result);
++  return memory;
++}
++}  // namespace
++IF_AVX(DEF_ISEL(VBLENDVPS_XMMdq_XMMdq_XMMdq_XMMdq) = BLENDVPS<VV128W, V128, V128, V128>;)
++IF_AVX(DEF_ISEL(VBLENDVPS_XMMdq_XMMdq_MEMdq_XMMdq) = BLENDVPS<VV128W, V128, MV128, V128>;)
++IF_AVX(DEF_ISEL(VBLENDVPS_YMMqq_YMMqq_YMMqq_YMMqq) = BLENDVPS<VV256W, V256, V256, V256>;)
++IF_AVX(DEF_ISEL(VBLENDVPS_YMMqq_YMMqq_MEMqq_YMMqq) = BLENDVPS<VV256W, V256, MV256, V256>;)
++IF_AVX(DEF_ISEL(VBLENDVPD_XMMdq_XMMdq_XMMdq_XMMdq) = BLENDVPD<VV128W, V128, V128, V128>;)
++IF_AVX(DEF_ISEL(VBLENDVPD_XMMdq_XMMdq_MEMdq_XMMdq) = BLENDVPD<VV128W, V128, MV128, V128>;)
++IF_AVX(DEF_ISEL(VBLENDVPD_YMMqq_YMMqq_YMMqq_YMMqq) = BLENDVPD<VV256W, V256, V256, V256>;)
++IF_AVX(DEF_ISEL(VBLENDVPD_YMMqq_YMMqq_MEMqq_YMMqq) = BLENDVPD<VV256W, V256, MV256, V256>;)

@@ -1,0 +1,20 @@
+diff --git a/lib/Arch/X86/Semantics/AVX.cpp b/lib/Arch/X86/Semantics/AVX.cpp
+--- a/lib/Arch/X86/Semantics/AVX.cpp
++++ b/lib/Arch/X86/Semantics/AVX.cpp
+@@ -238,3 +238,16 @@
+ DEF_ISEL(VMASKMOVPD_MEMqq_YMMqq_YMMqq) = VMASKMOVP64_0<MV256W, V256, V256>;
+ 
+ #endif  // HAS_FEATURE_AVX
++
++#if HAS_FEATURE_AVX
++namespace {
++template <typename D>
++DEF_SEM(VEXTRACTF128, D dst, V256 src, I8 immediate) {
++  auto input = UReadV128(src);
++  UWriteV128(dst, UExtractV128(input, Read(immediate) & 1u));
++  return memory;
++}
++}
++DEF_ISEL(VEXTRACTF128_XMMdq_YMMdq_IMMb) = VEXTRACTF128<VV128W>;
++DEF_ISEL(VEXTRACTF128_MEMdq_YMMdq_IMMb) = VEXTRACTF128<MV128W>;
++#endif

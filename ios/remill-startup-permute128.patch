@@ -1,0 +1,30 @@
+diff --git a/lib/Arch/X86/Semantics/AVX.cpp b/lib/Arch/X86/Semantics/AVX.cpp
+--- a/lib/Arch/X86/Semantics/AVX.cpp
++++ b/lib/Arch/X86/Semantics/AVX.cpp
+@@ -251,3 +251,26 @@
+ DEF_ISEL(VEXTRACTF128_XMMdq_YMMdq_IMMb) = VEXTRACTF128<VV128W>;
+ DEF_ISEL(VEXTRACTF128_MEMdq_YMMdq_IMMb) = VEXTRACTF128<MV128W>;
+ #endif
++
++#if HAS_FEATURE_AVX
++namespace {
++template <typename S>
++DEF_SEM(VPERM2F128, VV256W dst, V256 src1, S src2, I8 immediate) {
++  auto first = UReadV128(src1);
++  auto second = UReadV128(src2);
++  auto result = UClearV128(UReadV128(dst));
++  auto control = Read(immediate);
++  _Pragma("unroll") for (size_t lane = 0; lane < 2; ++lane) {
++    auto bits = (control >> (lane * 4)) & 15;
++    auto index = bits & 3;
++    auto value = index < 2 ? UExtractV128(first, index)
++                          : UExtractV128(second, index & 1);
++    result = UInsertV128(result, lane, Select((bits & 8) != 0, 0_u128, value));
++  }
++  UWriteV128(dst, result);
++  return memory;
++}
++}  // namespace
++DEF_ISEL(VPERM2F128_YMMqq_YMMqq_YMMqq_IMMb) = VPERM2F128<V256>;
++DEF_ISEL(VPERM2F128_YMMqq_YMMqq_MEMqq_IMMb) = VPERM2F128<MV256>;
++#endif

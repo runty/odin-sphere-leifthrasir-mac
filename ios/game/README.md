@@ -5,7 +5,7 @@ actual libc and Fios2 initializers and then the real eboot entry through signed
 arm64 AOT code. Unsupported instructions, missing blocks and host services stop
 explicitly. No placeholder service reports full-game success.
 
-## Current engineering status — 2026-11-14
+## Current engineering status — 2026-11-15
 
 The physical iPad mini A20 Pro runs signed `46e7935`, corpus `7183d968`
 with 5,044 entries. Two longer cold launches run 35.0/34.2 seconds, each
@@ -27,11 +27,22 @@ using Odin's checked-memory runtime: 82 lane-form routines plus the original
 source preservation and full GPR results. The observed instruction also
 lifts without the fallback and compiles for both mobile SDKs.
 
-Build this backend in a new directory. Existing fourteen-patch caches remain
-frozen; the complete audit now expects fifteen patches. Regenerate guest IR
-for the new lifter/semantics identities, using old manifests only as address
-availability seeds. Full guest execution with this backend is still pending.
-Evidence is `extract-reuse/` and `cpu-backends-extract/` at the build root.
+A broader check found missing variable blends, 128-bit extraction/permutation
+and AVX dword shifts. OpenCrown's four related patches now join the lane patch;
+the complete audit expects nineteen patches. The new built backend passes
+1,590,784 dword comparisons across 239 routines and 256 vectors, including the
+original twelve-store sequence and full-width memory-store guards. All 414
+real-module comparisons and both SDK archives pass. The reusable checker is
+`ios/cpu/check-startup-simd.py`.
+
+Build this backend in a new directory. Existing fourteen/fifteen-patch caches
+remain frozen. Regenerate guest IR for the new lifter/semantics identities,
+using old manifests only as address availability seeds. A fresh
+`ios-game-startup-simd` cache is being generated from the old 9,521-address
+manifest; no old IR or objects are reused, and seeded availability is not
+execution evidence. Evidence is `extract-reuse/startup-final/` and
+`cpu-backends-startup-simd/` at the build root. Full guest and physical-device
+execution with this backend remain pending.
 
 Native development now uses [the adapted OpenCrown switch tools](control-flow/README.md).
 The expanded conditional fixture passes 42 checks, with strict output bytes

@@ -1,0 +1,181 @@
+diff --git a/lib/Arch/X86/Semantics/MMX.cpp b/lib/Arch/X86/Semantics/MMX.cpp
+--- a/lib/Arch/X86/Semantics/MMX.cpp
++++ b/lib/Arch/X86/Semantics/MMX.cpp
+@@ -1314,14 +1314,12 @@
+   auto src1_vec = UReadV32(src1);
+   auto count = Read(src2);
+   auto dst_vec = UClearV32(UReadV32(dst));
+-
+-  auto vec_count = NumVectorElems(src1_vec);
+-  _Pragma("unroll") for (size_t i = 0; i < vec_count; i++) {
+-    auto v1 = UExtractV32(src1_vec, i);
+-    auto temp = Select(UCmpGt(count, static_cast<decltype(count)>(31)),
+-                       static_cast<decltype(v1)>(0),
+-                       UShr(v1, static_cast<decltype(v1)>(count)));
+-    dst_vec = UInsertV32(dst_vec, i, temp);
++  auto oversized = UCmpGt(count, static_cast<decltype(count)>(31));
++  auto safe_count = Select(oversized, static_cast<decltype(count)>(0), count);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(src1_vec); ++i) {
++    auto value = UExtractV32(src1_vec, i);
++    auto shifted = UShr(value, static_cast<uint32_t>(safe_count));
++    dst_vec = UInsertV32(dst_vec, i, Select(oversized, 0_u32, shifted));
+   }
+   UWriteV32(dst, dst_vec);
+   return memory;
+@@ -1333,14 +1331,12 @@
+   auto src2_vec = UReadV64(src2);
+   auto count = UExtractV64(src2_vec, 0);
+   auto dst_vec = UClearV32(UReadV32(dst));
+-
+-  auto vec_count = NumVectorElems(src1_vec);
+-  _Pragma("unroll") for (size_t i = 0; i < vec_count; i++) {
+-    auto v1 = UExtractV32(src1_vec, i);
+-    auto temp = Select(UCmpGt(count, static_cast<decltype(count)>(31)),
+-                       static_cast<decltype(v1)>(0),
+-                       UShr(v1, static_cast<decltype(v1)>(count)));
+-    dst_vec = UInsertV32(dst_vec, i, temp);
++  auto oversized = UCmpGt(count, static_cast<decltype(count)>(31));
++  auto safe_count = Select(oversized, static_cast<decltype(count)>(0), count);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(src1_vec); ++i) {
++    auto value = UExtractV32(src1_vec, i);
++    auto shifted = UShr(value, static_cast<uint32_t>(safe_count));
++    dst_vec = UInsertV32(dst_vec, i, Select(oversized, 0_u32, shifted));
+   }
+   UWriteV32(dst, dst_vec);
+   return memory;
+@@ -1423,14 +1419,11 @@
+   auto src1_vec = SReadV32(src1);
+   auto count = Read(src2);
+   auto dst_vec = SClearV32(SReadV32(dst));
+-
+-  auto vec_count = NumVectorElems(src1_vec);
+-  _Pragma("unroll") for (size_t i = 0; i < vec_count; i++) {
+-    auto v1 = SExtractV32(src1_vec, i);
+-    count = Select(UCmpGt(count, static_cast<decltype(count)>(31)),
+-                   static_cast<decltype(count)>(32), count);
+-    dst_vec =
+-        SInsertV32(dst_vec, i, SShr(v1, static_cast<decltype(v1)>(count)));
++  count = Select(UCmpGt(count, static_cast<decltype(count)>(31)),
++                 static_cast<decltype(count)>(31), count);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(src1_vec); ++i) {
++    auto value = SExtractV32(src1_vec, i);
++    dst_vec = SInsertV32(dst_vec, i, SShr(value, static_cast<int32_t>(count)));
+   }
+   SWriteV32(dst, dst_vec);
+   return memory;
+@@ -1442,14 +1435,11 @@
+   auto src2_vec = UReadV64(src2);
+   auto count = UExtractV64(src2_vec, 0);
+   auto dst_vec = SClearV32(SReadV32(dst));
+-
+-  auto vec_count = NumVectorElems(src1_vec);
+-  _Pragma("unroll") for (size_t i = 0; i < vec_count; i++) {
+-    auto v1 = SExtractV32(src1_vec, i);
+-    count = Select(UCmpGt(count, static_cast<decltype(count)>(31)),
+-                   static_cast<decltype(count)>(32), count);
+-    dst_vec =
+-        SInsertV32(dst_vec, i, SShr(v1, static_cast<decltype(v1)>(count)));
++  count = Select(UCmpGt(count, static_cast<decltype(count)>(31)),
++                 static_cast<decltype(count)>(31), count);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(src1_vec); ++i) {
++    auto value = SExtractV32(src1_vec, i);
++    dst_vec = SInsertV32(dst_vec, i, SShr(value, static_cast<int32_t>(count)));
+   }
+   SWriteV32(dst, dst_vec);
+   return memory;
+@@ -1476,6 +1466,12 @@
+ DEF_ISEL(PSRLD_XMMdq_IMMb) = PSRLD<V128W, V128, I8>;
+ DEF_ISEL(PSRLD_XMMdq_XMMdq) = PSRLD_V<V128W, V128, V128>;
+ DEF_ISEL(PSRLD_XMMdq_MEMdq) = PSRLD_V<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VPSRLD_XMMdq_XMMdq_IMMb) = PSRLD<VV128W, V128, I8>;)
++IF_AVX(DEF_ISEL(VPSRLD_XMMdq_XMMdq_XMMdq) = PSRLD_V<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VPSRLD_XMMdq_XMMdq_MEMdq) = PSRLD_V<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VPSRLD_YMMqq_YMMqq_IMMb) = PSRLD<VV256W, V256, I8>;)
++IF_AVX(DEF_ISEL(VPSRLD_YMMqq_YMMqq_XMMq) = PSRLD_V<VV256W, V256, V128>;)
++IF_AVX(DEF_ISEL(VPSRLD_YMMqq_YMMqq_MEMdq) = PSRLD_V<VV256W, V256, MV128>;)
+ 
+ DEF_ISEL(PSRLQ_MMXq_IMMb) = PSRLQ<V64W, V64, I8>;
+ DEF_ISEL(PSRLQ_MMXq_MMXq) = PSRLQ<V64W, V64, R64>;
+@@ -1524,6 +1520,12 @@
+ DEF_ISEL(PSRAD_XMMdq_IMMb) = PSRAD<V128W, V128, I8>;
+ DEF_ISEL(PSRAD_XMMdq_XMMdq) = PSRAD_V<V128W, V128, V128>;
+ DEF_ISEL(PSRAD_XMMdq_MEMdq) = PSRAD_V<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VPSRAD_XMMdq_XMMdq_IMMb) = PSRAD<VV128W, V128, I8>;)
++IF_AVX(DEF_ISEL(VPSRAD_XMMdq_XMMdq_XMMdq) = PSRAD_V<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VPSRAD_XMMdq_XMMdq_MEMdq) = PSRAD_V<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VPSRAD_YMMqq_YMMqq_IMMb) = PSRAD<VV256W, V256, I8>;)
++IF_AVX(DEF_ISEL(VPSRAD_YMMqq_YMMqq_XMMq) = PSRAD_V<VV256W, V256, V128>;)
++IF_AVX(DEF_ISEL(VPSRAD_YMMqq_YMMqq_MEMdq) = PSRAD_V<VV256W, V256, MV128>;)
+ 
+ namespace {
+ 
+@@ -1562,36 +1564,34 @@
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(PSLLD, D dst, S1 src1, S2 src2) {
+-  auto src1_vec = SReadV32(src1);
++  auto src1_vec = UReadV32(src1);
+   auto count = Read(src2);
+-  auto dst_vec = SClearV32(SReadV32(dst));
+-
+-  auto vec_count = NumVectorElems(src1_vec);
+-  _Pragma("unroll") for (size_t i = 0; i < vec_count; i++) {
+-    auto v1 = SExtractV32(src1_vec, i);
+-    auto temp = Select(UCmpGt(count, static_cast<decltype(count)>(31)), 0_s32,
+-                       SShl(v1, static_cast<int32_t>(count)));
+-    dst_vec = SInsertV32(dst_vec, i, temp);
+-  }
+-  SWriteV32(dst, dst_vec);
++  auto dst_vec = UClearV32(UReadV32(dst));
++  auto oversized = UCmpGt(count, static_cast<decltype(count)>(31));
++  auto safe_count = Select(oversized, static_cast<decltype(count)>(0), count);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(src1_vec); ++i) {
++    auto value = UExtractV32(src1_vec, i);
++    auto shifted = UShl(value, static_cast<uint32_t>(safe_count));
++    dst_vec = UInsertV32(dst_vec, i, Select(oversized, 0_u32, shifted));
++  }
++  UWriteV32(dst, dst_vec);
+   return memory;
+ }
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(PSLLD_V, D dst, S1 src1, S2 src2) {
+-  auto src1_vec = SReadV32(src1);
++  auto src1_vec = UReadV32(src1);
+   auto src2_vec = UReadV64(src2);
+   auto count = UExtractV64(src2_vec, 0);
+-  auto dst_vec = SClearV32(SReadV32(dst));
+-
+-  auto vec_count = NumVectorElems(src1_vec);
+-  _Pragma("unroll") for (size_t i = 0; i < vec_count; i++) {
+-    auto v1 = SExtractV32(src1_vec, i);
+-    auto temp = Select(UCmpGt(count, 31_u64), 0_s32,
+-                       SShl(v1, static_cast<int32_t>(count)));
+-    dst_vec = SInsertV32(dst_vec, i, temp);
+-  }
+-  SWriteV32(dst, dst_vec);
++  auto dst_vec = UClearV32(UReadV32(dst));
++  auto oversized = UCmpGt(count, static_cast<decltype(count)>(31));
++  auto safe_count = Select(oversized, static_cast<decltype(count)>(0), count);
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(src1_vec); ++i) {
++    auto value = UExtractV32(src1_vec, i);
++    auto shifted = UShl(value, static_cast<uint32_t>(safe_count));
++    dst_vec = UInsertV32(dst_vec, i, Select(oversized, 0_u32, shifted));
++  }
++  UWriteV32(dst, dst_vec);
+   return memory;
+ }
+ 
+@@ -1651,6 +1651,12 @@
+ DEF_ISEL(PSLLD_XMMdq_IMMb) = PSLLD<V128W, V128, I8>;
+ DEF_ISEL(PSLLD_XMMdq_XMMdq) = PSLLD_V<V128W, V128, V128>;
+ DEF_ISEL(PSLLD_XMMdq_MEMdq) = PSLLD_V<V128W, V128, MV128>;
++IF_AVX(DEF_ISEL(VPSLLD_XMMdq_XMMdq_IMMb) = PSLLD<VV128W, V128, I8>;)
++IF_AVX(DEF_ISEL(VPSLLD_XMMdq_XMMdq_XMMdq) = PSLLD_V<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VPSLLD_XMMdq_XMMdq_MEMdq) = PSLLD_V<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VPSLLD_YMMqq_YMMqq_IMMb) = PSLLD<VV256W, V256, I8>;)
++IF_AVX(DEF_ISEL(VPSLLD_YMMqq_YMMqq_XMMq) = PSLLD_V<VV256W, V256, V128>;)
++IF_AVX(DEF_ISEL(VPSLLD_YMMqq_YMMqq_MEMdq) = PSLLD_V<VV256W, V256, MV128>;)
+ 
+ DEF_ISEL(PSLLQ_MMXq_IMMb) = PSLLQ<V64W, V64, I8>;
+ DEF_ISEL(PSLLQ_MMXq_MMXq) = PSLLQ<V64W, V64, R64>;
