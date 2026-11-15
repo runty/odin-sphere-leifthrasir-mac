@@ -15,7 +15,7 @@ comparison while indexing outside the small table. Strict output bytes match
 the original tool on the expanded fixture.
 
 
-These are authored generic host tools and synthetic fixtures, integrated into the mobile bootstrap. There are no game bytes, addresses, tables, or module maps in these source files. They read an explicit caller-supplied ELF, prepared flat image, and a previously validated unwind atlas. They never lift code, execute the input, edit a trace cache, install software, or contact devices.
+These are authored generic host tools and synthetic fixtures used for private startup analysis. There are no game bytes, addresses, tables, or module maps in these source files. They read an explicit caller-supplied ELF, prepared flat image, and a previously validated unwind atlas. They never lift code, execute the input, edit a trace cache, install software, or contact devices.
 
 ## CLI
 
@@ -65,13 +65,13 @@ This is a deliberately conservative static catalog, not proof of whole-game reac
 - `rejected-owners.json`: incomplete or conflicting CFGs, retained for review rather than prefetch.
 - `provenance.json`: input/source/output SHA256 values, pass counts, configured nonreturning addresses, and explicit limitations. Per-pass raw boundaries, candidates, rejections, CFG results, and provisional roots remain available.
 
-The bootstrap runs this independently for each prepared module after producing the validated unwind atlas, then passes `missing-prefetch-targets.txt` to the batch lifter. Compiling a candidate changes neither exact-PC dispatch nor runtime checkpoint acceptance. A new unsupported lift/codegen operation still stops explicitly with its named log; completed peers remain cached. Runtime coverage remains an independent check. Keep the catalog output and original decoder inputs for reproducibility; no input bytes need to enter the public repository. The tools use the already provisioned XED dependency and copy no vendor source.
+Invoke this independently for each prepared module after producing the validated unwind atlas. Odin currently selects targets from these private analyses explicitly; `advance.py` does not run this scanner automatically. Compiling a candidate changes neither exact-PC dispatch nor runtime checkpoint acceptance. A new unsupported lift/codegen operation still stops explicitly with its named log; completed peers remain cached. Runtime coverage remains an independent check. Keep the catalog output and original decoder inputs for reproducibility; no input bytes need to enter the public repository. The tools use the already provisioned XED dependency and copy no vendor source.
 
 ## Owned tests
 
 ```sh
 python3 test.py \
-  --output /Volumes/office/Build/OpenCrown/switch-fixtures \
+  --output /Volumes/office/Build/OdinSphere/switch-fixtures \
   --xed-root /path/to/remill-install \
   --llvm-bin /path/to/llvm/bin
 ```
@@ -91,7 +91,7 @@ exact unresolved/external site records without entering the accepted set. Additi
 
 `conditional.py --strict-output EXISTING_STRICT_SCAN --xed-root EXISTING_HOST_XED_PREFIX --output NEW_SEPARATE_EXTERNAL_DIRECTORY` performs an explicitly isolated optional pass. Its output folder cannot overlap the strict scan. The strict scan is hashed before and after and is never changed. No conditional roots or edges feed back into strict discovery, accepted tables, incomplete-owner outputs, or completion counts.
 
-Only a low8/16-bit guard of the indexed register's own family can receive the explicit unproven assumption `full_index >> guard_width == 0`; differing-register equivalence is never waived. Postguard preservation, guard control-flow scheduling, immutable table bytes, bounded executable owner ranges, instruction boundaries, and decoded case/default reachability remain mandatory. A missing strict MOVZX/upper-zero proof stays a strict rejection. This pass changes no game input, instruction, clamp, callback, or runtime dispatch rule.
+Only a low 8/16/32-bit guard of the indexed register's own family can receive the explicit unproven assumption `full_index >> guard_width == 0`; differing-register equivalence is never waived. Postguard preservation, guard control-flow scheduling, immutable table bytes, bounded executable owner ranges, instruction boundaries, and decoded case/default reachability remain mandatory. A missing strict MOVZX/upper-zero proof stays a strict rejection. This pass changes no game input, instruction, clamp, callback, or runtime dispatch rule.
 
 Outputs are `conditional-tables.json`, `conditional-entries.json`, `conditional-targets.txt`, and `missing-conditional-targets.txt`. Tables record the assumption's register, width, relative/canonical comparison PC, and `proof_status=unproven`. Every `owner_cfg.complete` is false, with unresolved/external PCs retained. Even if conditional closure discovers an otherwise-strict table, that later table is not published as strict or as an assumption-free conditional row. `prefetch-with-conditional-targets.txt` explicitly unions these candidates with the unchanged strict scan's existing prefetch file; it is a compile-only artifact. `missing-prefetch-with-conditional-targets.txt` is the corresponding cache snapshot.
 
@@ -109,7 +109,7 @@ The complete regression matrix currently passes 118 checks across 109 functions.
 
 `--noreturn-provenance MAP.json` binds independently derived declarations to
 matching module/ELF/image records and captures the map hash in provenance. The
-bootstrap's [import derivation](../noreturn/README.md) validates both stack-failure
+bootstrap's [OpenCrown import derivation](https://github.com/runty/OpenCrown-PC/blob/68cb2a7b9bfc042593fdd26d7a045697cc29e65a/ios/game/noreturn/README.md) validates both stack-failure
 thunks from original relocation/GOT/PLT bytes, without game-address literals.
 Only the declared call fallthrough terminates; this is not `nounwind` and does
 not change runtime code or dispatch.
