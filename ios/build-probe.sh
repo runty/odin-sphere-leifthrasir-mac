@@ -218,6 +218,7 @@ $renderer_dependency
         ARCHS: arm64
         TARGETED_DEVICE_FAMILY: '1,2'
         CLANG_ENABLE_OBJC_ARC: YES
+        CLANG_CXX_LANGUAGE_STANDARD: c++23
 $entitlements_setting
         LIBRARY_SEARCH_PATHS: '\$(PROJECT_DIR)/Source'
         GCC_PREPROCESSOR_DEFINITIONS: 'OSL_GAME_STARTUP=$game_enabled OSL_GPU_PROBE=$gpu_enabled OSL_SDL_SURFACE=$sdl_enabled OSL_RENDERER_SESSION=$renderer_enabled'
