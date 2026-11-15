@@ -775,3 +775,22 @@ fixture and boundary ASan pass at the 5,044-entry checkpoint. ASan instruments
 the boundary and fixture; the game archive, renderer and driver are uninstrumented.
 Early executed translation gaps remain valid explicit stops even in a longer
 run. This API extends engineering coverage; playable mobile scenes remain open.
+
+Signed `46e7935`, corpus `7183d968` with 5,044 entries, ran twice on the
+physical iPad mini A20 Pro with `OSL_GUEST_RUN_MS=60000`. Cold launches 13/15
+ran for 35.0/34.2 seconds. Each submitted 3,260 batches, presented 652 buffers,
+joined 22 workers and stopped at executed missing block `0x10000425`.
+CPU 414, memory 19 and GPU readback 64 passed. GPU mappings/queues, signal
+ownership, worker ownership and the original UIKit window were released or
+restored. The existing profile's three-directory tree remains unchanged and
+contains no files; this is preservation evidence, not an in-game save test.
+Launch 14 rejected duration 60001 with zero renderer polls and no guest run.
+All three exact owned PIDs were stopped and absence checked.
+
+The new device and Simulator game/boundary archives compile. The device
+renderer consumer links; Simulator consumer linking remains open. The probe
+generator now explicitly selects C++23 for its Objective-C++ files. Device
+evidence is `extended-ipad-budget/device-ipad/verification.json` at the
+external build root. No recognizable mobile image, gameplay or iPhone test
+is claimed. UIKit logged an appearance-transition imbalance during SDL window
+teardown; visible presentation/lifecycle acceptance still needs checking.
