@@ -7,6 +7,37 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-14
 
+The physical iPad mini A20 Pro runs signed `46e7935`, corpus `7183d968`
+with 5,044 entries. Two longer cold launches run 35.0/34.2 seconds, each
+submitting 3,260 Gnm batches and presenting 652 buffers before missing block
+`0x10000425`. CPU 414, memory 19, GPU readback 64, all 22 worker joins and
+renderer/signal/window cleanup pass. The original empty three-directory
+profile survives unchanged. Recognizable mobile imagery, gameplay and new
+in-game save/reload remain open. The iPhone retains the earlier `460ecdb`
+checkpoint while away; physical testing is iPad-only.
+
+Native development now uses [the adapted OpenCrown switch tools](control-flow/README.md).
+The expanded conditional fixture passes 42 checks, with strict output bytes
+identical to the original tools; the unchanged strict and late-copy matrices
+pass 118 and 49 checks. A separately derived stack-protector termination map
+uses OpenCrown's 23-check original-ELF import validator. Its three matching
+Odin module thunks let the scanner stop before embedded table data.
+
+The private cache has 624 more case targets from 79 selected tables, 239 more
+direct callees and 373 further direct-call descendants. All compile with the
+original image/backend/function bounds and production guards. Conditional
+index assumptions remain explicitly unproven in the ledger. A final direct
+scan finds no new unattempted callee; three speculative x87 candidates remain
+excluded and actual runtime demands stay authoritative. This extends available
+code, not verified execution. Continued real startup is required.
+
+Evidence is under `extended-ipad-budget/`, `conditional32-{fixture,matrix,late-index}/`,
+`noreturn-reuse/`, `conditional32-noreturn{,-strict}/` and
+`native-first-frames/` at the external Odin build root. Earlier checkpoints
+follow as history.
+
+## Earlier module and memory checkpoints
+
 Clean signed `1376d6a` iPad mini A20 Pro launches 12 and 13 now complete
 both actual module initializers and allocate 1,294,155,776 bytes from the
 direct pool in a 4 GiB owned guest window, without the old null-memory fault. The permanent
