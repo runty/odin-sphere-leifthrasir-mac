@@ -76,7 +76,7 @@ extern "C" OslGuestSession *osl_guest_session_create() {
     return osl_guest_session_create_with_budget(2000);
 }
 extern "C" OslGuestSession *osl_guest_session_create_with_budget(uint32_t milliseconds) {
-    if(milliseconds<100 || milliseconds>60000)return nullptr;
+    if(milliseconds<100 || milliseconds>600000)return nullptr;
     try{return new OslGuestSession(milliseconds);}catch(...){return nullptr;}
 }
 extern "C" int osl_guest_session_faults_begin(OslGuestSession *session) {

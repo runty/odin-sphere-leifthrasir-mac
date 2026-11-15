@@ -704,7 +704,7 @@ A longer run presented 102 buffers before a new worker reached another missing
 block. The CUA screenshot captured black output, so a recognizable game scene
 still needs verification. Physical devices still have the earlier startup app.
 
-`osl-aot-gpu-probe IMAGE PROFILE --run-ms N` accepts 100–60,000 ms.
+`osl-aot-gpu-probe IMAGE PROFILE --run-ms N` accepts 100–600,000 ms.
 The default remains 2,000 ms. Invalid, partial, negative and out-of-range
 arguments exit before renderer initialization. `MobileGpuServices` carries
 the bounded duration to the session. Dispatch and checkpoint budgets scale
@@ -760,12 +760,12 @@ once scene draws appear.
 
 ## Longer UIKit engineering runs
 
-The UIKit probe accepts `OSL_GUEST_RUN_MS=100..60000` through its developer
+The UIKit probe accepts `OSL_GUEST_RUN_MS=100..600000` through its developer
 launch environment. Its default remains 2000 ms. Invalid integers are rejected
 before signal ownership, SDL initialization or guest execution. The owned
 session's immutable budget reaches the same scaled CPU/worker limits as the
 native frontend. Its report records `execution_budget_ms`, and the outer
-diagnostic wait allows 75 seconds for a minute run and teardown.
+diagnostic wait allows 615 seconds for a ten-minute run and teardown.
 
 `osl_guest_session_create_with_budget` rejects invalid bounds; the existing
 factory retains its default. The native ownership fixture checks both range
@@ -794,3 +794,29 @@ evidence is `extended-ipad-budget/device-ipad/verification.json` at the
 external build root. No recognizable mobile image, gameplay or iPhone test
 is claimed. UIKit logged an appearance-transition imbalance during SDL window
 teardown; visible presentation/lifecycle acceptance still needs checking.
+
+## Indexed guest dispatch and later startup
+
+`8ebd715` reuses OpenCrown's exact-PC binary lookup for the arm64 AOT runner.
+The generator explicitly orders entries numerically, and startup rejects a
+table with duplicates or descending addresses. The actual 6,453-entry corpus
+passes 25,824 lookup checks, including every address, neighboring gaps,
+mixed-width keys and rejected unsorted/duplicate tables. A 200,000-lookup
+microbenchmark takes 253.0 ms with the old scan and 4.5 ms with the index.
+Those timings measure lookup only and establish no gameplay frame rate.
+
+A real minute run still ends explicitly at its deadline, with all 21 workers
+joined. The longer native checkpoint reaches another missing function after
+58.0 seconds and joins 22 workers. The execution ceiling now follows
+OpenCrown's ten-minute diagnostic policy; normal engineering launches retain
+2000 ms. Fourteen CLI parser cases pass, including rejection above 600000 ms.
+The updated boundary passes its factory endpoints, normal/extended runs,
+pre/live cancellation, cleanup and image validation under boundary ASan.
+Both UIKit frontend sources pass syntax checks for both SDKs. The installed
+iPad app remains the earlier `46e7935`, and no new device execution is claimed.
+
+Earlier native retries overlapped host maintenance sleep and are unsuitable
+for timing comparisons. Current long runs use a process-scoped AC-only sleep
+assertion. Evidence is `indexed-dispatch-check/`, `long-budget-parser/`,
+`long-budget-session-address/`, `long-budget-sdk-syntax/` and
+`native-indexed-180s-checkpoint.log` at the external build root.

@@ -947,8 +947,8 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
     if (!GuestTraces::valid(std::begin(traces),std::end(traces)))
         throw std::runtime_error("Translated trace table is not strictly increasing");
     if (gpu && (!gpu->call || !gpu->finish)) throw std::runtime_error("Invalid native GPU service table");
-    if (gpu && (gpu->execution_budget_ms<100 || gpu->execution_budget_ms>60000))
-        throw std::runtime_error("Guest execution budget must be 100 to 60000 milliseconds");
+    if (gpu && (gpu->execution_budget_ms<100 || gpu->execution_budget_ms>600000))
+        throw std::runtime_error("Guest execution budget must be 100 to 600000 milliseconds");
     auto owner = std::make_unique<Session>(gpu);
     Session *session = owner.get();
     session->memory.dispatcher = gameDispatch;

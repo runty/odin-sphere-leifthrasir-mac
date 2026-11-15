@@ -19,7 +19,7 @@ from service_build import compile_services, inputs as service_inputs, link_optio
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
-p.add_argument("--guest-budget-ms", type=int, default=2000, help="GPU guest attempt duration, 100 to 60000 ms")
+p.add_argument("--guest-budget-ms", type=int, default=2000, help="GPU guest attempt duration, 100 to 600000 ms")
 p.add_argument("--jobs", type=int, default=4, help="Independent trace lifters and compilers (1 to 32)")
 p.add_argument("--rounds", type=int, default=16)
 p.add_argument("--prefetch", type=int, default=0, help="Extra speculative direct-call/relocation candidates per round (0 to 256); never execution evidence")
@@ -40,8 +40,8 @@ if len(root.parts) < 3 or root.parts[1] != "Volumes" or not Path("/Volumes", roo
 source = Path(__file__).resolve().parent
 if not 256 <= a.window_bytes <= 65536:
     p.error("--window-bytes must be between 256 and 65536")
-if not 100 <= a.guest_budget_ms <= 60000:
-    p.error("--guest-budget-ms must be between 100 and 60000")
+if not 100 <= a.guest_budget_ms <= 600000:
+    p.error("--guest-budget-ms must be between 100 and 600000")
 if a.guest_budget_ms != 2000 and not a.gpu_build:
     p.error("An extended guest budget requires --gpu-build")
 if not 1 <= a.jobs <= 32:

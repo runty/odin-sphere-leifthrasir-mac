@@ -49,7 +49,7 @@ int main(int argc,char **argv) {
     if(timed) {
         const auto end=argv[4]+std::strlen(argv[4]);
         const auto parsed=std::from_chars(argv[4],end,budget_ms);
-        if(parsed.ec!=std::errc{} || parsed.ptr!=end || budget_ms<100 || budget_ms>60000) return 2;
+        if(parsed.ec!=std::errc{} || parsed.ptr!=end || budget_ms<100 || budget_ms>600000) return 2;
     }
     const bool check_bridge=argc==4 && !std::strcmp(argv[3],"--check-bridge");
     const bool discovery_only=timed || (argc==4 && !std::strcmp(argv[3],"--discover"));

@@ -98,9 +98,9 @@ extern "C" NSDictionary *osl_mobile_memory_report();
             if(![NSFileManager.defaultManager fileExistsAtPath:guestImage])guestImage=nil;
             osl_mobile_renderer_begin(self.view.window.windowScene,[documents stringByAppendingPathComponent:@"RendererDiagnostics"],guestImage,^(NSDictionary *result){rendererResult=result;dispatch_semaphore_signal(rendererDone);});
         });
-        // Maximum bounded guest duration is 60 seconds; leave time for owned
+        // Maximum bounded guest duration is ten minutes; leave time for owned
         // worker joins, GPU retirement and main-thread window restoration.
-        if(dispatch_semaphore_wait(rendererDone,dispatch_time(DISPATCH_TIME_NOW,75*NSEC_PER_SEC))!=0)
+        if(dispatch_semaphore_wait(rendererDone,dispatch_time(DISPATCH_TIME_NOW,615*NSEC_PER_SEC))!=0)
             renderer=@{@"passed":@NO,@"error":@"Renderer session exceeded diagnostic deadline",@"game_frames":@NO};
         else {renderer=rendererResult;if([renderer[@"guest_requested"] boolValue])game=renderer[@"guest_session"][@"guest"]?:@{@"error":@"GPU guest did not return a report"};else game=@{@"game_booted":@NO,@"status":@"private prepared image has not been copied into Guest"};}
 #endif
