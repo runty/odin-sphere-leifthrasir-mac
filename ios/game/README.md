@@ -970,7 +970,7 @@ and 21 recorded speculative rejections; individual candidate execution remains
 unverified. Strict native replay completes both initializers, starts/joins
 17 workers, registers three buffers and stops at `0x107d4870` in 386.608 ms.
 Bridge 109 and separate boundary ASan lifecycle/five input-negative checks pass.
-The boundary normal path still has no child workers. Both mobile game SDK
+The boundary normal path still has no child workers. Both mobile game and separately platform-audited guest-boundary SDK
 archives compile at corpus
 `52abc4684c1cd5908243b1980ed20b0bf9fca0bf5b753fa763ef06358dc7c30f`.
 Actual guest Gnm submission and presented-frame counts remain zero.
