@@ -1594,3 +1594,22 @@ startup/capture is separate acceptance evidence. Private reports are under
 `repeated-owner-analysis/{loader-owner-seeds,loader-owner-narrow-seeds}/`,
 including `narrow-qualification.json`, and
 `inrange-jbe-discovery/checkpoint-61206/verification.json`.
+
+The 61,550-entry cohort is now actually replayed: corpus `0d944f6e`,
+165.229 seconds / 3,768 presentations, 43 joined workers, no fault and renderer
+cleanup. The new demand is `0x1070b871`, the original continuation after the
+call at `0x1070b86c`. Its fresh frame-2,600 PNG is independently decoded and
+visually inspected as opaque black. Original and copied player-save hashes
+match. Frozen evidence: `inrange-jbe-discovery/checkpoint-61550/verification.json`.
+No visible-scene or gameplay acceptance follows from this startup progress.
+
+The same decoded owner contains 188 original call-return boundaries, 156 still
+absent from the executed corpus. Each has a decoded original call and an
+independently validated next-instruction boundary; non-returning/unreachable
+continuations are not invented. All 156 are lifted as single basic blocks,
+accepted and recovery/raw/ledger/backend audited. Independent XED decoding
+checks all 156 prefixes / 659 instructions against the production decoder.
+Previous raw entries stay byte-identical and the original return behavior is
+not restricted. Availability is 61,706; the new cohort is execution-unverified.
+Reports: `repeated-owner-analysis/loader-owner-return-seeds/`, including
+`return-qualification.json`. The next bounded replay remains a separate gate.

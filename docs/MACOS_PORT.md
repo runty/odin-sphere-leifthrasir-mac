@@ -709,3 +709,11 @@ The wider native replay passes the old demand and reaches original loader owner
 first-block narrowing policy now provide 61,550 entries. Independent decoding
 checks all 209 shortened prefixes; execution and visible-scene acceptance remain
 separate. [Scope and evidence](../ios/game/README.md#observed-loader-owner-and-first-block-windows--2026-11-15).
+
+Actual 61,550-entry replay now reaches a later original call continuation with
+43 joins, no fault, cleanup and unchanged save hashes; its fresh image is still
+black. Another 156 original decoded call-return entries are audited into static
+availability (61,706), with execution pending. This addresses exact translated
+return locations without changing guest instructions or CPU return behavior.
+The installed iPad remains the separately verified 60,361-entry engineering build;
+recognizable mobile gameplay and audible audio are still unverified.
