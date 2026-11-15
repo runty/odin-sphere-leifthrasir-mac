@@ -19,6 +19,7 @@ from service_build import compile_services, inputs as service_inputs, link_optio
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
+p.add_argument("--guest-budget-ms", type=int, default=2000, help="GPU guest attempt duration, 100 to 60000 ms")
 p.add_argument("--jobs", type=int, default=4, help="Independent trace lifters and compilers (1 to 32)")
 p.add_argument("--rounds", type=int, default=16)
 p.add_argument("--prefetch", type=int, default=0, help="Extra speculative direct-call/relocation candidates per round (0 to 256); never execution evidence")
@@ -39,6 +40,10 @@ if len(root.parts) < 3 or root.parts[1] != "Volumes" or not Path("/Volumes", roo
 source = Path(__file__).resolve().parent
 if not 256 <= a.window_bytes <= 65536:
     p.error("--window-bytes must be between 256 and 65536")
+if not 100 <= a.guest_budget_ms <= 60000:
+    p.error("--guest-budget-ms must be between 100 and 60000")
+if a.guest_budget_ms != 2000 and not a.gpu_build:
+    p.error("An extended guest budget requires --gpu-build")
 if not 1 <= a.jobs <= 32:
     p.error("--jobs must be between 1 and 32")
 if a.rounds < 1:
@@ -338,7 +343,9 @@ for round in range(a.rounds):
                   "loader_sha256":hashlib.sha256(loader.read_bytes()).hexdigest()}
         state.update(runner_mode="native-arm64-gpu",native_gpu=native)
         profile = gpu_build / "aot-profile"; profile.mkdir(exist_ok=True)
-        command = [gpu_build / "bin/osl-aot-gpu-probe",root / "image.bin",profile,"--discover"]
+        command = [gpu_build / "bin/osl-aot-gpu-probe",root / "image.bin",profile]
+        command += ["--discover"] if a.guest_budget_ms==2000 else ["--run-ms",str(a.guest_budget_ms)]
+        state["execution_budget_ms"]=a.guest_budget_ms
         prefix = "OSL_AOT_GPU_GUEST:"
     attempt = len(list(root.glob("attempt-*.json")))
     def runtime_inputs():
@@ -350,7 +357,7 @@ for round in range(a.rounds):
     # renderer. Keep each attempt, including one stopped by the operator.
     for replay in range(3):
         name = f"attempt-{attempt + replay:05d}"
-        run(name, command, 30 if a.gpu_build else 15,
+        run(name, command, max(30,a.guest_budget_ms/1000+15) if a.gpu_build else 15,
             env=gpu_env if a.gpu_build else dict(os.environ, OSL_GUEST_IDENTITY="1" if a.identity else "0"))
         records = [line.removeprefix(prefix) for line in (root / (name + ".log")).read_text().splitlines() if line.startswith(prefix)]
         if len(records) != 1:
@@ -365,7 +372,7 @@ for round in range(a.rounds):
         atomic_json(root / (name + ".json"), report)
         print(f"{name} reached the host deadline. Replaying the same executable.", flush=True)
     state["reference"] = report
-    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs","static_translation","translation_policy") + (("runner_mode","native_gpu") if a.gpu_build else ())
+    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs","static_translation","translation_policy") + (("runner_mode","native_gpu","execution_budget_ms") if a.gpu_build else ())
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in corpus_keys}, sort_keys=True).encode()).hexdigest()
     atomic_json(root / "build-state.json", state)
     atomic_json(root / (name + ".json"), report)

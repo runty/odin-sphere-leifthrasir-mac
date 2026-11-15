@@ -65,6 +65,7 @@ public:
         try {
             auto worker=std::make_shared<Worker>();
             worker->memory.mappings=parent_.mappings;worker->memory.external_pointer=parent_.external_pointer;
+            worker->memory.checkpoint_limit=parent_.checkpoint_limit;
             worker->memory.deadline=parent_.deadline;worker->memory.stop_requested=&stop_;
             worker->id=next_.fetch_add(1);worker->entry=entry;worker->argument=argument;
             worker->attributes=attributes;worker->detached=attributes.detached;

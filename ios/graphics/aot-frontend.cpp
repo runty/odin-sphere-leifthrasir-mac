@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <array>
+#include <charconv>
 
 extern "C" uint64_t osl_aot_memory_allocated();
 extern "C" uint64_t runtime_eventflag_live_count();
@@ -42,10 +43,17 @@ extern "C" [[noreturn]] void runtime_exit_clean() { runtime_log_flush(); std::_E
 #include "bridge-checks.h"
 
 int main(int argc,char **argv) {
-    if(!pthread_main_np() || (argc!=3 && argc!=4) || !std::filesystem::is_directory(argv[2])) return 2;
+    if(!pthread_main_np() || argc<3 || argc>5 || !std::filesystem::is_directory(argv[2])) return 2;
+    uint32_t budget_ms=2000;
+    const bool timed=argc==5 && !std::strcmp(argv[3],"--run-ms");
+    if(timed) {
+        const auto end=argv[4]+std::strlen(argv[4]);
+        const auto parsed=std::from_chars(argv[4],end,budget_ms);
+        if(parsed.ec!=std::errc{} || parsed.ptr!=end || budget_ms<100 || budget_ms>60000) return 2;
+    }
     const bool check_bridge=argc==4 && !std::strcmp(argv[3],"--check-bridge");
-    const bool discovery_only=argc==4 && !std::strcmp(argv[3],"--discover");
-    if(argc==4 && !check_bridge && !discovery_only)return 2;
+    const bool discovery_only=timed || (argc==4 && !std::strcmp(argv[3],"--discover"));
+    if((argc==4 && !check_bridge && !discovery_only) || (argc==5 && !timed))return 2;
     // Use the actual prepared image's procparam SDK, matching the working Mac
     // loader; do not substitute a newer SDK's initialization packets.
     uint64_t sdk=0;
@@ -63,6 +71,7 @@ int main(int argc,char **argv) {
     NativeGpu context;
     GuestAudio audio;
     MobileGpuServices services{&context,NativeGpu::call,NativeGpu::finish};
+    services.execution_budget_ms=budget_ms;
     services.audio_context=&audio;services.audio_call=GuestAudio::call;
     std::thread guest([&] {
         if(check_bridge) {

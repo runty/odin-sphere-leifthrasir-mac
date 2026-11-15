@@ -28,13 +28,13 @@ static void spin(MobileWorkers::Worker &worker,std::atomic<unsigned> &progress) 
     worker.memory.recovery=nullptr;
 }
 int main() {
-    Memory parent;ModuleTlsTemplates templates;std::atomic<bool> stop{false};
+    Memory parent;parent.checkpoint_limit=900000;ModuleTlsTemplates templates;std::atomic<bool> stop{false};
     std::array<uint8_t,8192> string{};std::fill(string.begin(),string.end(),0x55);string[4095]=0;
     mapRegion(parent,0x100000,string.data(),string.size(),false);
     MobileWorkers owner(parent,templates,false,stop);GuestThreadAttributes attributes;attributes.stack=65536;
     std::array<uint64_t,4> ids{},stacks{};
     for(unsigned i=0;i<4;++i)require(owner.spawn(image_base+0xcd0630,0x100000+i,attributes,routine,ids[i])==0);
-    for(unsigned i=0;i<4;++i){auto worker=owner.find(ids[i]);require(worker && worker->storage);stacks[i]=worker->storage->stackAddress();const auto joined=owner.join(ids[i],0,parent);require(!joined.error && !joined.stop && joined.result==4095-i && worker->memory.fault.empty());}
+    for(unsigned i=0;i<4;++i){auto worker=owner.find(ids[i]);require(worker && worker->storage);require(worker->memory.checkpoint_limit==900000);stacks[i]=worker->storage->stackAddress();const auto joined=owner.join(ids[i],0,parent);require(!joined.error && !joined.stop && joined.result==4095-i && worker->memory.fault.empty());}
     require(owner.started()==4);
     for(unsigned i=0;i<4;++i)for(unsigned j=0;j<i;++j)require(ids[i]!=ids[j] && stacks[i]!=stacks[j]);
     require(owner.join(ids[0],0,parent).error==EINVAL);require(owner.join(UINT64_MAX,0,parent).error==ESRCH);

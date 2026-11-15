@@ -695,3 +695,29 @@ The native guest now passes the former shader assertion and continues through
 additional missing CPU blocks. No game frame is established. The physical
 devices retain the independently qualified `460ecdb` startup app until an
 updated full frontend checkpoint is packaged and checked.
+
+## Longer bounded startup discovery
+
+The native replay subsequently reached 4,476 compiled entries and actual guest
+command submissions. Three two-second attempts presented 12, 20 and 21 buffers.
+A longer run presented 102 buffers before a new worker reached another missing
+block. The CUA screenshot captured black output, so a recognizable game scene
+still needs verification. Physical devices still have the earlier startup app.
+
+`osl-aot-gpu-probe IMAGE PROFILE --run-ms N` accepts 100–60,000 ms.
+The default remains 2,000 ms. Invalid, partial, negative and out-of-range
+arguments exit before renderer initialization. `MobileGpuServices` carries
+the bounded duration to the session. Dispatch and checkpoint budgets scale
+with the duration, and new workers inherit the parent's checkpoint limit and
+deadline. Cancellation still reaches every worker and host wait.
+
+`advance.py --guest-budget-ms 20000 --gpu-build ...` discovers later
+startup paths using twenty-second attempts. The requested duration is part of
+the corpus identity. A changed duration gets an appropriately bounded process
+timeout. The non-GPU path retains its original two-second duration.
+
+Six invalid CLI durations are rejected. The extended real run reaches the
+19th worker beyond the old two-second window. The worker ownership fixture,
+including inherited checkpoint limits and original AOT strlen workers,
+passes 172 checks under both ASan and TSan. Evidence is in
+`native-first-frames/` at the external Odin build root.
