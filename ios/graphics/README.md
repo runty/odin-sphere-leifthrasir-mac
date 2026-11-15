@@ -38,6 +38,52 @@ release. The saved data is backed up byte-for-byte. This is system-data
 creation/existing-mount evidence, not character-progress save/reload acceptance.
 Evidence: `save-message-startup/system-save-created/verification.json`.
 
+Physical iPad launch 24, signed `9fec3fa`, corpus `040b342f`, now verifies the
+actual displayed dialog too. Its independently decoded 1512×2316 PNG contains
+the complete readable prompt and separate Yes/No buttons, with Yes highlighted
+(962 RGB values). The pending run reaches 90 seconds / 3,905 presentations,
+joins 23 workers and passes CPU 414, memory 19, GPU readback 64 and teardown.
+The profile stays empty and owned PID 44724 is stopped/absent. Evidence:
+`display-readback-ipad/device/verification.json`. Physical touch remains open;
+the optional [device UI harness](../ui-tests/README.md) compiles and authorizes
+its runner, but automation initialization times out before any test executes.
+
+Launch 25 uses a deliberate second scripted Cross with the same game build.
+The guest terminates its completed dialog and creates its 1,156,096-byte system
+data file, 1,328-byte metadata and 61,440-byte icon on the iPad. All 26 workers
+join, cleanup passes, and the actual next gap is `0x10555960` after 54.93 seconds
+/ 1,655 presentations. The files are backed up before replacing the app.
+Launch 26 runs signed `8ccd913`, corpus `69737ea1`, 9,754 entries. It cold mounts
+the existing save read-only, opens no creation dialog and delivers no active
+input. All three files retain their exact creation hashes through quitting,
+the app update and cold startup. It joins all 25 workers without a memory
+fault and passes the same CPU/memory/GPU/cleanup checks, stopping at
+`0x105568f0` after 40.76 seconds / 773 presentations. Owned PIDs 44930 and 45137
+are stopped and absent. This is system-data persistence, not character-progress
+loading. Its frame-600 game PNG is black, so no recognizable later scene is
+claimed. Evidence: `display-readback-ipad/device-system-create/verification.json`
+and `system-cold-ipad/device/verification.json`.
+
+Six native cold-start runs grow the compiled table from 9,589 to 9,754 entries,
+using the unchanged backend and bounded speculative candidates. Each mounts
+existing system data read-only, has zero active input and joins all 25 workers
+cleanly. Candidate availability does not prove execution of every entry. A
+9,787-entry replay reaches three 120-second deadlines without a missing CPU
+block (34 workers joined). A separate five-minute-budget run gets farther and
+stops at `0x100064e0` after 221.13 seconds / 2,479 presentations, with 42 joins
+and cleanup. Its frame-2,100 PNG is black. That observed stop is lifted as a
+48-byte, unwind-bounded availability seed; execution beyond it remains open.
+The native frame-600 notice is readable, but that is not evidence for the
+different black iPad frame. Title/town/combat and character save/reload remain
+unverified. Native evidence: `display-readback/cold-discovery-verification.json`
+and `aot-cold-next/extended/report.json`.
+
+Only an allowlisted, hash-verified copy of the working Mac save is prepared for
+future disposable gameplay tests; original player files are unchanged. The
+iPhone remains away and untouched. No shader/dependency caches are reclaimed.
+
+## Initial driver experiment (historical)
+
 The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with
 only Apple/system runtime dependencies. Fresh clean iPad `b1b10cc` launches 18
 and 19 execute actual 64-word Vulkan fill, fence and mapped GPU readback on the
