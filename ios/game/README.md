@@ -1677,3 +1677,17 @@ disabled. Default generation uses frozen checkpoint metadata only; positive
 independent qualification and separate tampered-helper/live-consumer/optimized-
 Python refusals are recorded in `observed-owner-batches/factory-checks-v3/`.
 These checks do not substitute for native execution or physical gameplay.
+
+Actual 61,766-entry replay passes that table owner and reaches `0x10736887`
+in new owner `0x10736530..0x107368dc`: corpus `789d259f`, 159.424 seconds /
+3,843 presentations, 43 joins, no fault, renderer cleanup and matching original/
+copied save hashes. A fresh frame-2,600 image is still opaque black, decoded and
+visually inspected. Exact evidence is frozen in
+`inrange-jbe-discovery/checkpoint-61766/`.
+
+The committed factory then prepares, independently qualifies and publishes 62
+first-block entries in that next owner, 236 instructions, with zero skips and
+previous raw hashes unchanged. This uses the bundled pinned templates and the
+assertion-enabled helper path on a real new checkpoint. Static availability is
+61,828; its actual replay is pending. Phase `observed-owner-batches/after-61766/`,
+inputs `8135b271`, records `c2efecb5`. Recognizable mobile gameplay remains open.
