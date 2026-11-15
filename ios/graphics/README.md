@@ -1164,3 +1164,43 @@ other device apps and the away iPhone are untouched. The UIKit appearance warnin
 persists. CoreDevice's additional 272 MiB install cache is reclaimed separately.
 Private evidence: `atomic-ipad-expanded/{device,device-repeat}/verification.json`,
 `freeze.json`, both SDK archives and signed app at the external build root.
+
+
+## Expanded global-lock iPad and cold audio — 2026-11-15
+
+The latest physical iPad build is signed `e5cbb682fa0414b0184297d955afd99b04fcb3eb`,
+corpus `f55967f76653b2809cb43fba1694f85daedd5e638379463fb27ad778dba093d3`,
+60,361 entries. It uses the qualified twenty-patch backend and restored global
+runtime `3217a61a`. Both SDK game/boundary archives compile; the signed device
+consumer executes the native bulk adapters with CPU 414, memory 19 and actual
+GPU readback 64 checks passing. Newer 843 unexecuted entries stay outside this
+frozen device code set.
+
+Launches 33/34 reach the matching native gap `0x1066bf99` at 131.392/149.200
+seconds with 3,321/3,359 presentations, all 43 workers joined, no memory fault
+and complete renderer/resource/mapping/fault/window cleanup. Copy/move calls are
+546,122/3,049 and 562,223/3,049 over 435,688,705/451,208,209 bytes. Scripted active
+reads are 18/21; physical touch or a hardware controller is not qualified.
+
+Fresh UUID captures at requested frame 2,600 are independently decoded and visually
+inspected: game source 1512×850, SHA `c1bf8367d8385c43894029fdc37c4d7e7c12427e5a69ee3f0c4f66a7fa637d0d`;
+display swapchain 1512×2316, SHA `e94430a2a82e0e029c3c6be6fed07a4c4e32c1cbfc184f4b893b3db5943452fe`.
+Both are entirely opaque black. Display includes the Vulkan host overlay, not
+UIKit/iPadOS layers. Changed window orientation does not itself prove touch or
+rotation acceptance. No recognizable title/town/combat is claimed.
+
+The cold run captures 57,163,776 bytes / 148.864 seconds of converted 48-kHz
+stereo float32 PCM: zero nonfinite, nonzero or out-of-unit samples. It is silent.
+Its full output log records three empty-queue observations and max observed gap
+38.81 ms; these are producer observations, not proven audible glitch counts.
+There is no listening or nonempty-audio acceptance.
+
+All three existing system-save creation hashes survive update/run/quit/cold
+relaunch, with no character-progress load claim. Original Mac save hashes remain
+exact. Exact owned PIDs 49979/50093 are stopped and absence verified; other apps
+and the explicitly excluded phone are untouched. UIKit still emits unbalanced
+appearance-transition warnings. CoreDevice's 24 GiB host install-delta cache is
+reclaimed without touching device apps. Private evidence:
+`inrange-ipad/{physical-verification.json,device/verification.json,
+device-repeat/verification.json,device-repeat/audio-verification.json}`,
+frozen both-SDK archives and signed app at the external Odin build root.

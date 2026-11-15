@@ -12,7 +12,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
 | Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. Reused OpenCrown MOVMSKPS/PD semantics passed 38,400 comparisons. Its ROUND patch passed 13,824,000 native comparisons and the separate suppression/fault checks in OpenCrown's reference harness with Odin's backend. | The native original-game replay passes VROUNDSS after fixing initial MXCSR/x87 controls and worker inheritance. Continue CPU/ABI qualification through combat. |
-| Mobile startup | Physical iPad `ac26c94`, corpus `fd56f65f` (53,312 entries), twenty-patch backend. Cold launches 31/32 reach `0x105b4083` after 155.918/159.634 seconds and 2,761/2,923 presentations; CPU 414, memory 19, GPU readback 64, all 42 joins and cleanup pass. System-save hashes survive update/quit/cold relaunch. Fresh frame 2,600 is black. The phone retains `460ecdb` while away and is excluded. | Recognizable title/town/combat, nonempty audio, physical touch/controller gameplay and sustained pacing. |
+| Mobile startup | Physical iPad `e5cbb68`, corpus `f55967f7` (60,361 entries), twenty-patch backend and restored global lock. Cold launches 33/34 reach `0x1066bf99` after 131.392/149.200 seconds / 3,321/3,359 presentations; CPU 414, memory 19, GPU 64, 43 joins and cleanup pass. Saves survive update/quit/relaunch. Fresh game/display captures remain black; 148.864 seconds of PCM is silent. The stripe candidate is not adopted. The phone is explicitly excluded. | Recognizable title/town/combat, nonempty audio, physical touch/controller gameplay and sustained pacing. |
 | Mobile storage and lifecycle | The guest creates three system-save files on iPad; their exact hashes survive quitting, an app update and cold read-only mounting. Native copied-player-save discovery reaches 42 joined workers and later missing CPU blocks. | Character-progress save/load, interruption recovery, and suspend/resume during gameplay. |
 | Mobile engineering harness | Both SDK renderer/game/boundary archives compile. Native AOT background event pumping matches UIKit; 109 native bridge checks pass. The optional iPad UI-test runner compiles/signs but times out enabling automation before any test runs. | Physical touch acceptance, Simulator GPU execution and remaining UIKit appearance warnings. |
 
@@ -685,3 +685,20 @@ is implied by publication. Runtime branches and strict proof policy are unchange
 An isolated Mac launcher copy opens/shuts down and preserves its copied/original
 profile hashes, but CUA returns `cgWindowNotFound` before UI inspection or input.
 Mouse Play acceptance therefore remains open. The production bundle is unchanged.
+
+
+## Latest physical startup and table expansion — 2026-11-15
+
+The frozen 60,361-entry global-lock checkpoint is installed and verified across
+an update and two physical iPad cold starts. New copy/move adapters execute in
+the actual guest. Exact save hashes, CPU/memory/GPU checks, 43 joins and cleanup
+pass. Later game and display-swapchain pixels remain black and recorded PCM is
+silent; no playable-scene or audible-output acceptance is claimed.
+[Exact hardware evidence](../ios/graphics/README.md#expanded-global-lock-ipad-and-cold-audio--2026-11-15).
+
+Original-byte in-range JBE analysis recovers the repeated missing cases without
+changing runtime conditions. A wider locally validated cohort publishes 843 new
+entries and preserves three duplicates, with unproved global guard/CFG properties
+explicit. Native availability is now 61,204; new replay is independent evidence.
+The default lock is restored after the stripe candidate did not reach the baseline
+within its budget. Original player data, production Mac and the iPhone are untouched.

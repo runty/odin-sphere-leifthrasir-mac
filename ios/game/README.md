@@ -7,28 +7,37 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The current physical iPad checkpoint is signed `ac26c94`, corpus `fd56f65f`,
-with 53,312 entries and the twenty-patch backend. Launches 31/32 pass CPU 414,
-memory 19 and GPU readback 64, join all 42 workers and complete renderer cleanup.
-They reach the same actual block `0x105b4083` as the matching native checkpoint,
-after 155.918/159.634 seconds and 2,761/2,923 presentations. All three system-save
-creation hashes survive the update, quitting and the same-build cold relaunch.
-This does not verify loading character progress. Scripted input has 20/14 active
-reads; physical touch/controller gameplay remains unverified. Launch 31's fresh
-physical frame-2,600 game readback is opaque black; launch 32 requests no snapshot.
-UIKit appearance-transition warnings remain. Both owned PIDs are stopped/absent;
-the other probe and away iPhone are untouched.
-[Physical evidence](../graphics/README.md#expanded-physical-startup-and-cold-repeat--2026-11-15).
+The current physical iPad checkpoint is signed `e5cbb68`, corpus `f55967f7`,
+with 60,361 entries, the twenty-patch backend and restored recursive global
+memory locking. Launches 33/34 pass CPU 414, memory 19 and GPU readback 64,
+join all 43 workers and complete cleanup without a memory fault. They reach
+`0x1066bf99`, matching the executed native checkpoint, after 131.392/149.200
+seconds and 3,321/3,359 presentations. The actual device executes the new native
+copy/move adapters; this is stronger evidence than their SDK fixture compilation.
 
-The matching native checkpoint reaches `0x105b4083` at 155.485 seconds, with no
-memory fault and 42 joined workers. It passes the earlier `0x105c04b1` case and
-later demands. The requested frame 3,200 is not reached, so those expanded native
-attempts have no fresh image. Both mobile SDK game/boundary archives are built
-and the device consumer is signed from the frozen 53,312-entry checkpoint.
-A further 7,003 original-byte candidates are published separately for native
-compilation/replay; their availability is not execution evidence or an app update.
-Title/town/combat, nonempty audio, physical input and character-progress save/load
-acceptance remain open. Static availability never means every entry executed.
+All three system-save creation hashes survive update, quitting and the same-build
+cold relaunch. Character-progress save/load remains unverified. Scripted active
+reads are 18/21, not physical touch/controller acceptance. Fresh game and display-
+swapchain captures at requested frame 2,600 are opaque black (1512×850 and
+1512×2316); the display capture includes the Vulkan host overlay, not iPadOS or
+UIKit layers. The cold run captures 57,163,776 bytes / 148.864 seconds of converted
+stereo float PCM: entirely silent and finite. Three sampled empty-queue observations
+are not three proven audible glitches. Audible output stays unqualified.
+[Physical results and limits](../graphics/README.md#expanded-global-lock-ipad-and-cold-audio--2026-11-15).
+
+Both SDK game/boundary archives compile from the frozen 60,361-entry checkpoint;
+843 newer unexecuted entries are deliberately excluded from that device build.
+The stripe experiment is not adopted after its deadline-only game result; its
+separate worktree/reports remain preserved. Owned device PIDs 49979/50093 are
+stopped and absent, other apps are untouched and the iPhone is excluded by the
+player's explicit instruction. UIKit appearance-transition warnings remain.
+
+Separately, audited local in-range JBE table candidates grow native availability
+to 61,204 entries. Their full guard/index/CFG proofs remain explicitly absent;
+no runtime branch policy changes. Wider native replay uses additional diagnostic
+skip/confirm presses on disposable data and a new frame-4,000 capture path. Its
+outcomes require separate execution/image verification. Recognizable title/town/
+combat, nonempty game audio, physical input and character progress remain open.
 
 ### Earlier initial-notice checkpoint
 
@@ -1530,9 +1539,11 @@ A read-only inventory of the same local layout recognizes 132 original patterns;
 101 tables in 97 owners pass local decode/overlap/case-reachability checks.
 There are 856 unique table targets, 846 absent from the frozen 60,358-PC baseline.
 These are local candidates with explicitly unproved global guard/index/CFG
-properties, not whole-game coverage or execution. Bounded offline preparation is
-separate from the active native producer; publishing waits for a completed idle
-checkpoint and revalidates immutable image/table/backend/record inputs.
+properties, not whole-game coverage or execution. Offline preparation accepts all
+846 with zero skips; at a completed idle checkpoint, recovery/raw/ledger/backend
+publication adds 843 and preserves three byte-identical duplicates. Every prior
+raw hash remains unchanged, growing availability to 61,204. Actual replay remains
+separate from publication. No original index or runtime branch is changed.
 Evidence: `repeated-owner-analysis/{jbe-seeds,inrange-inventory,inrange-seeds}`
 and `inrange-jbe-discovery/` at the external build root.
 
@@ -1541,3 +1552,12 @@ procedure at this address; its individual-instruction operation is unavailable.
 That negative/incomplete evidence is saved and the session is closed. The positive
 code/table findings above come from the existing checked XED decoder and original
 ELF/file bytes, without inferring a function name from the unavailable decompiler.
+
+
+The restored-global 60,361-entry native replay actually passes the three recovered
+cases and reaches `0x1066bf99` after 204.104 seconds / 3,647 presentations, all
+43 workers joined, no memory fault and full cleanup. A fresh frame-3,200 readback
+is opaque black; original and copied-save hashes match. That next actual demand
+is independently present in the prepared wider JBE cohort. Evidence:
+`inrange-jbe-discovery/checkpoint-60361/verification.json`. It is a startup
+checkpoint, not a title/gameplay acceptance result.
