@@ -174,7 +174,7 @@ if a.gpu_build:
     if "arm64" not in subprocess.check_output(["lipo","-archs",driver],text=True).split():
         p.error("GPU discovery needs a native arm64 driver")
     gpu_env = dict(os.environ,VK_DRIVER_FILES=str(driver_manifest),VK_ICD_FILENAMES=str(driver_manifest),SDL_VULKAN_LIBRARY=str(loader))
-    source_paths += (repo / "CMakeLists.txt", repo / "gpu/CMakeLists.txt",repo / "cmake/OslPinnedSources.cmake",
+    source_paths += (repo / "src/runtime_audio.c",repo / "src/runtime_audio_host.h",repo / "ios/services/guest_audio.h",repo / "CMakeLists.txt", repo / "gpu/CMakeLists.txt",repo / "cmake/OslPinnedSources.cmake",
                      repo / "src/oslgpu.h",repo / "ios/graphics/aot-frontend.cpp",repo / "ios/graphics/bridge-checks.h",repo / "ios/graphics/guest-gpu.h",repo / "ios/graphics/gnm-shader-packets.h",repo / "ios/graphics/gnm-submissions.h",repo / "ios/graphics/guest-presentation.h",repo / "ios/graphics/native-wait.h")
     source_paths += tuple(path for directory in (repo / "gpu/shim",repo / "gpu/shadps4")
                           for path in sorted(directory.rglob("*")) if path.is_file() and path.suffix in (".cpp",".h",".c",".comp",".frag",".vert",".glsl",".hlsl",".cmake"))

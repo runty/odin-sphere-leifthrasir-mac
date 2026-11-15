@@ -1,3 +1,4 @@
+#include "../services/guest_audio.h"
 // UIKit-facing ownership boundary; all guest pointers use the shared adapter.
 #include "guest-session.h"
 #include "guest-gpu.h"
@@ -91,6 +92,7 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
     if(!session || !path || session->started.exchange(true))return invalid;
     session->running=true;
     try {
+        GuestAudio audio;
         MobileGpuServices services{session,
             [](void *opaque,const char *name,const char *nid,const uint64_t args[6],uint64_t stack,Memory *memory,uint64_t *result,GuestWaitScope wait){
                 auto &s=*static_cast<OslGuestSession *>(opaque);
@@ -103,7 +105,9 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
                 }
                 return handled;
             },[](void *opaque){NativeGpu::finish(&static_cast<OslGuestSession *>(opaque)->gpu);},&session->stop};
+    services.audio_context=&audio;services.audio_call=GuestAudio::call;
         const std::string guest=osl_mobile_game_report_with_gpu(path,&services);
+        audio.finish();
         const auto &gpu=session->gpu;
         const bool unmapped=gpu.observed_mapping && !oslgpu_guest_range_mapped(gpu.observed_mapping,1);
         const bool released=osl_aot_memory_allocated()==0 && runtime_eventflag_live_count()==0;

@@ -76,7 +76,7 @@ if(APPLE AND OSL_BUILD_ARM64_GPU_PROBE)
     set(OSL_AOT_ROOT "" CACHE PATH "External prepared AOT startup directory")
     set(OSL_REMILL_INCLUDE "" CACHE PATH "Isolated Remill include directory")
     if(OSL_AOT_ROOT AND OSL_REMILL_INCLUDE)
-        add_executable(osl-aot-gpu-probe EXCLUDE_FROM_ALL ios/graphics/aot-frontend.cpp ios/cpu/runtime.cpp)
+        add_executable(osl-aot-gpu-probe EXCLUDE_FROM_ALL ios/graphics/aot-frontend.cpp ios/cpu/runtime.cpp src/runtime_audio.c)
         set_target_properties(osl-aot-gpu-probe PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
         target_include_directories(osl-aot-gpu-probe PRIVATE ios/cpu ${OSL_REMILL_INCLUDE} ${OSL_AOT_ROOT} src gpu/shim gpu/shadps4)
         target_link_libraries(osl-aot-gpu-probe PRIVATE oslgpu ${OSL_AOT_ROOT}/mac/libodin-startup.a

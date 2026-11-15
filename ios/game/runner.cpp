@@ -78,7 +78,7 @@ struct Session {
     std::unique_ptr<FILE,TraceCloser> dispatch_trace;
 #endif
     const MobileGpuServices *gpu=nullptr;
-    unsigned gpu_service_calls=0;
+    unsigned gpu_service_calls=0, audio_service_calls=0;
     explicit Session(const MobileGpuServices *renderer=nullptr)
         : gpu(renderer), stopping(renderer && renderer->stop_requested ? *renderer->stop_requested : local_stopping) {
         memory.external_pointer = DirectMemory::pointer;
@@ -301,6 +301,10 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         const uint64_t args[]={s.gpr.rdi.qword,s.gpr.rsi.qword,s.gpr.rdx.qword,
                                s.gpr.rcx.qword,s.gpr.r8.qword,s.gpr.r9.qword};
         uint64_t result=0;
+        if (session.gpu->audio_call && session.gpu->audio_call(session.gpu->audio_context,name,args,*m,result,scope.wait())) {
+            ++session.audio_service_calls;
+            return m->fault.empty() ? hostReturn(s,m,result) : m;
+        }
         if (session.gpu->call(session.gpu->context,name,import.nid,args,s.gpr.rsp.qword,m,&result,scope.wait())) {
             ++session.gpu_service_calls;
             return m->fault.empty() ? hostReturn(s,m,result) : m;
@@ -1107,7 +1111,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"primary_tls_reserved_bytes\":" << session->primary_storage->allocatedBytes()
         << ",\"condition_variables\":" << session->conditions.count()
         << ",\"gpu_adapter_enabled\":" << (session->gpu ? "true" : "false")
-        << ",\"gpu_service_calls\":" << session->gpu_service_calls
+        << ",\"gpu_service_calls\":" << session->gpu_service_calls << ",\"audio_service_calls\":" << session->audio_service_calls
         << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
         << ",\"network_connected\":false,\"psn_signed_in\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")

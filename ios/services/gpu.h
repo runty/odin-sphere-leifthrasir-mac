@@ -12,5 +12,7 @@ struct MobileGpuServices {
     // Optional frontend-owned cancellation. Its lifetime includes the whole
     // report; every guest CPU and bounded host wait observes the same flag.
     std::atomic<bool> *stop_requested=nullptr;
+    void *audio_context=nullptr;
+    bool (*audio_call)(void *,const char *,const uint64_t[6],Memory &,uint64_t &,GuestWaitScope)=nullptr;
 };
 extern "C" const char *osl_mobile_game_report_with_gpu(const char *,const MobileGpuServices *);

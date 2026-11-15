@@ -1,3 +1,4 @@
+#include "../services/guest_audio.h"
 #include "../services/clock.h"
 // Real AOT guest + native arm64 renderer. This bounded integration executable
 // deliberately supports only the VideoOut calls whose marshalling is defined.
@@ -60,7 +61,9 @@ int main(int argc,char **argv) {
     oslgpu_register_kernel();
     if(oslgpu_init(&config)) return 4;
     NativeGpu context;
+    GuestAudio audio;
     MobileGpuServices services{&context,NativeGpu::call,NativeGpu::finish};
+    services.audio_context=&audio;services.audio_call=GuestAudio::call;
     std::thread guest([&] {
         if(check_bridge) {
             const unsigned count=bridge_checks();checked=true;
@@ -68,6 +71,7 @@ int main(int argc,char **argv) {
             runtime_log_flush();SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);return;
         }
         const std::string report=osl_mobile_game_report_with_gpu(image.c_str(),&services);
+        audio.finish();
         std::printf("OSL_AOT_GPU_GUEST:%s\n",report.c_str());
         const bool unmapped=context.observed_mapping && !oslgpu_guest_range_mapped(context.observed_mapping,1);
         const bool released=osl_aot_memory_allocated()==0 && runtime_eventflag_live_count()==0;

@@ -16,7 +16,7 @@ if digest(deps_path)!=renderer['dependency_manifest_sha256']:p.error('Renderer d
 backend=state['trace_inputs']
 if subprocess.check_output(['git','-C',a.remill/'remill','rev-parse','HEAD'],text=True).strip()!=backend['remill_commit']:p.error('Backend revision mismatch')
 if digest(a.remill/'remill-build/bin/lift/remill-lift-23')!=backend['lifter_sha256'] or digest(a.remill/'remill-build/lib/Arch/X86/Runtime/amd64_avx.bc')!=backend['semantics_sha256']:p.error('Backend binary mismatch')
-sources={name:digest(repo/name) for name in ('ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h','ios/graphics/guest-presentation.h','ios/graphics/native-wait.h','ios/services/gpu.h','ios/cpu/runtime.h','src/host_darwin.h','src/oslgpu.h')}
+sources={name:digest(repo/name) for name in ('ios/services/guest_audio.h','src/runtime_audio.c','src/runtime_audio_host.h','ios/graphics/guest-session.cpp','ios/graphics/guest-session.h','ios/graphics/guest-gpu.h','ios/graphics/gnm-shader-packets.h','ios/graphics/gnm-submissions.h','ios/graphics/guest-presentation.h','ios/graphics/native-wait.h','ios/services/gpu.h','ios/cpu/runtime.h','src/host_darwin.h','src/oslgpu.h')}
 layout_hash=digest(game/'image-layout.h');abi_hash=digest(a.remill/'remill/include/remill/Arch/X86/Runtime/State.h')
 def current():
  if state_path.read_bytes()!=state_bytes or renderer_path.read_bytes()!=renderer_bytes or deps_path.read_bytes()!=deps_bytes:raise RuntimeError('Input checkpoint changed during build')
@@ -33,11 +33,20 @@ command=['xcrun','clang++','-target',target,'-isysroot',sdk,'-std=c++23','-O2','
 for include in (repo/'src',repo/'gpu/shim',repo/'gpu/shadps4',a.remill/'remill/include',game,prefix/'include',a.headers):command+=['-I'+str(include)]
 command+=['-c',repo/'ios/graphics/guest-session.cpp','-o',obj]
 with (root/('compile-'+a.sdk+'.log')).open('w') as log:subprocess.run(list(map(str,command)),stdout=log,stderr=subprocess.STDOUT,check=True)
-raw=subprocess.check_output(['xcrun','llvm-objdump','--macho','--private-headers',obj],text=True)
+# Compile against the same SDK-specific SDL prefix used by the renderer.
+prefix_option=next(option for option in renderer['options'] if option.startswith('-DCMAKE_PREFIX_PATH='))
+sdl_prefix,=[Path(value) for value in prefix_option.split('=',1)[1].split(';') if (Path(value)/'include/SDL3/SDL.h').is_file()]
+if digest(sdl_prefix.parent/('inputs-'+a.sdk+'.json'))!=renderer['sdl_manifest_sha256']:
+    raise RuntimeError('SDL dependency differs from renderer')
+audio=root/('runtime-audio-'+a.sdk+'.o')
+with (root/('audio-'+a.sdk+'.log')).open('w') as log:
+    subprocess.run(['xcrun','clang','-target',target,'-isysroot',sdk,'-O2','-std=gnu11',
+                    '-I'+str(sdl_prefix/'include'),'-c',repo/'src/runtime_audio.c','-o',audio],stdout=log,stderr=subprocess.STDOUT,check=True)
+raw=subprocess.check_output(['xcrun','llvm-objdump','--macho','--private-headers',obj,audio],text=True)
 platforms=re.findall(r'^\s*platform\s+(\S+)',raw,re.M);wanted='iossimulator' if a.sdk=='iphonesimulator' else 'ios'
-if platforms!=[wanted]:raise RuntimeError('Guest frontend object SDK mismatch')
+if platforms!=[wanted,wanted]:raise RuntimeError('Guest frontend object SDK mismatch')
 archive=root/('libodin-gpu-guest-'+a.sdk+'.a');temporary=archive.with_suffix('.new.a');temporary.unlink(missing_ok=True)
-subprocess.run(['xcrun','ar','rcs',str(temporary),str(obj)],check=True);current();temporary.replace(archive)
+subprocess.run(['xcrun','ar','rcs',str(temporary),str(obj),str(audio)],check=True);current();temporary.replace(archive)
 manifest={'platform':a.sdk,'corpus_sha256':state['corpus_sha256'],'trace_inputs':backend,'sources':sources,'image_layout_sha256':layout_hash,
  'state_header_sha256':abi_hash,'renderer_manifest_sha256':digest(renderer_path),'dependency_manifest_sha256':digest(deps_path),
  'archive':str(archive),'archive_sha256':digest(archive),'object_platform':wanted,'builder_sha256':digest(Path(__file__)),
