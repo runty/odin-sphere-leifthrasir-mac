@@ -47,6 +47,8 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic) BOOL diagnosticStopRequested;
 @property(nonatomic) BOOL testGate;
 @property(nonatomic) BOOL testGateReported;
+@property(nonatomic,copy) NSString *snapshotPath;
+@property(nonatomic,copy) NSString *previousSnapshotPath;
 @end
 static OdinRendererSession *activeSession;
 @implementation OdinRendererSession
@@ -82,6 +84,10 @@ static OdinRendererSession *activeSession;
     self.inactiveObserver=nil;self.activeObserver=nil;
     const uint64_t presented=oslgpu_presented_frames();
     const int stopped=oslgpu_shutdown_main_thread();
+    if(self.snapshotPath) {
+        if(self.previousSnapshotPath)setenv("OSL_FRAME_SNAPSHOT_PATH",self.previousSnapshotPath.fileSystemRepresentation,1);
+        else unsetenv("OSL_FRAME_SNAPSHOT_PATH");
+    }
     const bool faultsRestored=!self.faultsInstalled || osl_guest_session_faults_end(guestContext);
     const bool contextReleased=!guestContext || osl_guest_session_destroy(guestContext);
     guestContext=nullptr;
@@ -103,6 +109,10 @@ static OdinRendererSession *activeSession;
         @"diagnostic_gate_requested":@(self.testGate),
         @"guest_budget_ms":@(self.guestBudgetMs),
         @"game_executed":@(executed),@"game_frames":@NO,@"stage":@"stopped"} mutableCopy];
+    if(self.snapshotPath) {
+        report[@"frame_snapshot_name"]=self.snapshotPath.lastPathComponent;
+        report[@"frame_snapshot_exists"]=@([NSFileManager.defaultManager fileExistsAtPath:self.snapshotPath]);
+    }
     if(self.pendingError)report[@"error"]=self.pendingError;
     [self persist:report];
     void (^completion)(NSDictionary *)=self.completion;self.completion=nil;
@@ -175,6 +185,12 @@ static OdinRendererSession *activeSession;
     self.faultsInstalled=YES;
     if(self.image && self.testGate && !osl_guest_session_test_gate_after_buffers(guestContext)){[self finish:@"Cannot configure diagnostic cancellation gate"];return;}
     [self persist:@{@"stage":@"starting renderer",@"guest_requested":@(self.image!=nil),@"sdk":@(self.sdk),@"game_frames":@NO}];
+    const char *capture=getenv("OSL_CAPTURE_GAME_FRAME");
+    if(self.image && capture && !std::strcmp(capture,"1")) {
+        if(const char *previous=getenv("OSL_FRAME_SNAPSHOT_PATH"))self.previousSnapshotPath=[NSString stringWithUTF8String:previous];
+        self.snapshotPath=[self.profile stringByAppendingPathComponent:[NSString stringWithFormat:@"game-frame-%@.png",NSUUID.UUID.UUIDString]];
+        setenv("OSL_FRAME_SNAPSHOT_PATH",self.snapshotPath.fileSystemRepresentation,1);
+    }
     SDL_SetMainReady();oslgpu_register_kernel();
     NSString *settings=[self.profile stringByAppendingPathComponent:@"osl.ini"];
     OslGpuConfig config{"Odin Sphere Bounded Startup",self.image?"CUSA05083":"ODIN_IOS_RENDERER_CHECK",self.profile.fileSystemRepresentation,settings.fileSystemRepresentation,self.sdk,0,960,540};

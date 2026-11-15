@@ -15,6 +15,7 @@
 #include "osl_overlay.h"
 #include "osl_settings.h"
 #include "osl_graphics.h"
+#include "osl_png.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/texture_cache/image.h"
@@ -44,6 +45,71 @@
 #endif
 
 namespace Vulkan {
+
+namespace {
+// This buffer is recorded on the present queue, while its source frame is
+// still owned by Present(). It is retired before free_frame() allows reuse.
+struct FrameReadback {
+    VmaAllocator allocator{};
+    VkBuffer buffer{};
+    VmaAllocation allocation{};
+    VmaAllocationInfo mapping{};
+    size_t bytes{};
+    bool bgra{};
+    ~FrameReadback() {
+        if (buffer) vmaDestroyBuffer(allocator, buffer, allocation);
+    }
+};
+
+std::unique_ptr<FrameReadback> RecordFrameReadback(const Instance& instance,
+        const Frame& frame, vk::Format format, vk::CommandBuffer commands) {
+    const bool bgra = format == vk::Format::eB8G8R8A8Unorm || format == vk::Format::eB8G8R8A8Srgb;
+    const bool rgba = format == vk::Format::eR8G8B8A8Unorm || format == vk::Format::eR8G8B8A8Srgb;
+    if ((!bgra && !rgba) || frame.is_hdr || !frame.width || !frame.height ||
+        frame.width > 4096 || frame.height > 4096) {
+        std::printf("Frame snapshot: unsupported SDR format or dimensions\n");
+        return {};
+    }
+    auto result = std::make_unique<FrameReadback>();
+    result->allocator = instance.GetAllocator();
+    result->bytes = size_t(frame.width) * frame.height * 4;
+    result->bgra = bgra;
+    const VkBufferCreateInfo buffer_info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = result->bytes,
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    const VmaAllocationCreateInfo allocation_info{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+    };
+    if (vmaCreateBuffer(result->allocator, &buffer_info, &allocation_info,
+            &result->buffer, &result->allocation, &result->mapping) != VK_SUCCESS ||
+        !result->mapping.pMappedData) {
+        std::printf("Frame snapshot: cannot allocate mapped transfer buffer\n");
+        return {};
+    }
+    const vk::BufferImageCopy region{
+        .imageSubresource{.aspectMask = vk::ImageAspectFlagBits::eColor, .layerCount = 1},
+        .imageExtent{frame.width, frame.height, 1},
+    };
+    commands.copyImageToBuffer(frame.image, vk::ImageLayout::eTransferSrcOptimal,
+                              vk::Buffer{result->buffer}, region);
+    const vk::BufferMemoryBarrier host_read{
+        .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+        .dstAccessMask = vk::AccessFlagBits::eHostRead,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = vk::Buffer{result->buffer},
+        .size = result->bytes,
+    };
+    commands.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                             vk::PipelineStageFlagBits::eHost, {}, {}, host_read, {});
+    return result;
+}
+} // namespace
 
 bool CanBlitToSwapchain(const vk::PhysicalDevice physical_device, vk::Format format) {
     const vk::FormatProperties props{physical_device.getFormatProperties(format)};
@@ -134,6 +200,9 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
       swapchain{instance, window}, runtime{instance, draw_scheduler},
       rasterizer{std::make_unique<Rasterizer>(instance, draw_scheduler, runtime, liverpool)},
       texture_cache{rasterizer->GetTextureCache()} {
+    const char* snapshot_path = std::getenv("OSL_FRAME_SNAPSHOT_PATH");
+    snapshot = OslFrameSnapshot::Parse(snapshot_path, std::getenv("OSL_FRAME_SNAPSHOT_AT"));
+    if (snapshot_path && !snapshot) std::printf("Frame snapshot: invalid request; disabled\n");
     const u32 num_images = swapchain.GetImageCount();
     const vk::Device device = instance.GetDevice();
 
@@ -621,6 +690,9 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     const vk::Image swapchain_image = swapchain.Image();
     auto& scheduler = present_scheduler;
     const auto cmdbuf = scheduler.CommandBuffer();
+    const bool capture = snapshot && !is_reusing_frame && is_game_frame &&
+                         ++snapshot_frames == snapshot->frame;
+    std::unique_ptr<FrameReadback> readback;
 
     if (EmulatorSettings.IsVkHostMarkersEnabled()) {
         cmdbuf.beginDebugUtilsLabelEXT(vk::DebugUtilsLabelEXT{
@@ -690,6 +762,9 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
         }
         cmdbuf.blitImage(frame->image, vk::ImageLayout::eTransferSrcOptimal, swapchain_image,
                          vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
+        if (capture) {
+            readback = RecordFrameReadback(instance, *frame, swapchain.GetSurfaceFormat().format, cmdbuf);
+        }
         // The runtime UI (dialogs, loading note, frame counter) over the frame, at display resolution.
         const bool ui = OslOverlay::Visible();
         const std::array post_barriers{
@@ -750,6 +825,29 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     info.AddSignal(swapchain.GetPresentReadySemaphore());
     info.AddSignal(frame->present_done);
     scheduler.Flush(info);
+
+    if (readback) {
+        // The fence includes both the source-frame semaphore wait and the
+        // image-to-buffer copy. Never map pixels or release the allocation early.
+        const auto done = instance.GetDevice().waitForFences(frame->present_done, false,
+                                                           std::numeric_limits<u64>::max());
+        ASSERT_MSG(done == vk::Result::eSuccess, "Frame snapshot fence wait failed: {}", vk::to_string(done));
+        if (done == vk::Result::eSuccess &&
+            vmaInvalidateAllocation(readback->allocator, readback->allocation, 0, VK_WHOLE_SIZE) == VK_SUCCESS) {
+            std::vector<unsigned char> pixels(readback->bytes);
+            std::memcpy(pixels.data(), readback->mapping.pMappedData, pixels.size());
+            // The displayed swapchain is opaque; guest alpha is not display opacity.
+            for (size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
+            const bool written = OslPng::WriteRgba(snapshot->path.c_str(), frame->width, frame->height,
+                                                  pixels.data(), pixels.size(), readback->bgra);
+            std::printf("Frame snapshot: %s %s (%ux%u, %s, opaque display alpha)\n",
+                        written ? "wrote" : "cannot write", snapshot->path.c_str(),
+                        frame->width, frame->height, readback->bgra ? "BGRA8" : "RGBA8");
+        } else {
+            std::printf("Frame snapshot: GPU completion/invalidation failed; no PNG written\n");
+        }
+        readback.reset();
+    }
 
     // Present to swapchain. Recreation takes the submit lock itself (Swapchain::Destroy).
     bool presented;

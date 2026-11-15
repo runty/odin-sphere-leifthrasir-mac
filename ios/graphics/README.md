@@ -875,3 +875,40 @@ presented frame is still owned, before returning it to the free queue; wait
 for GPU completion and handle format/row order explicitly. Verify actual pixels
 and inspect the resulting image before calling a scene recognizable. The
 existing command-capture path remains a separate diagnostic.
+
+## One-shot pixel readback — 2026-11-15
+
+`OSL_FRAME_SNAPSHOT_PATH=/absolute/private/frame.png` requests one SDR PNG
+from the Vulkan presenter. `OSL_FRAME_SNAPSHOT_AT` selects a fresh game-frame
+number (1–1,000,000; default 1,000). Both are developer diagnostics; absent a
+path, no transfer buffer, copy or fence wait is added. Invalid requests disable
+capture. HDR/non-8-bit or over-4096-side images reject rather than reinterpret.
+
+The presenter copies its still-owned frame in transfer-source layout, submits
+with that frame's ready-semaphore wait, waits for its presentation fence and
+invalidates mapped memory before encoding. It retires the buffer before the
+frame returns to the free queue. PNG rows retain frame order; RGBA/BGRA are
+explicit, and displayed alpha is made opaque to match presentation. This
+adapts OpenCrown `9ca8945c`'s readback-before-release approach, using Odin's
+existing Vulkan/VMA and libpng rather than OpenCrown's SDL render backend.
+
+For the UIKit engineering probe, `OSL_CAPTURE_GAME_FRAME=1` chooses a unique
+PNG under `Documents/RendererDiagnostics`, reports `frame_snapshot_name` and
+`frame_snapshot_exists`, and restores any prior path environment at teardown.
+It remains separate from `game_frames`/playability acceptance. No screenshot
+permission or desktop window is needed for this renderer readback.
+
+`test-frame-snapshot.py --root NEW_EXTERNAL_DIRECTORY` passes 32 checks both
+normally and under ASan/UBSan, including invalid dimensions/byte counts/path
+and frame bounds. An independent PNG decoder verifies exact channels, alpha
+and top-to-bottom order for RGBA and BGRA outputs. Those are host encoding/
+configuration checks; they do not replace actual GPU execution.
+
+The real native 9,585-entry run then captures a 960×540 frame with 817 RGB
+values, upright readable text: **“There is no save data.”** This is recognizable
+initial guest UI, not an in-game scene. It stops at its 120-second engineering
+deadline after 1,552 presentations with all 23 workers joined, no memory fault
+and cleanup. Evidence is `native-first-frames/frame-snapshot-native/verification.json`.
+The pixel dimensions follow the presenter's actual window-sized frame, not the
+1920×1080 guest render target from the command captures. Both SDK renderer
+archives compile; physical pixel readback is the next check.

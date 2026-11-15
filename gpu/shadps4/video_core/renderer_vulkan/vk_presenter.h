@@ -6,6 +6,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include "osl_frame_snapshot.h"
 
 #include "core/libraries/videoout/buffer.h"
 #include "video_core/renderer_vulkan/host_passes/fsr_pass.h"
@@ -139,6 +140,8 @@ private:
     std::condition_variable free_cv;
     std::condition_variable_any frame_cv;
     std::vector<VAddr> vo_buffers_addr;
+    std::optional<OslFrameSnapshot::Request> snapshot;
+    u64 snapshot_frames{};
 };
 
 } // namespace Vulkan

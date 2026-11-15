@@ -17,5 +17,9 @@ struct Image {
 bool DecodeRgba(const unsigned char* data, size_t size, Image& out);
 /// Reads the file and decodes it; false when it is missing or bad.
 bool LoadRgba(const char* path, Image& out);
+/// Writes tightly packed top-to-bottom 8-bit RGBA/BGRA pixels. Dimensions and
+/// byte count are checked before opening the destination; no HDR conversion.
+bool WriteRgba(const char* path, unsigned width, unsigned height,
+               const unsigned char* pixels, size_t size, bool bgra = false);
 
 } // namespace OslPng

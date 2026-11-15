@@ -53,4 +53,20 @@ bool LoadRgba(const char* path, Image& out) {
     return DecodeRgba(bytes.data(), bytes.size(), out);
 }
 
+bool WriteRgba(const char* path, unsigned width, unsigned height,
+               const unsigned char* pixels, size_t size, bool bgra) {
+    if (!path || !*path || !pixels || !width || !height ||
+        width > kMaxSide || height > kMaxSide || size != size_t(width) * height * 4) {
+        return false;
+    }
+    png_image image{};
+    image.version = PNG_IMAGE_VERSION;
+    image.width = width;
+    image.height = height;
+    image.format = bgra ? PNG_FORMAT_BGRA : PNG_FORMAT_RGBA;
+    const bool written = png_image_write_to_file(&image, path, 0, pixels, 0, nullptr) != 0;
+    png_image_free(&image);
+    return written;
+}
+
 } // namespace OslPng
