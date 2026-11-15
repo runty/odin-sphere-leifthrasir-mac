@@ -996,7 +996,7 @@ Discovery now accepts `--jobs 1..32`, default four, for independent seed lifts
 and guarded object compilation. Ordered results preserve archive order. Each
 compiler writes a temporary object before publishing it and its cache stamp.
 The shared seed decoder is built before starting concurrent lifts. Serial and
-four-worker authored-seed runs produced identical trace/object hashes and the
+four-worker four-entry seed runs produced identical trace/object hashes and the
 same first missing block. A concurrent provider edit was rejected before a
 mixed checkpoint could publish. Evidence is in `parallel-discovery/`.
 
