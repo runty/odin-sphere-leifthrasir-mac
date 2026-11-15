@@ -7,29 +7,25 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The current physical iPad checkpoint is signed `94a5cd7`, corpus `ce2f4220`,
-with 9,920 entries. It creates then cold mounts system data, preserving all
-three creation hashes through an app update and repeat runs. Launches 27/28
-reach `0x105bc240` with 42 joined workers, no memory fault, CPU 414, memory 19,
-GPU readback 64 and complete renderer cleanup. The earlier readable save prompt
-is verified by actual swapchain pixels. Later game captures remain black.
-Launch 28's 158.987-second converted PCM capture is entirely silent, with five
-sampled empty-queue observations; music/voice output remains unqualified.
-The iPhone is away and untouched. [Physical evidence and limits](../graphics/README.md).
+The current physical iPad checkpoint is signed `6804c65`, corpus `1c976ba8`,
+with 42,107 entries and the twenty-patch backend. Launches 29/30 pass CPU 414,
+memory 19 and GPU readback 64, join all 42 workers and complete renderer cleanup.
+They reach the same actual block `0x105c04b1` as the matching native checkpoint,
+after 163.784/162.074 seconds and 2,869/2,859 presentations. All three system-save
+creation hashes survive the update, quitting and the same-build cold relaunch.
+This does not verify loading character progress. Scripted input has 14/16 active
+reads; physical touch/controller gameplay remains unverified. The fresh physical
+frame-2,600 game readback is opaque black. UIKit appearance-transition warnings
+remain. Both owned PIDs are stopped/absent; the other probe and away iPhone are
+untouched. [Physical evidence](../graphics/README.md#twenty-patch-physical-startup--2026-11-15).
 
-Native original-image discovery has a verified 42,107-entry checkpoint,
-with copied player data, no memory fault and all 42 workers joined. It reaches
-`0x105c04b1` at 158.430 seconds on the nineteen-patch backend. All 42,105 initial
-raw entries compile/link with the new runtime, and actual stops add two more.
-The run ends before snapshot frame 3,200, so it supplies no fresh game image.
-Static availability is distinct from execution of every entry.
-
-An independent x86 oracle then exposes a CMPXCHG8B register-write defect in that
-backend. The qualified correction passes 1,056,768 instruction comparisons;
-all game IR must be freshly lifted in a separate twenty-patch cache before
-replay or hardware updates. [CPU evidence](../README.md#independent-atomic-instruction-oracle--2026-11-15).
-Title/town/combat, physical input, audible output and character-progress save/load
-acceptance remain open. The physical iPad stays on the separately frozen build.
+The larger native code set now compiles 53,312 entries and reaches actual gap
+`0x105b4083` at 155.485 seconds, with no memory fault and 42 joined workers.
+It has passed the earlier `0x105c04b1` case and later demands. The requested
+frame 3,200 was not reached, so those expanded attempts have no fresh image.
+The separately frozen larger checkpoint is being built for both mobile SDKs.
+Title/town/combat, nonempty audio, physical input and character-progress save/load
+acceptance remain open. Static availability never means every entry executed.
 
 ### Earlier initial-notice checkpoint
 
@@ -1410,3 +1406,31 @@ waits for the active rebuild to finish a checkpoint; records/recovery copies and
 exact source/backend/image hashes must audit before replay. Private evidence:
 `long-base-setup/{verification.json,catalog-noreturn,seeds,prepare.py}`. The prior
 nineteen-patch code/cache remains preserved.
+
+### Anchored owner inventory and bounded incomplete candidates — 2026-11-15
+
+The unchanged OpenCrown-derived CFG validator is also exercised across all
+30,612 original eboot unwind owners, rather than only recognized-table owners.
+Six actual missing-PC reports add explicitly observed component roots inside
+their original bounds. Source/ELF/prepared text, no-return declarations, decoded
+instruction intervals and relative encodings are revalidated. This is read-only
+analysis; it emits no IR and changes no game cache or runtime branch policy.
+
+The inventory finds 12,242 closed known CFGs and 18,370 incomplete owners;
+none have decoder failures or instruction overlaps, including across observed
+components. The analysis includes 733 strict tables and 391 locally recognized
+incomplete-owner tables. Those local tables retain their unknown-edge/bypass
+limitations; a closed decoded component is not a new strict index/guard proof.
+There are 128,293 unique ordinary relative-branch destinations, 116,437 absent
+from the current cache. These counts do not establish whole-game reachability,
+complete code coverage or execution. Evidence: `all-owner-cfg/`.
+
+A separate bounded cohort uses the existing explicit incomplete-owner prefetch
+tier plus 4,096 nearby anchored branch candidates. It selects 7,027 unique missing
+PCs (hard cap 8,192), including mandatory actual demand `0x105b4083`, for offline
+lifting with the same backend. Per-target metadata preserves incomplete CFGs and
+all unknown exits. Original bytes and checked memory remain in force; no index
+is clamped, no jump is restricted, and an unsupported actual demand still fails.
+This cohort is staged separately under `nearby-owner-prefetch/`; it is not part
+of the installed app or an execution claim. Publish/replay only after its records,
+recovery copies, intrinsic inventory and immutable inputs audit.

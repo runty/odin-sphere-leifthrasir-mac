@@ -1103,3 +1103,38 @@ links its signed ICD; Simulator still has no full renderer consumer or Metal 4
 execution claim. The UIKit capture source compiles against the Simulator SDK.
 The phone is away and not contacted; no physical control/audio or new save
 acceptance is claimed.
+
+
+## Twenty-patch physical startup — 2026-11-15
+
+The iPad mini A20 Pro now runs signed `6804c6562490632f41102855ddbe8d9816e62458`,
+corpus `1c976ba82929a09b859782f7507a4de3dcfee285576370a48bbef34be853ef8a`,
+42,107 entries, with the qualified CMPXCHG8B correction and host atomic/FP bridges.
+Both SDK game/boundary archives compile from the same frozen sources; CPU fixture
+and game runtime/backend hashes match. No old nineteen-patch IR is reused.
+
+Physical launches 29/30 pass the original-module CPU 414, bounded-memory 19 and
+actual Vulkan fill/fence/readback 64 checks. Actual eboot startup runs
+163.784/162.074 seconds with 2,869/2,859 presented buffers and 42/42 workers
+joined, no memory fault, complete renderer/resource/mapping/signal teardown and
+native-window restoration. Both stop at `0x105c04b1`, matching the native frozen
+checkpoint. The frame-2,600 readback is fresh, 1512×850, opaque and entirely black;
+its identical content hash to older black captures does not make it a stale file.
+The current run names a new UUID PNG and confirms its existence before retrieval.
+
+All three original system-save creation hashes survive the app update, both
+runs, quitting and cold relaunch. This is system-data persistence, not character
+progress save/load. The identical script has 14/16 active reads; it does not
+qualify physical touch or a hardware controller. The first run makes 30,629 audio
+service calls, with no new PCM capture or listening acceptance. Earlier silent
+PCM evidence belongs to the older `94a5cd7` checkpoint. Recognizable scenes,
+nonempty game audio and character progress remain open.
+
+Owned PIDs 48273 and 48364 are stopped after confirmed cleanup, with exact bundle
+path matches and absence checks. Console attachment exits after the intentional
+owned stop, not a guest crash. Other probe PID 41713, OpenCrown, the away phone,
+production Mac and original player data remain untouched. UIKit still logs an
+unbalanced appearance transition on SDL teardown. CoreDevice's 134 MiB install
+cache is reclaimed without touching device apps. Private evidence:
+`atomic-ipad/{device,device-repeat}/verification.json`, signed app and frozen
+both-SDK archives at the external Odin build root.

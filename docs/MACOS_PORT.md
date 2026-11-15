@@ -12,7 +12,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
 | Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. Reused OpenCrown MOVMSKPS/PD semantics passed 38,400 comparisons. Its ROUND patch passed 13,824,000 native comparisons and the separate suppression/fault checks in OpenCrown's reference harness with Odin's backend. | The native original-game replay passes VROUNDSS after fixing initial MXCSR/x87 controls and worker inheritance. Continue CPU/ABI qualification through combat. |
-| Mobile startup | Physical iPad `94a5cd7`, corpus `ce2f4220` (9,920 entries), cold mounts existing system data and reaches `0x105bc240` after 160.75 seconds / 2,817 presentations. The prior build's actual display snapshot shows the complete readable save prompt and Yes/No buttons. CPU 414, memory 19, GPU readback 64 and cleanup pass; 42 workers join on the latest cold startup. The iPhone retains `460ecdb` while away and is excluded from testing. | Recognizable title/town/combat, audible output, physical touch/controller gameplay and sustained pacing. |
+| Mobile startup | Physical iPad `6804c65`, corpus `1c976ba8` (42,107 entries), twenty-patch backend. Cold launches 29/30 reach `0x105c04b1` after 163.784/162.074 seconds and 2,869/2,859 presentations; CPU 414, memory 19, GPU readback 64, all 42 joins and cleanup pass. System-save hashes survive update/quit/cold relaunch. Fresh frame 2,600 is black. The phone retains `460ecdb` while away and is excluded. | Recognizable title/town/combat, nonempty audio, physical touch/controller gameplay and sustained pacing. |
 | Mobile storage and lifecycle | The guest creates three system-save files on iPad; their exact hashes survive quitting, an app update and cold read-only mounting. Native copied-player-save discovery reaches 42 joined workers and later missing CPU blocks. | Character-progress save/load, interruption recovery, and suspend/resume during gameplay. |
 | Mobile engineering harness | Both SDK renderer/game/boundary archives compile. Native AOT background event pumping matches UIKit; 109 native bridge checks pass. The optional iPad UI-test runner compiles/signs but times out enabling automation before any test runs. | Physical touch acceptance, Simulator GPU execution and remaining UIKit appearance warnings. |
 
@@ -663,3 +663,22 @@ so there is no fresh snapshot from that run. Production Mac, original saves,
 iCloud and the away phone remain untouched. The iPad stays available for the
 next qualified corpus; recognizable title/gameplay, nonempty audio and character
 progress reload still need actual device verification.
+
+
+## Physical correction and continued code discovery — 2026-11-15
+
+The new twenty-patch checkpoint is verified on the iPad across an app update and
+a second cold launch: CPU/memory/GPU checks, 42 joins, exact system-save hashes
+and full cleanup pass. Its fresh later frame remains black; character progress
+and audible output are not qualified. [Physical evidence and limits](../ios/graphics/README.md#twenty-patch-physical-startup--2026-11-15).
+
+Native discovery has advanced to 53,312 compiled entries, actual gap
+`0x105b4083`, with cleanup and no memory fault. Broader read-only analysis reuses
+OpenCrown's validator over all original eboot owners and observed roots. A
+bounded 7,027-target next cohort explicitly retains incomplete-owner assumptions;
+it does not change runtime branches or make strict coverage claims.
+[Inventory and staging scope](../ios/game/README.md#anchored-owner-inventory-and-bounded-incomplete-candidates--2026-11-15).
+
+An isolated Mac launcher copy opens/shuts down and preserves its copied/original
+profile hashes, but CUA returns `cgWindowNotFound` before UI inspection or input.
+Mouse Play acceptance therefore remains open. The production bundle is unchanged.
