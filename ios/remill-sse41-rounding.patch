@@ -1,0 +1,136 @@
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2617,3 +2617,133 @@
+ DEF_ISEL(INSERTPS_XMMps_MEMd_IMMb) = INSERTPS<V128W, M32>;
+ IF_AVX(DEF_ISEL(VINSERTPS_XMMdq_XMMdq_XMMdq_IMMb) = INSERTPS<VV128W, V128>;)
+ IF_AVX(DEF_ISEL(VINSERTPS_XMMdq_XMMdq_MEMd_IMMb) = INSERTPS<VV128W, M32>;)
++
++namespace {
++// Round IEEE binary32/binary64 to an integral floating-point value using only
++// integer operations. Host rounding, NaN handling and subnormal modes cannot
++// affect the guest result. ROUND raises invalid/precision, never denormal.
++template <typename U, unsigned Fraction, unsigned Exponent>
++ALWAYS_INLINE U RoundIntegralBits(State &state, U bits, uint8_t control,
++                                 uint32_t &exceptions) {
++  const U sign = bits & (U(1) << (Fraction + Exponent));
++  const U magnitude = bits & ~(U(1) << (Fraction + Exponent));
++  const U fraction_mask = (U(1) << Fraction) - 1;
++  const U fraction = magnitude & fraction_mask;
++  const unsigned exponent = static_cast<unsigned>(magnitude >> Fraction);
++  const unsigned maximum_exponent = (1u << Exponent) - 1;
++  const unsigned bias = (1u << (Exponent - 1)) - 1;
++  const uint32_t csr = state.x87.fxsave.mxcsr.flat;
++  const unsigned mode = (control & 4) ? ((csr >> 13) & 3) : (control & 3);
++  if (exponent == maximum_exponent) {
++    if (!fraction) return bits;  // Infinity.
++    const U quiet = U(1) << (Fraction - 1);
++    if (!(fraction & quiet)) exceptions |= 1;  // Signaling NaN.
++    return bits | quiet;
++  }
++  if (!magnitude) return bits;  // Preserve either signed zero.
++  if (!exponent && (csr & (1u << 6))) return sign;  // DAZ, without PE/DE.
++  if (exponent >= bias + Fraction) return bits;  // Already integral.
++  if (exponent < bias) {
++    if (!(control & 8)) exceptions |= 1u << 5;
++    bool increment = false;
++    if (!mode) increment = exponent == bias - 1 && fraction != 0;
++    else if (mode == 1) increment = sign != 0;
++    else if (mode == 2) increment = sign == 0;
++    return sign | (increment ? (U(bias) << Fraction) : U(0));
++  }
++  const unsigned shift = Fraction - (exponent - bias);  // 1..Fraction.
++  const U unit = U(1) << shift;
++  const U discarded = magnitude & (unit - 1);
++  if (!discarded) return bits;
++  if (!(control & 8)) exceptions |= 1u << 5;
++  U rounded = magnitude & ~(unit - 1);
++  bool increment = false;
++  if (!mode) {
++    const U half = unit >> 1;
++    increment = discarded > half || (discarded == half && (rounded & unit));
++  } else if (mode == 1) increment = sign != 0;
++  else if (mode == 2) increment = sign == 0;
++  if (increment) rounded += unit;
++  return sign | rounded;
++}
++ALWAYS_INLINE bool RoundExceptionsUnmasked(State &state, uint32_t exceptions) {
++  auto &csr = state.x87.fxsave.mxcsr;
++  csr.flat |= exceptions;  // Sticky flags, including under precision suppression.
++  const uint32_t masks = (csr.flat >> 7) & 0x3f;
++  return (exceptions & ~masks) != 0;
++}
++template <typename D, typename S>
++DEF_SEM(ROUND_PS, D dst, S src, I8 immediate) {
++  auto source = UReadV32(src);
++  auto result = UClearV32(UReadV32(dst));
++  uint32_t exceptions = 0;
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(source); ++i) {
++    auto value = RoundIntegralBits<uint32_t, 23, 8>(
++        state, UExtractV32(source, i), static_cast<uint8_t>(Read(immediate)), exceptions);
++    result = UInsertV32(result, i, value);
++  }
++  // The runtime reports an explicit fault until it supports guest #XM delivery.
++  if (RoundExceptionsUnmasked(state, exceptions)) { StopFailure(); }
++  UWriteV32(dst, result);
++  return memory;
++}
++template <typename D, typename S>
++DEF_SEM(ROUND_PD, D dst, S src, I8 immediate) {
++  auto source = UReadV64(src);
++  auto result = UClearV64(UReadV64(dst));
++  uint32_t exceptions = 0;
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(source); ++i) {
++    auto value = RoundIntegralBits<uint64_t, 52, 11>(
++        state, UExtractV64(source, i), static_cast<uint8_t>(Read(immediate)), exceptions);
++    result = UInsertV64(result, i, value);
++  }
++  // The runtime reports an explicit fault until it supports guest #XM delivery.
++  if (RoundExceptionsUnmasked(state, exceptions)) { StopFailure(); }
++  UWriteV64(dst, result);
++  return memory;
++}
++template <typename D, typename S>
++DEF_SEM(ROUND_SS, D dst, V128 merge, S src, I8 immediate) {
++  auto result = UReadV32(merge);
++  auto source = UReadV32(src);
++  uint32_t exceptions = 0;
++  auto value = RoundIntegralBits<uint32_t, 23, 8>(
++      state, UExtractV32(source, 0), static_cast<uint8_t>(Read(immediate)), exceptions);
++  result = UInsertV32(result, 0, value);
++  if (RoundExceptionsUnmasked(state, exceptions)) { StopFailure(); }
++  UWriteV32(dst, result);
++  return memory;
++}
++template <typename D, typename S>
++DEF_SEM(ROUND_SD, D dst, V128 merge, S src, I8 immediate) {
++  auto result = UReadV64(merge);
++  auto source = UReadV64(src);
++  uint32_t exceptions = 0;
++  auto value = RoundIntegralBits<uint64_t, 52, 11>(
++      state, UExtractV64(source, 0), static_cast<uint8_t>(Read(immediate)), exceptions);
++  result = UInsertV64(result, 0, value);
++  if (RoundExceptionsUnmasked(state, exceptions)) { StopFailure(); }
++  UWriteV64(dst, result);
++  return memory;
++}
++}  // namespace
++DEF_ISEL(ROUNDPS_XMMps_XMMps_IMMb) = ROUND_PS<V128W, V128>;
++DEF_ISEL(ROUNDPS_XMMps_MEMps_IMMb) = ROUND_PS<V128W, MV128>;
++IF_AVX(DEF_ISEL(VROUNDPS_XMMdq_XMMdq_IMMb) = ROUND_PS<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VROUNDPS_XMMdq_MEMdq_IMMb) = ROUND_PS<VV128W, MV128>;)
++IF_AVX(DEF_ISEL(VROUNDPS_YMMqq_YMMqq_IMMb) = ROUND_PS<VV256W, V256>;)
++IF_AVX(DEF_ISEL(VROUNDPS_YMMqq_MEMqq_IMMb) = ROUND_PS<VV256W, MV256>;)
++DEF_ISEL(ROUNDPD_XMMpd_XMMpd_IMMb) = ROUND_PD<V128W, V128>;
++DEF_ISEL(ROUNDPD_XMMpd_MEMpd_IMMb) = ROUND_PD<V128W, MV128>;
++IF_AVX(DEF_ISEL(VROUNDPD_XMMdq_XMMdq_IMMb) = ROUND_PD<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VROUNDPD_XMMdq_MEMdq_IMMb) = ROUND_PD<VV128W, MV128>;)
++IF_AVX(DEF_ISEL(VROUNDPD_YMMqq_YMMqq_IMMb) = ROUND_PD<VV256W, V256>;)
++IF_AVX(DEF_ISEL(VROUNDPD_YMMqq_MEMqq_IMMb) = ROUND_PD<VV256W, MV256>;)
++DEF_ISEL(ROUNDSS_XMMd_XMMd_IMMb) = ROUND_SS<V128W, V128>;
++DEF_ISEL(ROUNDSS_XMMd_MEMd_IMMb) = ROUND_SS<V128W, MV32>;
++IF_AVX(DEF_ISEL(VROUNDSS_XMMdq_XMMdq_XMMd_IMMb) = ROUND_SS<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VROUNDSS_XMMdq_XMMdq_MEMd_IMMb) = ROUND_SS<VV128W, MV32>;)
++DEF_ISEL(ROUNDSD_XMMq_XMMq_IMMb) = ROUND_SD<V128W, V128>;
++DEF_ISEL(ROUNDSD_XMMq_MEMq_IMMb) = ROUND_SD<V128W, MV64>;
++IF_AVX(DEF_ISEL(VROUNDSD_XMMdq_XMMdq_XMMq_IMMb) = ROUND_SD<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VROUNDSD_XMMdq_XMMdq_MEMq_IMMb) = ROUND_SD<VV128W, MV64>;)

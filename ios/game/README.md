@@ -1002,3 +1002,24 @@ mixed checkpoint could publish. Evidence is in `parallel-discovery/`.
 
 Check the OpenCrown sources and tests before each subsequent milestone as
 recorded in the main port plan.
+
+### Rounding semantics reused from OpenCrown
+
+After the common-dialog query, the native 4,061-entry run stopped on VROUNDSS
+at `0x10744905` in a child. `remill-sse41-rounding.patch` takes OpenCrown's
+implementation at `68cb2a7b` unchanged and rebases its insertion context onto
+Odin's patch sequence. The backend audit covers the complete resulting diff.
+
+The original OpenCrown `ios/cpu/review/rounding.py` ran with this backend and
+its own reference runtime. It passed 360 routines, 1,536 vectors, 13,824,000
+native comparisons, 2,560,000 suppression-invariance checks and two unmasked
+fault-before-destination-write cases. Rosetta forces MXCSR masks, so the latter
+cases are AOT properties. Architectural guest #XM delivery remains open.
+Odin's original eboot/libc/Fios2 fixtures separately pass all 414 comparisons
+and compile for both SDKs. Evidence is in `rounding-reuse/oracle/review.json`
+and `ios-rounding-cpu-sdk.log`.
+
+The fresh discovery tree is `ios-game-rounding/`, using
+`cpu-backends-rounding/` and `native-gpu-rounding-arm64/`. Every seed PC
+is lifted again, retaining the original unwind bounds and runtime guards.
+Check the producer before changing its inputs or restarting discovery.
