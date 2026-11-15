@@ -17,3 +17,19 @@ def missing_targets(report,base,segments,known):
         if pc in known:raise ValueError('A known trace was not dispatched')
         targets.add(pc)
     return sorted(targets)
+
+
+# The same bounded executable can reach its host deadline before any guest
+# thread reports the next missing block, especially during concurrent builds.
+_HOST_DEADLINES = {
+    "guest execution deadline exceeded",
+    "guest sleep exceeded host execution deadline",
+    "guest mutex lock exceeded host execution deadline",
+    "guest join exceeded host execution deadline",
+    "condition wait exceeded host execution deadline",
+}
+
+
+def deadline_only(report):
+    faults = {record.get("error", "") for record in [report, *report.get("worker_reports", [])]}
+    return bool(faults & _HOST_DEADLINES) and not (faults - _HOST_DEADLINES - {"", "guest execution interrupted"})

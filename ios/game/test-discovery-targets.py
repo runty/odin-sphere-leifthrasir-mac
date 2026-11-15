@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Check bounded executed-target selection across parent and worker reports."""
-from discovery_targets import missing_targets
+from discovery_targets import deadline_only, missing_targets
 checks=0
 base=0x10000000;segments=[(0,0x1000,5),(0x2000,0x1000,2)]
 def check(report,expected,known=()):
@@ -20,4 +20,12 @@ check({'worker_reports':[{'error':'guest thread cancellation requested','missing
 for pc in [base-1,base+0x1000,base+0x2000,1<<64,-1,True,'0x10000001',None]:reject(fault(pc))
 reject(fault(base+4),{base+4});reject({'worker_reports':[fault(base+8)]},{base+8})
 for worker in [None,{},'invalid',[1],[{}]*4097]:reject({'worker_reports':worker})
-print({'target_checks':checks,'failed':0,'game_frames':False})
+deadline = {"error": "guest mutex lock exceeded host execution deadline"}
+interrupted = {"error": "guest execution interrupted"}
+assert deadline_only(deadline)
+assert deadline_only(dict(interrupted, worker_reports=[{}, deadline, interrupted]))
+for other in [fault(base+8), {"error": "missing host service"}, {"error": "guest memory fault"}]:
+    assert not deadline_only(dict(deadline, worker_reports=[other]))
+assert not deadline_only(interrupted)
+assert not deadline_only({})
+print({'target_checks':checks,'deadline_checks':7,'failed':0,'game_frames':False})

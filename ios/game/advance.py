@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 from trace_preparation import TracePreparationCache
-from discovery_targets import missing_targets
+from discovery_targets import deadline_only, missing_targets
 from trace_candidates import candidates, nearest
 from function_bounds import FunctionBounds
 from service_build import compile_services, inputs as service_inputs, link_options
@@ -321,20 +321,29 @@ for round in range(a.rounds):
         command = [gpu_build / "bin/osl-aot-gpu-probe",root / "image.bin",profile,"--discover"]
         prefix = "OSL_AOT_GPU_GUEST:"
     attempt = len(list(root.glob("attempt-*.json")))
-    name = "attempt-" + str(attempt).zfill(5)
     def runtime_inputs():
         app0=(root / "App0").resolve();marker=app0 / "eboot.bin"
         return {"app0":str(app0),"app0_eboot_sha256":hashlib.sha256(marker.read_bytes()).hexdigest() if marker.is_file() else None,
                 "asset_marker_only":True}
     state["runtime_inputs"]=runtime_inputs()
-    run(name, command, 30 if a.gpu_build else 15,
-        env=gpu_env if a.gpu_build else dict(os.environ, OSL_GUEST_IDENTITY="1" if a.identity else "0"))
-    records = [line.removeprefix(prefix) for line in (root / (name + ".log")).read_text().splitlines() if line.startswith(prefix)]
-    if len(records) != 1: raise RuntimeError("Expected one startup report in " + name + ".log")
-    report = json.loads(records[0])
-    check_sources()
-    if runtime_inputs()!=state["runtime_inputs"]:raise RuntimeError("Asset root changed during the startup attempt")
-    report["trace_count"] = len(entries)
+    # Replay only a watchdog-only stop, with identical inputs, CPU budget and
+    # renderer. Keep each attempt, including one stopped by the operator.
+    for replay in range(3):
+        name = f"attempt-{attempt + replay:05d}"
+        run(name, command, 30 if a.gpu_build else 15,
+            env=gpu_env if a.gpu_build else dict(os.environ, OSL_GUEST_IDENTITY="1" if a.identity else "0"))
+        records = [line.removeprefix(prefix) for line in (root / (name + ".log")).read_text().splitlines() if line.startswith(prefix)]
+        if len(records) != 1:
+            raise RuntimeError("Expected one startup report in " + name + ".log")
+        report = json.loads(records[0])
+        check_sources()
+        if runtime_inputs() != state["runtime_inputs"]:
+            raise RuntimeError("Asset root changed during the startup attempt")
+        report["trace_count"] = len(entries)
+        if replay == 2 or (a.stop_file and a.stop_file.exists()) or not deadline_only(report):
+            break
+        atomic_json(root / (name + ".json"), report)
+        print(f"{name} reached the host deadline. Replaying the same executable.", flush=True)
     state["reference"] = report
     corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs","static_translation","translation_policy") + (("runner_mode","native_gpu") if a.gpu_build else ())
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in corpus_keys}, sort_keys=True).encode()).hexdigest()
