@@ -7,7 +7,17 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The physical iPad mini A20 Pro now runs signed `dcf581b`, corpus `71eddd63`
+The latest physical iPad build is signed `fe01964`, corpus `5095116e`, with
+9,585 entries. Launch 18 runs 166.7 seconds, presents 8,641 buffers and
+submits 43,205 Gnm batches. Its explicit 9,000,000-dispatch engineering limit
+stops execution before the 180-second ceiling. It has no missing-block stop
+or memory fault, joins all 23 workers and passes CPU 414, memory 19, GPU
+readback 64 and full cleanup. Its three empty profile directories remain
+unchanged; the exact owned PID is stopped and absent. Both SDK game/boundary
+archives compile. This does not establish recognizable imagery or gameplay.
+Evidence is `startup-simd-visible-ipad/device/verification.json`.
+
+The preceding iPad mini A20 Pro checkpoint runs signed `dcf581b`, corpus `71eddd63`
 with 9,521 entries and the nineteen-patch backend. Cold launches 16/17 use a
 180,000 ms engineering ceiling and run 35.1/32.3 seconds. They present
 645/599 buffers and submit 3,228/2,998 Gnm batches, stopping at the same
@@ -19,7 +29,7 @@ remain open. The iPhone retains `460ecdb` while away and is not contacted.
 Both SDK game/boundary archives compile; Simulator renderer-consumer linking
 remains open. Evidence is `startup-simd-ipad/device/verification.json`.
 
-The later native cache reaches 9,521 entries and an actual `VEXTRACTPS`
+The preceding fourteen-patch native cache reached 9,521 entries and an actual `VEXTRACTPS`
 fallback at `0x106b796c` after 63.4 seconds, with all 22 workers joined.
 The capture still contains a black clear and depth-only draw. OpenCrown's
 startup lane patch is now rebased onto Odin with its added implementation
@@ -47,14 +57,15 @@ Real startup passes the VEXTRACTPS stop and reaches `0x106b9c7a` after
 65.9 seconds with no memory fault and 22 joined workers. Its frozen checkpoint
 is the one tested twice on the iPad above.
 
-Further native discovery reaches 9,585 entries. A 180-second run reaches its
-host deadline without a missing-block stop, joins all 23 workers and presents
-2,040 buffers, with nine graphics pipelines. Those counters do not establish
-a recognizable scene. A bounded ten-minute native run with opt-in flip-interval
-captures is now inspecting that later path. Evidence is
-`extract-reuse/startup-final/`, `cpu-backends-startup-simd/`,
-`startup-simd-ipad/` and `native-first-frames/startup-simd-600s-capture/` at the
-build root.
+Further native discovery reaches 9,585 entries. The completed ten-minute
+native run presents 9,036 buffers and joins all 23 workers without a missing
+block or memory fault. Five flip-interval captures contain 25 textured color
+draws per frame into 1920×1080 RGBA8 sRGB, sampling two BC3 textures. These
+are renderer command captures, not pixel readbacks; a recognizable scene
+remains unverified. The run stops at its host deadline and cleanup passes.
+Evidence is `extract-reuse/startup-final/`, `cpu-backends-startup-simd/`,
+`startup-simd-ipad/`, `startup-simd-visible-ipad/` and
+`native-first-frames/startup-simd-600s-capture/` at the build root.
 
 Native development now uses [the adapted OpenCrown switch tools](control-flow/README.md).
 The expanded conditional fixture passes 42 checks, with strict output bytes

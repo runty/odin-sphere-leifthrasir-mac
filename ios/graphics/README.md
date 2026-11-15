@@ -842,3 +842,36 @@ mobile imagery, audible gameplay, physical input and new-save reload remain
 open. The later native 9,585-entry run reaches a three-minute deadline with
 2,040 presentations and 23 joins; a longer captured run is investigating its
 additional graphics pipelines, without equating presentation with imagery.
+
+
+## Textured native draws and longer iPad run — 2026-11-15
+
+The completed native 9,585-entry run lasts 600 seconds, presents 9,036
+buffers and joins all 23 workers without a missing block or memory fault.
+Five captures at additional-draw/60/180/360/540-second triggers show 25 color
+draws per frame into RGBA8 sRGB 1920×1080, sampling BC3 textures at 1024×512
+and 2048×2048. Cleanup passes. Evidence is
+`native-first-frames/startup-simd-600s-capture/verification.json`.
+
+Signed `fe01964`, frozen corpus `5095116e`, installs on the physical iPad
+only. Launch 18 lasts 166.7 seconds, presenting 8,641 buffers and submitting
+43,205 Gnm batches before its 9,000,000-dispatch engineering cap. It joins
+all 23 workers, has no memory fault or missing-block stop and passes CPU 414,
+memory 19, GPU readback 64 and full cleanup. Both SDK game and guest-boundary
+archives compile from this same frozen checkpoint. Its empty three-directory
+profile is unchanged, and the exact owned process is stopped and absent.
+Evidence is `startup-simd-visible-ipad/device/verification.json`.
+
+These command captures and presentation counters do not establish recognizable
+images, playable combat, audible output or new in-game saves. CUA cannot obtain
+a window for Device Hub/Xcode in this session. A separate native app wrapper
+stalls in its initial file open before guest execution; it is stopped without
+permission changes. Its evidence is `native-first-frames/visible-startup-app/`.
+
+For the next checkpoint, reuse OpenCrown's readback-before-unload approach from
+`ios/render/replay.cpp` and `ios/app.mm`, adapted to Odin's Vulkan presenter.
+Odin already has libpng and transfer-source frame images. Capture while a
+presented frame is still owned, before returning it to the free queue; wait
+for GPU completion and handle format/row order explicitly. Verify actual pixels
+and inspect the resulting image before calling a scene recognizable. The
+existing command-capture path remains a separate diagnostic.
