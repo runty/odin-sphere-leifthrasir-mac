@@ -1241,3 +1241,28 @@ is a subsequent checkpoint. The installed iPad evidence above still names
 ABI/state reference: [pinned shadPS4 dialog headers](https://github.com/shadps4-emu/shadPS4/blob/4e22b3ba29d0133ef97477e5740df0c85c61c2be/src/core/libraries/save_data/dialog/savedatadialog_ui.h),
 cross-checked with Odin's desktop marshaling. OpenCrown's generic headless
 auto-success behavior is intentionally not used for this adapter.
+
+The adapter is now installed as signed clean `30b626b` on the physical iPad
+mini A20 Pro, corpus `54b1a9ba`, still 9,585 entries. Launch 22 leaves that
+Yes/No dialog pending through 90 seconds / 3,990 presentations. Launch 23 adds
+a deliberate second Cross press at frame 1,500: it completes the dialog with
+button 1 / result 0 and stops at the newly reached translated-code gap
+`0x107d52b0`, after 48.15 seconds / 1,500 presentations. The native confirmation
+reaches that same gap after 103.51 seconds. These are actual guest transitions;
+the message is not auto-accepted by the adapter.
+
+Both physical runs pass CPU 414, memory 19, GPU readback 64 and complete
+renderer/resource cleanup, and join all 23 workers without a memory fault.
+The profile remains three empty directories: no new in-game save has been
+created or reloaded. Exact owned PIDs 44473 and 44503 are stopped and absent.
+The pending run's stop is the bounded mutex-wait deadline; it is not a new
+service gap. Both SDK renderer/game/boundary archives compile; the device
+renderer consumer links its signed ICD. No Simulator driver-execution claim.
+Evidence: `save-message-ipad/{device,device-confirm}/verification.json`,
+`save-message-startup/{pending-verification,confirm/verification}.json`.
+
+Native discovery is continuing from the reached PC using the unchanged
+19-patch backend and original unwind bounds. Dialog pixel verification and
+physical touches remain open; the existing game-frame PNG captures precede the
+host overlay. The iPhone remains excluded, and the production Mac/player saves
+are untouched.
