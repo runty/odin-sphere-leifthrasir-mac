@@ -1,0 +1,33 @@
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2590,3 +2590,30 @@
+ IF_AVX(DEF_ISEL(VSHUFPD_XMMdq_XMMdq_MEMdq_IMMb) = SHUFPD<VV128W, V128, MV128>;)
+ IF_AVX(DEF_ISEL(VSHUFPD_YMMqq_YMMqq_YMMqq_IMMb) = SHUFPD<VV256W, V256, V256>;)
+ IF_AVX(DEF_ISEL(VSHUFPD_YMMqq_YMMqq_MEMqq_IMMb) = SHUFPD<VV256W, V256, MV256>;)
++
++namespace {
++DEF_HELPER(InsertSingleBits, M32 src, unsigned) {
++  return Read(src);
++}
++DEF_HELPER(InsertSingleBits, V128 src, unsigned lane) {
++  return UExtractV32(UReadV32(src), lane);
++}
++template <typename D, typename S>
++DEF_SEM(INSERTPS, D dst, V128 first, S source, I8 immediate) {
++  const auto control = Read(immediate);
++  const auto inserted = InsertSingleBits(memory, state, source, control >> 6);
++  const auto original = UReadV32(first);
++  auto result = UClearV32(UReadV32(dst));
++  const unsigned target = (control >> 4) & 3;
++  _Pragma("unroll") for (unsigned lane = 0; lane < 4; ++lane) {
++    uint32_t value = lane == target ? inserted : UExtractV32(original, lane);
++    result = UInsertV32(result, lane, (control & (1u << lane)) ? 0u : value);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}
++DEF_ISEL(INSERTPS_XMMps_XMMps_IMMb) = INSERTPS<V128W, V128>;
++DEF_ISEL(INSERTPS_XMMps_MEMd_IMMb) = INSERTPS<V128W, M32>;
++IF_AVX(DEF_ISEL(VINSERTPS_XMMdq_XMMdq_XMMdq_IMMb) = INSERTPS<VV128W, V128>;)
++IF_AVX(DEF_ISEL(VINSERTPS_XMMdq_XMMdq_MEMd_IMMb) = INSERTPS<VV128W, M32>;)

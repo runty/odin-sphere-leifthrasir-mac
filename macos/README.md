@@ -18,10 +18,10 @@ python3 macos/dependencies.py "$WORK/dependencies"
 
 This uses the pinned SpartanPort dependency builder, including its KosmicKrisp
 performance patch, and hash-checked SDL, FreeType, OpenSSL and PNG archives.
-It writes the resolved arguments to `dependencies/inputs.json`. This fresh
-reproduction entry point is supplied for rebuilds; the current reference app
-was built against the existing recorded caches, not a fresh full dependency
-build. Keep all dependencies and shader caches on the external disk.
+It writes the resolved arguments to `dependencies/inputs.json`. The installed
+`0757088` build used a newly compiled x86-64 loader, patched KosmicKrisp,
+SDL, FreeType, OpenSSL and PNG. The libpng URL selects the v1.6.50 tag archive
+whose SHA-256 is pinned in the lock.
 
 ```sh
 macos/build.sh "$WORK/macos-build" "$VK_PREFIX" "$DEPS_PREFIX" \
@@ -98,8 +98,9 @@ the local copy is an installed game library. The wrapper validates and reuses
 an existing local library, stages replacements and preserves previous files.
 `--external-game` explicitly keeps the earlier external-folder configuration.
 
-A normal LaunchServices launch of the installed app with the local library
-logs a valid game, a 1280×720 Metal launcher and `Launcher: shown`. Native UI
-capture remains unavailable in the unattended session, so a visible click-through
-or fresh-account result is not claimed. The earlier player-confirmed gameplay,
-audio and save reload remain the gameplay evidence.
+On the reference Mac, the installed app rendered all seven launcher pages with
+an empty profile. The packaged installer's `--runner --install` path imported
+the original US 1.00 package. The resulting boot image and eboot matched the
+prepared reference. The visible launcher showed Ready to play, and pressing
+Return started a 300-frame render. The mouse Play action and a separate macOS
+login remain unverified. Use disposable profiles for repeat installation tests.
