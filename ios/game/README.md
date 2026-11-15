@@ -905,7 +905,8 @@ The corpus is `7ed52c1a666bc906be8a1399b1a92f9063c17f6447b235df873ee0e7c317eb31`
 Strict native replay takes 557.880 ms, completes both initializers, starts/joins
 17 workers, registers three buffers and stops at `0x106c0f6e`. Bridge 109 and
 boundary ASan bridge/normal/pre-stop/live-stop plus five image negatives pass.
-Both SDK game archives compile with this same corpus. Eight separate catalog
+Both SDK game and separately platform-audited guest-boundary archives compile
+with this same corpus. Eight separate catalog
 input tests accept the frozen input and reject changed base/size/segments,
 pointer hash/count or generated header/thunk hash, preserving original inputs.
 Private evidence: `static-prefetch-qualified/`,
