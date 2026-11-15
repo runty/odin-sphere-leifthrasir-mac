@@ -12,7 +12,7 @@
     },
     "png": {
       "version": "1.6.50",
-      "url": "https://download.sourceforge.net/libpng/libpng-1.6.50.tar.gz",
+      "url": "https://codeload.github.com/pnggroup/libpng/tar.gz/refs/tags/v1.6.50",
       "sha256": "71158e53cfdf2877bc99bcab33641d78df3f48e6e0daad030afe9cb8c031aa46"
     },
     "freetype": {
