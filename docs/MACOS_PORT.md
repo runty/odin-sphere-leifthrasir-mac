@@ -702,3 +702,10 @@ entries and preserves three duplicates, with unproved global guard/CFG propertie
 explicit. Native availability is now 61,204; new replay is independent evidence.
 The default lock is restored after the stripe candidate did not reach the baseline
 within its budget. Original player data, production Mac and the iPhone are untouched.
+
+The wider native replay passes the old demand and reaches original loader owner
+`0x1070b650..0x1070da14`; its 61,206-entry checkpoint freezes the third gap with
+43 joins and cleanup. Bounded original-branch/table staging plus the existing
+first-block narrowing policy now provide 61,550 entries. Independent decoding
+checks all 209 shortened prefixes; execution and visible-scene acceptance remain
+separate. [Scope and evidence](../ios/game/README.md#observed-loader-owner-and-first-block-windows--2026-11-15).

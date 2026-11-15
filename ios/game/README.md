@@ -1561,3 +1561,36 @@ is opaque black; original and copied-save hashes match. That next actual demand
 is independently present in the prepared wider JBE cohort. Evidence:
 `inrange-jbe-discovery/checkpoint-60361/verification.json`. It is a startup
 checkpoint, not a title/gameplay acceptance result.
+
+### Observed loader owner and first-block windows — 2026-11-15
+
+The wider JBE replay advances past `0x1066bf99` and reaches three actual gaps
+in owner `0x1070b650..0x1070da14`: `0x1070b650`, `0x1070b6ab`, then
+`0x1070b6b7`. The last is frozen at 61,206 entries / corpus `77cb802a`,
+153.667 seconds / 3,414 presentations, 43 joins, no memory fault and verified
+renderer cleanup. It stops before the requested frame 4,000; no new scene
+capture is inferred. The iPad still runs the separately qualified 60,361-entry
+checkpoint described above.
+
+The existing OpenCrown-derived original CFG/relative-branch inventory and
+incomplete-table checks select this observed owner. A first bounded cohort
+publishes 73 entries; 114 broad windows contain unsupported x87 arithmetic and
+remain unavailable. This does not establish that the executed first blocks use
+x87. A second cohort applies the **same first-control-flow-boundary narrowing
+already used for actual demand**, preserving the broad files. Its candidates
+also include original conditional fallthroughs confirmed as decoded boundaries.
+All 271 accept; 209 need narrowing, with no remaining FP80 operation in their
+resulting prefixes. Independent XED decoding agrees with production Zydis on
+all 209 prefix boundaries / 913 instructions, each ending at a control-flow
+instruction. A genuine unsupported first block would remain a gap.
+
+Recovery-first publication rechecks the original bytes, bounds, backend ABI,
+record/raw/source hashes and existing ledger. It preserves every executable/raw
+entry and only upgrades previously skipped records that have no raw consumer,
+retaining the prior skipped-record checksum. Availability grows to 61,550.
+These are static candidates, not full guard/CFG proof or execution coverage;
+no original instruction, index or runtime branch is changed. The next native
+startup/capture is separate acceptance evidence. Private reports are under
+`repeated-owner-analysis/{loader-owner-seeds,loader-owner-narrow-seeds}/`,
+including `narrow-qualification.json`, and
+`inrange-jbe-discovery/checkpoint-61206/verification.json`.
