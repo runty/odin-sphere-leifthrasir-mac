@@ -1,0 +1,40 @@
+name: OdinTouchCheck
+options:
+  deploymentTarget:
+    iOS: '27.2'
+settings:
+  base:
+    DEVELOPMENT_TEAM: TEAM_ID
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: '6.0'
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  OdinTouchCheck:
+    type: application
+    platform: iOS
+    sources: [Host.swift]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.touchcheck
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: '2'
+  OdinTouchTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [SaveMessageTouchTests.swift]
+    dependencies:
+      - target: OdinTouchCheck
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.touchcheck.tests
+        TEST_TARGET_NAME: OdinTouchCheck
+        TARGETED_DEVICE_FAMILY: '2'
+schemes:
+  OdinTouchCheck:
+    build:
+      targets:
+        OdinTouchCheck: all
+    test:
+      targets: [OdinTouchTests]
+      gatherCoverageData: false
