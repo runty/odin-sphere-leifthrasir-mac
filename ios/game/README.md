@@ -7,7 +7,25 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The latest iPad build is signed `fd55ae1`, corpus `f4b3357e`, with 9,585
+The current physical iPad checkpoint is signed `94a5cd7`, corpus `ce2f4220`,
+with 9,920 entries. It creates then cold mounts system data, preserving all
+three creation hashes through an app update and repeat runs. Launches 27/28
+reach `0x105bc240` with 42 joined workers, no memory fault, CPU 414, memory 19,
+GPU readback 64 and complete renderer cleanup. The earlier readable save prompt
+is verified by actual swapchain pixels. Later game captures remain black.
+Launch 28's 158.987-second converted PCM capture is entirely silent, with five
+sampled empty-queue observations; music/voice output remains unqualified.
+The iPhone is away and untouched. [Physical evidence and limits](../graphics/README.md).
+
+Native original-image discovery now has a verified 15,432-entry checkpoint,
+with copied player data and all 42 workers joined. It stops at `0x101f7604`,
+a case target in the existing strict switch atlas. Bounded unwind prefetch
+supplies availability, not execution proof. Title/town/combat, physical input,
+audible output and character-progress save/load acceptance remain open.
+
+### Earlier initial-notice checkpoint
+
+The earlier iPad build is signed `fd55ae1`, corpus `f4b3357e`, with 9,585
 entries. A real GPU pixel readback shows upright, readable initial guest UI:
 **“There is no save data.”** Native capture is 960×540; physical iPad capture
 is 1512×850. This verifies the initial save-data notice, not title/town/combat.
@@ -19,7 +37,7 @@ UIKit capture source also compiles for Simulator. The iPhone stays untouched.
 Evidence is `frame-snapshot-ipad/device/verification.json` and
 `native-first-frames/frame-snapshot-native/verification.json` at the build root.
 
-Next is input-driven menu progress. The notice explains why the earlier
+At that checkpoint the next step was input-driven menu progress. The notice explains why the earlier
 unattended runs kept drawing the same UI. Consult OpenCrown's frame-indexed
 input grammar and real-input precedence, together with Odin's existing desktop
 pad replay, before adding a bounded scripted source to the AOT harness.
@@ -1297,3 +1315,33 @@ function-bounds fixtures pass 28 checks; discovery/stop tests pass 22 target and
 7 deadline cases. Evidence: `unwind-prefetch/` at the external build root.
 Runtime/backend/State ABI are unchanged. Only real replay can establish the
 next title/gameplay transition; static entry counts alone cannot.
+
+### Parallel static lifting — 2026-11-15
+
+`advance.py` uses the existing `--jobs` bound for independent static lifters
+as well as compilation. Each lifter owns a distinct staging and log file.
+The decoder is built before worker startup. Analysis, ordered ledger updates,
+raw-trace promotion and their atomic writes stay on the coordinator thread.
+Unexpected errors cancel queued futures and join active lifters before failure
+returns; executed demands still lift separately and cannot be skipped as static
+failures. `STATIC_PREFETCH` reports batch counts, worker bound and elapsed staging
+time without asserting runtime coverage.
+
+`test-prefetch-parallel.py` runs the real original-image pipeline from a
+hash-verified first-module trace in isolated external fixtures, using one then
+four workers and two 64-candidate batches each. Exact raw trace hashes, ordered
+records, ledgers, checkpoint IR inputs and generated headers match. The same
+five unsupported static candidates remain skipped. Process observations prove
+maximum concurrency one/four, within the requested bounds. In one comparison,
+64-candidate staging takes 4.18/4.95 seconds with one worker versus 1.27/1.57
+with four. This is a selected staging comparison, not full-game boot or FPS.
+Evidence: `prefetch-parallel/verification.json` and `final-check/verification.json`
+at the external build root. An initial empty-cache test fixture hit the existing
+zero-trace-table build limitation; the final fixture uses a real verified module
+entry, matching established-cache discovery. No runtime/backend/State ABI change.
+
+```sh
+python3 ios/game/test-prefetch-parallel.py --root "$ESTABLISHED_CACHE" \
+  --remill "$BACKEND" --function-bounds "$VERIFIED_BOUNDS" \
+  --output "$NEW_EXTERNAL_FIXTURE"
+```

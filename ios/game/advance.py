@@ -420,7 +420,11 @@ for round in range(a.rounds):
         known={int(path.stem,16) for path in cache.glob('*.ll')}
         batch=nearest(catalog,pending,known|attempted,a.prefetch)
         staging=root/'speculative-traces';staging.mkdir(exist_ok=True)
-        for pc in batch:
+        # Lifts own distinct staging/log files. Keep analysis, ledger writes
+        # and promotion on this thread in deterministic candidate order.
+        # Build the shared decoder once before workers can inspect its stamp.
+        if batch:decode_size(b'\xc3')
+        def stage_candidate(pc):
             offset=pc-layout['base']
             segment=next(s for s in layout['segments'] if s[2]&1 and s[0]<=offset<s[0]+s[1])
             name=hex(pc)+'.ll';staged=staging/name
@@ -434,19 +438,33 @@ for round in range(a.rounds):
                 record.update(status='skipped',reason=str(error))
             except subprocess.CalledProcessError as error:
                 record.update(status='skipped',reason='speculative decoder rejected byte range (exit '+str(error.returncode)+')')
-            else:
-                raw=staged.read_text();analysis=preparation.analyze(raw)
-                record['raw_sha256']=analysis.raw_sha256
-                record['remill_error_paths']=analysis.remill_error
-                if analysis.extended_precision or (analysis.remill_error and not a.retain_error_paths):
-                    record.update(status='skipped',reason='speculative unsupported/error path; actual demand remains authoritative')
-                elif analysis.definitions!=(format(pc,'x'),):
-                    raise RuntimeError('Unexpected speculative lifted definition at '+hex(pc))
-                else:
-                    # Guards and native compilation still run through the same
-                    # checked path next round. This changes code coverage only.
-                    record['status']='accepted'
-            static_ledger['entries'][name]=record
-            atomic_json(static_ledger_path,static_ledger)
-            if record['status']=='accepted':atomic_bytes(cache/name,staged.read_bytes())
-            print('STATIC_TRANSLATION:'+json.dumps(dict(pc=pc,**record)),flush=True)
+            return pc,name,staged,record
+        prefetch_started=time.perf_counter();accepted=skipped=0
+        pool=ThreadPoolExecutor(max_workers=a.jobs)
+        try:
+            for pc,name,staged,record in pool.map(stage_candidate,batch):
+                if record.get('status')!='skipped':
+                    raw=staged.read_text();analysis=preparation.analyze(raw)
+                    record['raw_sha256']=analysis.raw_sha256
+                    record['remill_error_paths']=analysis.remill_error
+                    if analysis.extended_precision or (analysis.remill_error and not a.retain_error_paths):
+                        record.update(status='skipped',reason='speculative unsupported/error path; actual demand remains authoritative')
+                    elif analysis.definitions!=(format(pc,'x'),):
+                        raise RuntimeError('Unexpected speculative lifted definition at '+hex(pc))
+                    else:
+                        # Guards and native compilation still run through the same
+                        # checked path next round. This changes code coverage only.
+                        record['status']='accepted'
+                static_ledger['entries'][name]=record
+                atomic_json(static_ledger_path,static_ledger)
+                if record['status']=='accepted':
+                    atomic_bytes(cache/name,staged.read_bytes());accepted+=1
+                else:skipped+=1
+                print('STATIC_TRANSLATION:'+json.dumps(dict(pc=pc,**record)),flush=True)
+        finally:
+            # An unexpected result must cancel queued work and join active
+            # lifters before the caller reports failure or edits its inputs.
+            pool.shutdown(wait=True,cancel_futures=True)
+        print('STATIC_PREFETCH:'+json.dumps({'candidates':len(batch),'accepted':accepted,'skipped':skipped,
+            'workers':a.jobs,'seconds':time.perf_counter()-prefetch_started,
+            'classification':'static staging only; execution unverified'}),flush=True)
