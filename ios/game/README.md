@@ -1511,3 +1511,33 @@ policy changes. New native replay remains separate from these static counts.
 Evidence: `native-libc-bulk/{comparison.json,snapshot-verification.json,
 services/verification.json,next-owner-seeds/published.json}`. The original global-
 lock baseline and production Mac/iPad versions stay preserved.
+
+### Observed in-range table cases — 2026-11-15
+
+Original-byte inspection explains the repeated `0x105d0b45` stop: owner
+`0x105d0aa0..0x105d0bec` dispatches through a five-slot relative table using an
+in-range `JBE` taken successor. The strict scanner expects a nearby unsigned
+`JA` fallthrough guard and rejects this layout. This is not an ordinary call
+continuation. Original table/file/prepared bytes, bounds and all five decoded
+case destinations agree. The remaining three original cases are lifted and
+recovery/raw/ledger/backend audited into a fresh discovery clone, growing static
+availability from 60,358 to 60,361. The virtual tail jump at `0x105d0bd3` remains
+unresolved; full guard/incoming CFG proof is not granted, no index is clamped,
+and the unchanged strict scanner does not accept this owner. Only availability
+is added; later guest execution still decides which case is used.
+
+A read-only inventory of the same local layout recognizes 132 original patterns;
+101 tables in 97 owners pass local decode/overlap/case-reachability checks.
+There are 856 unique table targets, 846 absent from the frozen 60,358-PC baseline.
+These are local candidates with explicitly unproved global guard/index/CFG
+properties, not whole-game coverage or execution. Bounded offline preparation is
+separate from the active native producer; publishing waits for a completed idle
+checkpoint and revalidates immutable image/table/backend/record inputs.
+Evidence: `repeated-owner-analysis/{jbe-seeds,inrange-inventory,inrange-seeds}`
+and `inrange-jbe-discovery/` at the external build root.
+
+REA/Hopper's original-ELF session confirms target identity but finds no containing
+procedure at this address; its individual-instruction operation is unavailable.
+That negative/incomplete evidence is saved and the session is closed. The positive
+code/table findings above come from the existing checked XED decoder and original
+ELF/file bytes, without inferring a function name from the unavailable decompiler.
