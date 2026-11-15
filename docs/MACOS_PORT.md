@@ -2,7 +2,7 @@
 
 The reference target is a local offline Mac app running the CUSA05083 US base build under Rosetta. Fork baseline `d2a9d8a253dd17680c5349cae0e1735c67fe2455` is upstream v0.2.3. Keep `main` at the upstream baseline and develop on `codex/macos-port`. The initial host is an M5 Max running macOS 27.2.1. Other upstream profiles need their own verification.
 
-## Current delivery status — 2026-11-14
+## Current delivery status — 2026-11-15
 
 | Area | Established | Remaining acceptance |
 | --- | --- | --- |
@@ -12,24 +12,27 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
 | Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. Reused OpenCrown MOVMSKPS/PD semantics passed 38,400 comparisons. Its ROUND patch passed 13,824,000 native comparisons and the separate suppression/fault checks in OpenCrown's reference harness with Odin's backend. | The native original-game replay passes VROUNDSS after fixing initial MXCSR/x87 controls and worker inheritance. Continue CPU/ABI qualification through combat. |
-| Mobile startup | Physical iPad `c6ab0ce`, corpus `c45c17cc` (4,658 entries), cold-launched twice, submitted 95/105 batches and presented 19/21 buffers. Both runs join 18 workers and release all resources before the checkpoint budget stop. iPhone retains the prior `460ecdb` startup build while away. | Recognizable title, combat, input/audio, new saves and sustained frame pacing. |
-| Mobile audio, storage and lifecycle | Eleven and nineteen guest audio API calls on the new iPad/phone run. Their MobileProfile bytes survived the update/launch unchanged. The earlier 35 private input files matched their source hashes after cold relaunch on each device. Renderer shutdown, worker joins and restoration of the UIKit window passed. | Actual PCM, touch/controller gameplay, new in-game save, cold reload, suspend and resume during play. |
+| Mobile startup | Physical iPad `8ccd913`, corpus `69737ea1` (9,754 entries), cold mounts existing system data. The prior build's actual display snapshot shows the complete readable save prompt and Yes/No buttons. CPU 414, memory 19, GPU readback 64 and cleanup pass; 25 workers join on cold startup. The iPhone retains `460ecdb` while away and is excluded from testing. | Recognizable title/town/combat, audible output, physical touch/controller gameplay and sustained pacing. |
+| Mobile storage and lifecycle | The guest creates three system-save files on iPad; their exact hashes survive quitting, an app update and cold read-only mounting. Native copied-player-save discovery reaches 42 joined workers and later missing CPU blocks. | Character-progress save/load, interruption recovery, and suspend/resume during gameplay. |
+| Mobile engineering harness | Both SDK renderer/game/boundary archives compile. Native AOT background event pumping matches UIKit; 109 native bridge checks pass. The optional iPad UI-test runner compiles/signs but times out enabling automation before any test runs. | Physical touch acceptance, Simulator GPU execution and remaining UIKit appearance warnings. |
 
-The native arm64 renderer now has a portable shader-resource walker.
-Its actual IR-pass tests pass on both Mac CPUs, and both mobile SDK renderer
-archives compile. The device consumer links against its signed ICD; the
-Simulator consumer-link check remains open. The 4,476-entry guest submitted command batches and presented
-up to 21 buffers in two seconds. A longer run presented 102 before a new
-worker hit another missing block. The captured startup image was black.
-Recognizable title/battle images remain open. The player made the iPad
-available for unattended testing and is taking the iPhone away for the night.
+Hardware system-data persistence is distinct from loading character progress.
+The iPad frame-600 cold-start game snapshot is black; the independently verified
+prompt is a display snapshot from the earlier dialog run. Native startup
+discovery has 9,918 compiled entries and reaches `0x105bfc80` using an isolated
+copy of the working Mac save. Candidate availability is not execution evidence.
+The bounded native frontend now pumps events without background idling; its
+startup comparison advances faster but ends at a different CPU guard, so this
+is not a combat-FPS result. [Current evidence and limits](../ios/graphics/README.md).
+The player made the iPad available for unattended testing and is taking the
+iPhone away. Original player saves, production Mac app and iCloud are untouched.
 
 ## OpenCrown reference for upcoming work
 
 At the start of each port milestone or newly observed failure, check the current
 OpenCrown port and its regression tests before building an Odin implementation.
 Record the revision, relevant source and Odin verification in the milestone log.
-The last comparison used [OpenCrown 68cb2a7b](https://github.com/runty/OpenCrown-PC/tree/68cb2a7b9bfc042593fdd26d7a045697cc29e65a).
+The latest adapter/backend comparisons used [OpenCrown 9ca8945c](https://github.com/runty/OpenCrown-PC/tree/9ca8945c10e913260b1b3e22a6c680f0396e05e6).
 
 | Odin milestone | OpenCrown implementation to check | Odin verification |
 | --- | --- | --- |
