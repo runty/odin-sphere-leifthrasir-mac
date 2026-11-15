@@ -1,5 +1,6 @@
 #include "runtime.h"
 #include <cstdlib>
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <limits>
@@ -7,6 +8,20 @@
 #include <stdexcept>
 
 static std::recursive_mutex guestAtomics;
+namespace {
+// OpenCrown's bounded, strongly-owned descriptor cache, adapted for Odin's
+// removable/protected mappings. Never cache the external direct-memory table:
+// it contains physical aliases and changes permissions independently.
+struct RegionCache {
+    std::shared_ptr<Memory::Mappings> mappings;
+    uint64_t generation=0;
+    std::array<Memory::Region,8> entries{};
+};
+thread_local RegionCache regionCache;
+static bool contains(const Memory::Region &r,uint64_t address,size_t size) {
+    return r.data && size<=r.size && address>=r.base && address-r.base<=r.size-size;
+}
+}
 GuestMemoryScope::GuestMemoryScope(){lock();}
 GuestMemoryScope::~GuestMemoryScope(){unlock();}
 void GuestMemoryScope::lock(){if(!held_){guestAtomics.lock();held_=true;}}
@@ -56,28 +71,51 @@ Memory *dispatch(State &s, uint64_t pc, Memory *m) {
 void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writable) {
     if (!data || !size || size > std::numeric_limits<uint64_t>::max() - base)
         throw std::runtime_error("invalid guest mapping");
+    std::lock_guard<std::recursive_mutex> access(guestAtomics);
     std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
     for (const auto &r : m.mappings->regions)
         if (base < r.base + r.size && r.base < base + size)
             throw std::runtime_error("overlapping guest mappings");
     m.mappings->regions.push_back({base, data, size, writable});
+    m.mappings->generation.fetch_add(1,std::memory_order_release);
 }
 bool unmapRegion(Memory &m,uint64_t base) {
+    std::lock_guard<std::recursive_mutex> access(guestAtomics);
     std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
     auto &regions=m.mappings->regions;
-    for(auto it=regions.begin();it!=regions.end();++it)if(it->base==base){regions.erase(it);return true;}
+    for(auto it=regions.begin();it!=regions.end();++it)if(it->base==base){regions.erase(it);m.mappings->generation.fetch_add(1,std::memory_order_release);return true;}
     return false;
 }
 uint8_t *guestPointer(Memory &m, uint64_t address, size_t size, bool writing) {
     uint8_t *pointer=nullptr;bool protected_write=false;
-    {
-    std::shared_lock<std::shared_mutex> lock(m.mappings->mutex);
-    for (const auto &r : m.mappings->regions)
-        if (size <= r.size && address >= r.base && address - r.base <= r.size - size) {
-            if (writing && !r.writable) {
-                protected_write=true;break;
+    auto &cache=regionCache;
+    const auto generation=m.mappings->generation.load(std::memory_order_acquire);
+    if(cache.mappings!=m.mappings || cache.generation!=generation) {
+        cache.entries={};cache.mappings=m.mappings;cache.generation=generation;
+    }
+    // Empty spans can match both sides of a touching guest boundary. Preserve
+    // the original first-registered descriptor and its write permissions.
+    for(size_t i=0;size && i<cache.entries.size();++i)if(contains(cache.entries[i],address,size)) {
+        const auto region=cache.entries[i];
+        if(i)std::swap(cache.entries[0],cache.entries[i]);
+        if(writing && !region.writable)protected_write=true;
+        else pointer=region.data+(address-region.base);
+        break;
+    }
+    if(!pointer && !protected_write) {
+        std::shared_lock<std::shared_mutex> lock(m.mappings->mutex);
+        // A mutation could race a borrowed-pointer lookup without an outer
+        // GuestMemoryScope. Publish only a coherent generation/descriptor set.
+        const auto locked_generation=m.mappings->generation.load(std::memory_order_relaxed);
+        if(cache.generation!=locked_generation){cache.entries={};cache.generation=locked_generation;}
+        for(const auto &region:m.mappings->regions)if(contains(region,address,size)) {
+            if(size) {
+                for(size_t i=cache.entries.size()-1;i;--i)cache.entries[i]=cache.entries[i-1];
+                cache.entries[0]=region;
             }
-            pointer=r.data+(address-r.base);break;
+            if(writing && !region.writable)protected_write=true;
+            else pointer=region.data+(address-region.base);
+            break;
         }
     } // Release the mapping lock before a fault can longjmp.
     if(protected_write){m.fault_address=address;stopGuest(m,"guest write to protected region");return nullptr;}

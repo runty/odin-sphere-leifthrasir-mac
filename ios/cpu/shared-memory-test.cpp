@@ -3,8 +3,11 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <thread>
 #include <vector>
+extern "C" uint64_t __remill_read_memory_64(Memory *,uint64_t);
+extern "C" Memory *__remill_write_memory_64(Memory *,uint64_t,uint64_t);
 extern "C" uint32_t __remill_read_memory_32(Memory *,uint64_t);
 extern "C" Memory *__remill_write_memory_32(Memory *,uint64_t,uint32_t);
 extern "C" Memory *__remill_compare_exchange_memory_32(Memory *,uint64_t,uint32_t &,uint32_t);
@@ -12,7 +15,84 @@ extern "C" void __osl_guest_tick(Memory *,const State *);
 extern "C" Memory *__remill_atomic_begin(Memory *);
 static unsigned checks;
 static void require(bool ok){if(!ok){std::fprintf(stderr,"shared memory check %u failed\n",checks+1);std::abort();}++checks;}
+static std::array<uint8_t,16> external_data{};
+static unsigned external_calls;
+static bool external_writable=true;
+static uint8_t *external(uint64_t address,size_t size,bool writing) {
+    ++external_calls;
+    if(address>=0x900000 && size<=external_data.size() &&
+       address-0x900000<=external_data.size()-size && (!writing || external_writable))
+        return external_data.data()+address-0x900000;
+    return nullptr;
+}
+static void cachedMappings() {
+    // Empty ranges at touching guest boundaries retain registration order:
+    // the earlier read-only mapping wins even after warming the writable one.
+    {
+        Memory boundary;std::array<uint8_t,16> first{},second{};
+        mapRegion(boundary,0x1000,first.data(),16,false);
+        mapRegion(boundary,0x1010,second.data(),16);
+        require(guestPointer(boundary,0x1010,4,true)==second.data());
+        require(guestPointer(boundary,0x1010,0)==first.data()+16);
+        require(!guestPointer(boundary,0x1010,0,true) && boundary.fault=="guest write to protected region");
+    }
+    {
+        Memory aliases;std::array<uint8_t,16> bytes{};
+        mapRegion(aliases,0x2000,bytes.data(),16,false);
+        mapRegion(aliases,0x3000,bytes.data(),16);
+        __remill_write_memory_32(&aliases,0x3000,0x12345678);
+        require(__remill_read_memory_32(&aliases,0x2000)==0x12345678);
+        require(!guestPointer(aliases,0x2000,4,true) && aliases.fault=="guest write to protected region");aliases.fault={};
+        require(unmapRegion(aliases,0x2000));mapRegion(aliases,0x2000,bytes.data(),16);
+        __remill_write_memory_32(&aliases,0x2000,0x87654321);
+        require(aliases.fault.empty() && __remill_read_memory_32(&aliases,0x3000)==0x87654321);
+    }
+    Memory memory;
+    std::vector<std::unique_ptr<std::array<uint8_t,32>>> backing;
+    for(unsigned i=0;i<128;++i) {
+        auto bytes=std::make_unique<std::array<uint8_t,32>>();
+        const uint64_t value=0x1234000000000000ull+i;std::memcpy(bytes->data()+3,&value,8);
+        mapRegion(memory,0x100000+i*4096,bytes->data(),bytes->size());backing.push_back(std::move(bytes));
+    }
+    for(unsigned pass=0;pass<4;++pass)for(unsigned i=0;i<128;++i)
+        require(__remill_read_memory_64(&memory,0x100003+i*4096)==0x1234000000000000ull+i);
+    // Repeatedly remove a warmed descriptor, destroy its storage, then remap
+    // the same guest address with different bounds and write permissions.
+    for(unsigned i=0;i<128;++i) {
+        const uint64_t address=0x100000+i*4096;
+        require(guestPointer(memory,address,32)==backing[i]->data());
+        require(unmapRegion(memory,address));backing[i].reset();
+        require(!guestPointer(memory,address,1) && memory.fault=="unmapped guest memory");memory.fault={};
+        auto bytes=std::make_unique<std::array<uint8_t,32>>();
+        const uint64_t value=0x5678000000000000ull+i;std::memcpy(bytes->data()+3,&value,8);
+        mapRegion(memory,address,bytes->data(),11,false);backing[i]=std::move(bytes);
+        require(__remill_read_memory_64(&memory,address+3)==value);
+        require(!guestPointer(memory,address+4,8) && memory.fault=="unmapped guest memory");memory.fault={};
+        __remill_write_memory_64(&memory,address+3,~value);
+        require(memory.fault=="guest write to protected region");memory.fault={};
+        uint64_t actual=0;std::memcpy(&actual,backing[i]->data()+3,8);require(actual==value);
+    }
+    // A context's registry can be replaced while quiescent; the old cached
+    // registry must not authorize the same logical address in its successor.
+    for(unsigned i=0;i<128;++i) {
+        memory.mappings=std::make_shared<Memory::Mappings>();
+        auto bytes=std::make_unique<std::array<uint8_t,32>>();
+        mapRegion(memory,0x100000,bytes->data(),bytes->size());
+        __remill_write_memory_32(&memory,0x100000,i);
+        require(__remill_read_memory_32(&memory,0x100000)==i);
+    }
+    // External direct memory is deliberately never cached, including rights
+    // transitions at the same address and consecutive read/write lookups.
+    memory.external_pointer=external;external_data[0]=0x42;external_calls=0;
+    require(guestPointer(memory,0x900000,16)==external_data.data());
+    require(guestPointer(memory,0x900000,16)==external_data.data() && external_calls==2);
+    external_writable=false;
+    require(!guestPointer(memory,0x900000,1,true) && external_calls==3);memory.fault={};
+    require(guestPointer(memory,0x900000,1)==external_data.data() && external_calls==4);
+    external_writable=true;
+}
 int main() {
+    cachedMappings();
     Memory owner,alias;alias.mappings=owner.mappings;
     std::array<uint8_t,64> data{},protected_data{};
     mapRegion(owner,0x4000,data.data(),data.size());mapRegion(owner,0x5000,protected_data.data(),protected_data.size(),false);

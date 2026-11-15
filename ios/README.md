@@ -290,3 +290,47 @@ pass. Evidence is `extract-reuse/startup-final/` and
 `cpu-backends-startup-simd/` at the external build root. This establishes CPU
 semantics for the covered cases. Whole-game execution and physical-device
 results with this backend remain separate checks.
+
+### Checked mapping lookup cache — 2026-11-15
+
+Odin adapts OpenCrown `9ca8945c`'s eight-descriptor cache and strong registry
+identity, adding an atomic generation for Odin's removable mappings. Successful
+map/unmap operations invalidate every thread's copied descriptors and serialize
+with CPU/host transfers. A quiescent registry replacement also invalidates the
+cache. Entries retain logical bounds and write permissions; zero-length spans
+use registration-order traversal because adjacent mappings can both match an
+empty boundary. The cache never authorizes the live external direct-memory
+adapter, which rechecks aliases, unmaps and permission changes on every access.
+The global recursive transfer/atomic/host-service lock remains unchanged.
+Striped synchronization from OpenCrown is not adopted here: Odin's external
+physical aliases need separate proof. A public `guestPointer` is still borrowed;
+hold `GuestMemoryScope` across any access that can race mutation or reclamation.
+
+```sh
+python3 ios/cpu/test-shared-memory.py --output "$WORK/cache-normal" \
+  --remill "$WORK/cpu-backends-startup-simd"
+python3 ios/cpu/test-shared-memory.py --output "$WORK/cache-address" \
+  --remill "$WORK/cpu-backends-startup-simd" --sanitizer address
+python3 ios/cpu/test-shared-memory.py --output "$WORK/cache-thread" \
+  --remill "$WORK/cpu-backends-startup-simd" --sanitizer thread
+```
+
+The fixture passes 1,564 checks on native arm64 and Rosetta, plus arm64
+ASan/UBSan and TSan with fatal diagnostics. It covers descriptor churn,
+unmap/free/remap after warming a cache, changed bounds and read/write rights,
+shared-backing aliases with distinct permissions, 128 quiescent registry
+replacements, uncached external lookups, exact 20,000 concurrent CAS/host
+updates, 2,000 concurrent map cycles, and fault/atomic/cancellation cleanup.
+An isolated negative control exposed empty-boundary registration-order changes;
+the final implementation and fixture preserve the original behavior. All 414
+original-module comparisons and both mobile fixture SDK archives also pass.
+
+A three-repeat alternating synthetic comparison uses 512 mappings: one million
+reads cycling eight tail mappings take median 187.09→13.63 ms; eight threads
+performing eight million total reads take 4,406.33→348.11 ms wall time. Churning
+300,000 reads through all 512 mappings takes 34.47→38.63 ms (about 12% slower).
+Checksums match in every run. These selected lookup workloads establish a
+tradeoff, not whole-game FPS. Exact inputs/results, sanitizer logs and CPU
+manifest are under `checked-memory-scaling/` at the external Odin build root.
+The Remill backend and guest State ABI are unchanged; rebuild host runtime
+objects/checkpoints normally rather than editing provenance hashes.

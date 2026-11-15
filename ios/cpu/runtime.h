@@ -23,7 +23,13 @@ struct Memory {
     Memory &operator=(const Memory &) = delete;
     // Descriptors are shared by worker CPUs. Backing storage belongs to the
     // session and must remain valid until its workers and GPU have quiesced.
-    struct Mappings { std::shared_mutex mutex; std::vector<Region> regions; };
+    struct Mappings {
+        std::shared_mutex mutex;
+        std::vector<Region> regions;
+        // Mutations invalidate copied lookup descriptors. Backing ownership is
+        // unchanged: remove/free under GuestMemoryScope, after users quiesce.
+        std::atomic<uint64_t> generation{0};
+    };
     std::shared_ptr<Mappings> mappings = std::make_shared<Mappings>();
     std::atomic<bool> *stop_requested = nullptr, *cancel_requested = nullptr;
     uint64_t checkpoints = 0, checkpoint_limit = 1000000;
@@ -55,6 +61,8 @@ public:
     void lock();
     void unlock();
 };
+// Borrowed pointer only. Hold GuestMemoryScope while accessing its bytes if
+// another CPU/host can mutate mappings, permissions or backing lifetime.
 uint8_t *guestPointer(Memory &, uint64_t, size_t, bool writing = false);
 Memory *dispatch(State &, uint64_t, Memory *);
 void stopGuest(Memory &, const char *, uint64_t pc = 0);
