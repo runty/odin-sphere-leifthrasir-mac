@@ -737,3 +737,23 @@ The device renderer consumer links against the signed ICD. Simulator
 verification covers SDK archive compilation; its consumer link remains open.
 Device records are in `ipad-first-present/device-ipad/verification.json`.
 Use the iPad for unattended tests while the player has the iPhone.
+
+## Diagnosing a presented black buffer
+
+The 4,784-entry native guest executes one compute dispatch and one draw per
+presentation. The original display-target capture remained armed because this
+path's draw has no color attachment. `OSL_CAPTURE_FLIP_INTERVAL=1` now lets
+the existing `OSL_CAPTURE_TRIGGER` and `OSL_CAPTURE_DIR` capture the interval
+between completed flips. The display-pass capture remains the default.
+
+Three captures at approximately 4, 16 and 35 seconds show the same two passes.
+The compute pass writes the registered display buffer with black. The draw
+writes depth only, with no color attachment or sampled texture. These commands
+explain the black output at the captured points; they do not establish a
+textured scene. The run stops at a later missing CPU block after about
+48 seconds, with all 22 workers joined.
+
+Captures and frame statistics are under `native-first-frames/draw-capture/`.
+The x86-64 IR-pass/cache-reload and 386-check portable-program fixtures pass
+after the diagnostic change. Continue the later CPU/loading path and recapture
+once scene draws appear.

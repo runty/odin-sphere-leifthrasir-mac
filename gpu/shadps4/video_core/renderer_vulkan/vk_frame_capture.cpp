@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <format>
@@ -51,6 +52,8 @@ void AddBuffers(Entry& entry) {
     pending_buffers.clear();
 }
 bool pass_open = false;
+bool capture_by_flip = false;
+u64 capture_start_flip = 0;
 std::mutex display_mutex;
 std::vector<VAddr> display_buffers;
 // osl: read on every draw; the game registers a handful of display buffers once.
@@ -156,7 +159,33 @@ void FrameCapture::OnFlip(VAddr presented_address) {
     }
 }
 
-void FrameCapture::Poll() {}
+void FrameCapture::Poll() {
+    // Compute presentation paths may never draw into a registered display
+    // image. Opt-in diagnostics can delimit capture by completed flips instead.
+    static const bool by_flip = [] {
+        const char* value = std::getenv("OSL_CAPTURE_FLIP_INTERVAL");
+        return value && std::strcmp(value, "1") == 0;
+    }();
+    if (!by_flip) return;
+    capture_by_flip = true;
+    const auto frame = flips.load(std::memory_order_acquire);
+    if (state.load(std::memory_order_relaxed) == Armed) {
+        entries.clear();
+        pending_sampled.clear();
+        pending_buffers.clear();
+        pass_open = false;
+        capture_start_flip = frame;
+        state.store(Recording, std::memory_order_release);
+    } else if (state.load(std::memory_order_relaxed) == Recording &&
+               frame > capture_start_flip) {
+        Write(last_presented.load(std::memory_order_relaxed));
+        entries.clear();
+        pending_sampled.clear();
+        pending_buffers.clear();
+        pass_open = false;
+        state.store(Idle, std::memory_order_release);
+    }
+}
 
 bool FrameCapture::IsDisplayBuffer(VAddr address) {
     const u32 count = display_count.load(std::memory_order_acquire);
@@ -201,7 +230,7 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
     display = display && targets.size() == 1;
     const bool new_pass = !(pass_open && !entries.empty() && !entries.back().compute &&
                             entries.back().colors == targets);
-    if (display && new_pass) {
+    if (display && new_pass && !capture_by_flip) {
         if (state.load(std::memory_order_relaxed) == Recording) {
             Write(last_presented.load(std::memory_order_relaxed));
             entries.clear();
