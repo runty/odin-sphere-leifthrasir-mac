@@ -1,0 +1,55 @@
+diff --git a/lib/Arch/X86/Semantics/DATAXFER.cpp b/lib/Arch/X86/Semantics/DATAXFER.cpp
+--- a/lib/Arch/X86/Semantics/DATAXFER.cpp
++++ b/lib/Arch/X86/Semantics/DATAXFER.cpp
+@@ -78,19 +78,28 @@
+   return memory;
+ }
+ 
+-// MOVMSKPS: extract sign bits (bit 31) of 4 single-precision floats into GPR32
++// Extract integer sign bits without floating-point conversions (including NaNs).
+ template <typename D, typename S>
+ DEF_SEM(MOVMSKPS, D dst, S src) {
+-  auto src_vec = UReadV32(src);
+-  auto s0 = UExtractV32(src_vec, 0);
+-  auto s1 = UExtractV32(src_vec, 1);
+-  auto s2 = UExtractV32(src_vec, 2);
+-  auto s3 = UExtractV32(src_vec, 3);
+-  auto r32 = UOr(
+-      UOr(UOr(UShr(s0, 31_u32), UShl(UShr(s1, 31_u32), 1_u32)),
+-          UShl(UShr(s2, 31_u32), 2_u32)),
+-      UShl(UShr(s3, 31_u32), 3_u32));
+-  WriteZExt(dst, r32);
++  auto values = UReadV32(src);
++  uint32_t mask = 0;
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(values); ++i) {
++    auto sign = UShr(UExtractV32(values, i), 31_u32);
++    mask = UOr(mask, UShl(sign, static_cast<uint32_t>(i)));
++  }
++  WriteZExt(dst, mask);
++  return memory;
++}
++
++template <typename D, typename S>
++DEF_SEM(MOVMSKPD, D dst, S src) {
++  auto values = UReadV64(src);
++  uint32_t mask = 0;
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(values); ++i) {
++    auto sign = static_cast<uint32_t>(UShr(UExtractV64(values, i), 63_u64));
++    mask = UOr(mask, UShl(sign, static_cast<uint32_t>(i)));
++  }
++  WriteZExt(dst, mask);
+   return memory;
+ }
+ 
+@@ -503,6 +512,11 @@
+ IF_AVX(DEF_ISEL(VMOVLHPS_XMMdq_XMMdq_XMMdq) = VMOVLHPS;)
+ 
+ DEF_ISEL(MOVMSKPS_GPR32_XMMps) = MOVMSKPS<R32W, V128>;
++DEF_ISEL(MOVMSKPD_GPR32_XMMpd) = MOVMSKPD<R32W, V128>;
++IF_AVX(DEF_ISEL(VMOVMSKPS_GPR32d_XMMdq) = MOVMSKPS<R32W, V128>;)
++IF_AVX(DEF_ISEL(VMOVMSKPS_GPR32d_YMMqq) = MOVMSKPS<R32W, V256>;)
++IF_AVX(DEF_ISEL(VMOVMSKPD_GPR32d_XMMdq) = MOVMSKPD<R32W, V128>;)
++IF_AVX(DEF_ISEL(VMOVMSKPD_GPR32d_YMMqq) = MOVMSKPD<R32W, V256>;)
+ 
+ #if HAS_FEATURE_AVX
+ #  if HAS_FEATURE_AVX512

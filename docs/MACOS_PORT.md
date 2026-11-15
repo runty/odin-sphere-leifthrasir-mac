@@ -11,19 +11,29 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac audio/progress | Player heard clear audio and confirmed progress survived quit/relaunch | Longer interruption/failure and device-change coverage |
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
-| Mobile CPU | Original eboot/libc/Fios2 routines pass 414 comparisons; fresh iPad repeats them. Packed reciprocal/square-root semantics pass six forms / 1,572,864 lanes per CPU path against ISA contracts; packed-double blend/shuffle each match 12,288 native output lanes | Wider SIMD/ABI, callbacks/fibers, full title CPU budget and fresh updated iPhone execution |
-| Mobile baseline | Clean `1376d6a` installed/listed on both devices after Documents backups; iPad launches 12/13 pass CPU 414, native memory 19 and actual GPU readback 64 words | iPhone current launch denied Locked; older physical execution is historical, not a fresh result |
-| Mobile memory/startup | Bounded backing aliases remove the full-pool view, preserve physical accounting and adapt 8/4/2 GiB windows. Actual iPad allocates 1,294,155,776 sparse-pool bytes in a 4 GiB window and reaches VideoOut without the former fault; inputs survive relaunch | Full resident-memory/GPU workload and gameplay lifecycle qualification; 33 selected private assets have round-trip hash evidence, while the product Files import flow remains open |
-| Mobile graphics/workers | The 2,702-entry device-family build is signed. Native arm64 replay has reached 3,311 entries, initialized audio and opened a real SDL/CoreAudio port. Earlier iPad startup joined four workers, registered three 1080p buffers and handled foreground cancellation. New INSERTPS/VINSERTPS lifts match a Rosetta reference across all immediates and memory bounds | First actual guest GPU submission, title and battle frames, device audio/input, in-game saves and gameplay lifecycle |
+| Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. The host's 3,830-entry run reached VMOVMSKPS at `0x107356a8`. OpenCrown’s unchanged MOVMSKPS/PD patch lifts the stopped bytes and passes 38,400 Rosetta comparisons with Odin’s arm64 runtime. | Continue from the observed instruction and qualify the next executable on both devices. |
+| Mobile startup | Signed `190b84a`, corpus `e3d4705e` (3,428 entries), ran twice on each of iPhone 17 Pro Max and iPad mini A20 Pro. Each completed two initializers, joined 18 workers, registered three 1080p buffers and stopped at `0x10719230`. | First real guest GPU submission, visible title, combat and sustained frame pacing. |
+| Mobile audio, storage and lifecycle | Four or five guest audio API calls per launch. All 35 private input files matched their source hashes after cold relaunch on each device. Renderer shutdown, worker joins and restoration of the UIKit window passed. | Actual PCM, touch/controller gameplay, new in-game save, cold reload, suspend and resume during play. |
 
-The immediate mobile sequence remains: finish executed startup translation,
-observe the first real Gnm submission and presented guest image on the host,
-qualify that exact corpus for both SDKs, then repeat on the iPad before broader
-input/audio/save work. Diagnostic packet/readback/presentation fixtures do not
-satisfy the real-game draw gate. Keep the iPhone's old result separate until
-the device is available. Full title/battle execution and device timing can
-still reveal CPU, service, shader or memory gaps; no mobile delivery date or
-60 fps result is established.
+## OpenCrown reference for upcoming work
+
+At the start of each port milestone or newly observed failure, check the current
+OpenCrown port and its regression tests before building an Odin implementation.
+Record the revision, relevant source and Odin verification in the milestone log.
+The last comparison used [OpenCrown 68cb2a7b](https://github.com/runty/OpenCrown-PC/tree/68cb2a7b9bfc042593fdd26d7a045697cc29e65a).
+
+| Odin milestone | OpenCrown implementation to check | Odin verification |
+| --- | --- | --- |
+| Missing instruction or translated block | `ios/remill-*.patch`, `ios/cpu/review`, `ios/cpu/fp80`, `ios/game/control-flow` and `unwind_atlas.py` | Reproduce the stopped PC, compare semantics with Rosetta, replay Odin’s actual modules. Use switch candidates when observed PCs or profiles justify precompiling them. |
+| First frame and combat pacing | `ios/game/gnm-services.cpp`, `ios/render/capture-fixture.cpp`, `ios/game/vblank-clock-fixture.cpp`, `ios/host/routes` | Exercise Odin’s Vulkan-on-Metal command path, capture an actual guest image and time a repeatable Odin battle. The two ports have different rendering backends and shaders. |
+| Audio, touch, controller and lifecycle | `ios/platform/{core.cpp,platform.mm,probe.cpp}`, `ios/app.mm`, `ios/game/scripted-input-fixture.cpp` | Check Odin button masks and axes, touch release and controller reconnect. Capture nonempty game PCM and verify background/foreground transitions with the game producing frames. |
+| Saves and device packaging | `ios/storage/save-transactions.cpp`, `ios/storage/save-service-integration.cpp`, `ios/game/save-seed-test.py`, `ios/bootstrap.py` | Use an isolated Odin slot. Save progress, quit, cold-load on each device, compare progress and test interrupted writes. Preserve Odin’s bundle and save location. |
+
+The OpenCrown unwind reader already supplies Odin’s 33,413 validated function
+ranges. Its unmodified control-flow tools found 5,584 strict switch targets
+across Odin's original three modules. All executable segments and the accepted
+tables matched the relocated image. None of 40 distinct recently observed
+missing PCs was in that set, so startup discovery continues from observed PCs.
 
 Earlier bring-up checkpoints below are retained as history; the table above
 is current. The first module-startup hardware result is explicitly a development build:
