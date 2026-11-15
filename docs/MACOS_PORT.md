@@ -12,12 +12,13 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
 | Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. Reused OpenCrown MOVMSKPS/PD semantics passed 38,400 comparisons. Its ROUND patch passed 13,824,000 native comparisons and the separate suppression/fault checks in OpenCrown's reference harness with Odin's backend. | The native original-game replay passes VROUNDSS after fixing initial MXCSR/x87 controls and worker inheritance. Continue CPU/ABI qualification through combat. |
-| Mobile startup | Signed `460ecdb`, corpus `cf0c090c` (4,022 entries), ran on both iPhone 17 Pro Max and iPad mini A20 Pro. Each completed two initializers, joined 18 workers, registered three buffers and stopped in a child at `0x10743600`. Earlier `190b84a` cold-launched twice on each device. | First real guest GPU submission, visible title, combat and sustained frame pacing. |
+| Mobile startup | Physical iPad `c6ab0ce`, corpus `c45c17cc` (4,658 entries), cold-launched twice, submitted 95/105 batches and presented 19/21 buffers. Both runs join 18 workers and release all resources before the checkpoint budget stop. iPhone retains the prior `460ecdb` startup build while away. | Recognizable title, combat, input/audio, new saves and sustained frame pacing. |
 | Mobile audio, storage and lifecycle | Eleven and nineteen guest audio API calls on the new iPad/phone run. Their MobileProfile bytes survived the update/launch unchanged. The earlier 35 private input files matched their source hashes after cold relaunch on each device. Renderer shutdown, worker joins and restoration of the UIKit window passed. | Actual PCM, touch/controller gameplay, new in-game save, cold reload, suspend and resume during play. |
 
 The native arm64 renderer now has a portable shader-resource walker.
 Its actual IR-pass tests pass on both Mac CPUs, and both mobile SDK renderer
-archives link. The 4,476-entry guest submitted command batches and presented
+archives compile. The device consumer links against its signed ICD; the
+Simulator consumer-link check remains open. The 4,476-entry guest submitted command batches and presented
 up to 21 buffers in two seconds. A longer run presented 102 before a new
 worker hit another missing block. The captured startup image was black.
 Recognizable title/battle images remain open. The player made the iPad

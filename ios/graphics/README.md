@@ -688,13 +688,13 @@ memory. Pipeline cache reload registers and validates the encoded bytes.
 offsets, duplicate offsets, refresh and re-registration on both Mac CPUs.
 `osl-portable-srt-tests` passes 386 checks and 800 concurrent walks on both
 CPUs. Its arm64 ASan and TSan builds also pass. Both device and Simulator
-renderer archives compile and their consumers link. Evidence is under
+renderer archives compile. The device consumer links against the signed ICD.
+Simulator consumer-link verification remains open. Evidence is under
 `portable-srt-tests/` and `portable-srt-sdk/` at the external Odin build root.
 
 The native guest now passes the former shader assertion and continues through
-additional missing CPU blocks. No game frame is established. The physical
-devices retain the independently qualified `460ecdb` startup app until an
-updated full frontend checkpoint is packaged and checked.
+additional missing CPU blocks. No game frame is established. The physical iPad now has the later `c6ab0ce` checkpoint described below.
+The iPhone retains its earlier `460ecdb` startup build while away.
 
 ## Longer bounded startup discovery
 
@@ -721,3 +721,19 @@ Six invalid CLI durations are rejected. The extended real run reaches the
 including inherited checkpoint limits and original AOT strlen workers,
 passes 172 checks under both ASan and TSan. Evidence is in
 `native-first-frames/` at the external Odin build root.
+
+
+## First physical guest submissions
+
+Signed `c6ab0ce`, corpus `c45c17cc` with 4,658 entries, ran twice on
+the iPad mini A20 Pro. Cold launches 11/12 submitted 95/105 batches and
+presented 19/21 buffers. Both passed CPU 414, memory 19 and readback 64,
+joined all 18 workers and released buffers, mappings, queues, fault handlers
+and the UIKit window. Both stopped at the checkpoint budget. Their isolated
+MobileProfile bytes match the pre-update backup. Neither run proves image
+content, a playable scene or new in-game progress.
+
+The device renderer consumer links against the signed ICD. Simulator
+verification covers SDK archive compilation; its consumer link remains open.
+Device records are in `ipad-first-present/device-ipad/verification.json`.
+Use the iPad for unattended tests while the player has the iPhone.
