@@ -167,7 +167,7 @@ if a.seed_from:
 
 
 repo = source.parents[1]
-source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
+source_paths = (source / "advance.py", source / "runner.cpp", source / "trace_lookup.h", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
                 source / "function_bounds.py",source / "unwind_reader.py",source / "build-function-bounds.py",repo / "scripts/ps4_module.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None
@@ -300,7 +300,7 @@ for round in range(a.rounds):
     for symbol in entries.values():
         text += f'extern "C" Memory *{symbol}(State &,uint64_t,Memory *);\n'
     text += "struct Trace { uint64_t pc; Lifted function; };\nstatic const Trace traces[]={"
-    text += ",".join("{" + str(pc) + ",&" + symbol + "}" for pc, symbol in entries.items()) + "};\n"
+    text += ",".join("{" + str(pc) + ",&" + symbol + "}" for pc, symbol in sorted(entries.items())) + "};\n"
     (root / "traces.h").write_text(text)
     thunks = '#include "runtime.h"\n'
     for symbol in sorted(declarations):

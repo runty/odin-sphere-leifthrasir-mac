@@ -2,6 +2,7 @@
 #include "../cpu/runtime.h"
 #include "image-layout.h"
 #include "traces.h"
+#include "trace_lookup.h"
 #include "trophies/trophy_service.h"
 #include "../services/memory.h"
 #include "../services/user.h"
@@ -917,9 +918,8 @@ static Memory *gameDispatch(State &s, uint64_t pc, Memory *m) {
         if (!m->fault.empty())resumeGuestFault(*m);
         return result;
     }
-    for (const auto &entry : traces)
-        if (entry.pc == lookup)
-            return entry.function(s, pc, m);
+    if (const auto *entry=GuestTraces::find(std::begin(traces),std::end(traces),lookup))
+        return entry->function(s, pc, m);
     stopGuest(*m, "missing translated block", lookup);
     return m;
 }
@@ -944,6 +944,8 @@ static void runWorker(Session &session,MobileWorkers::Worker &worker) {
 }
 
 static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullptr) {
+    if (!GuestTraces::valid(std::begin(traces),std::end(traces)))
+        throw std::runtime_error("Translated trace table is not strictly increasing");
     if (gpu && (!gpu->call || !gpu->finish)) throw std::runtime_error("Invalid native GPU service table");
     if (gpu && (gpu->execution_budget_ms<100 || gpu->execution_budget_ms>60000))
         throw std::runtime_error("Guest execution budget must be 100 to 60000 milliseconds");
