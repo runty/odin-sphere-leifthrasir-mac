@@ -14,7 +14,26 @@ extern "C" Memory *__remill_atomic_begin(Memory *);
 extern "C" Memory *__remill_atomic_end(Memory *);
 extern "C" Memory *__remill_sync_hyper_call(State &, Memory *, uint32_t);
 
+extern "C" uint8_t __remill_read_io_port_8(Memory *, uint64_t);
+extern "C" Memory *__remill_write_io_port_32(Memory *, uint64_t, uint32_t);
+
+static void checkPortFault(bool writing) {
+    auto memory = std::make_unique<Memory>();
+    std::jmp_buf recovery;
+    memory->recovery = &recovery;
+    if (setjmp(recovery) == 0) {
+        if (writing)
+            __remill_write_io_port_32(memory.get(), 0x3f8, 1);
+        else
+            __remill_read_io_port_8(memory.get(), 0x3f8);
+        assert(false && "Guest port I/O returned");
+    }
+    assert(memory->fault == "unsupported guest port I/O" && memory->fault_address == 0x3f8);
+}
+
 int main() {
+    checkPortFault(false);
+    checkPortFault(true);
     uint32_t counter = 0;
     std::vector<std::thread> workers;
     for (int i = 0; i < 4; ++i) workers.emplace_back([&] {

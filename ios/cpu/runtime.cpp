@@ -120,6 +120,25 @@ SCALAR(64, uint64_t)
 SCALAR(f32, float)
 SCALAR(f64, double)
 #undef SCALAR
+
+// Remill may emit port operations on an untaken path of a lifted trace.
+// The application guest has no port I/O privileges or host port mapping.
+[[noreturn]] static void rejectPortIO(Memory *memory, uint64_t port) {
+    memory->fault_address = port;
+    stopGuest(*memory, "unsupported guest port I/O");
+    std::abort(); // No enclosing guest recovery boundary.
+}
+#define PORT_IO(BITS, TYPE)                                                        \
+    extern "C" TYPE __remill_read_io_port_##BITS(Memory *memory, uint64_t port) {   \
+        rejectPortIO(memory, port);                                                \
+    }                                                                              \
+    extern "C" Memory *__remill_write_io_port_##BITS(Memory *memory, uint64_t port, TYPE) { \
+        rejectPortIO(memory, port);                                                \
+    }
+PORT_IO(8, uint8_t)
+PORT_IO(16, uint16_t)
+PORT_IO(32, uint32_t)
+#undef PORT_IO
 extern "C" Memory *__remill_function_return(State &, uint64_t, Memory *m) {
     ++m->returns;
     return m;
