@@ -7,6 +7,7 @@
 #include "oslgpu.h"
 #include "clock.h"
 #include "guest-session.h"
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -36,6 +37,7 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic,copy) void (^completion)(NSDictionary *);
 @property(nonatomic) unsigned polls;
 @property(nonatomic) uint32_t sdk;
+@property(nonatomic) uint32_t guestBudgetMs;
 @property(nonatomic) BOOL initialized;
 @property(nonatomic) BOOL finished;
 @property(nonatomic) BOOL pendingFinish;
@@ -99,6 +101,7 @@ static OdinRendererSession *activeSession;
         @"guest_requested":@(self.image!=nil),@"guest_session":self.guestReport?:@{},@"presented_frames":@(presented),
         @"diagnostic_stop_requested":@(self.diagnosticStopRequested),
         @"diagnostic_gate_requested":@(self.testGate),
+        @"guest_budget_ms":@(self.guestBudgetMs),
         @"game_executed":@(executed),@"game_frames":@NO,@"stage":@"stopped"} mutableCopy];
     if(self.pendingError)report[@"error"]=self.pendingError;
     [self persist:report];
@@ -146,6 +149,15 @@ static OdinRendererSession *activeSession;
 - (void)start {
     backgroundTask=UIBackgroundTaskInvalid;
     self.originalWindow=self.scene.keyWindow;
+    self.guestBudgetMs=2000;
+    // Developer-only bounded startup runs. Validate before acquiring signals,
+    // initializing SDL or starting a worker; normal launches retain two seconds.
+    if(self.image)if(const char *value=getenv("OSL_GUEST_RUN_MS")) {
+        uint32_t budget=0;const char *end=value+std::strlen(value);
+        const auto parsed=std::from_chars(value,end,budget);
+        if(parsed.ec!=std::errc{} || parsed.ptr!=end || budget<100 || budget>60000){[self finish:@"OSL_GUEST_RUN_MS must be an integer from 100 to 60000"];return;}
+        self.guestBudgetMs=budget;
+    }
     // Explicit developer-only cancellation fixture. Normal launches do not stop
     // here; the bounded runner retains its own execution deadline/checkpoints.
     const char *stop=getenv("OSL_GUEST_STOP_AFTER_GPU_CALLS");
@@ -158,7 +170,7 @@ static OdinRendererSession *activeSession;
     [NSFileManager.defaultManager createDirectoryAtPath:self.profile withIntermediateDirectories:YES attributes:nil error:NULL];
     self.sdk=0x04508000; // Renderer-only diagnostic, never game metadata.
     if(self.image){uint32_t sdk=0;if(!osl_guest_session_sdk(self.image.fileSystemRepresentation,&sdk)){[self finish:@"Prepared image or relocation table validation failed"];return;}self.sdk=sdk;}
-    guestContext=osl_guest_session_create();
+    guestContext=osl_guest_session_create_with_budget(self.guestBudgetMs);
     if(!guestContext || !osl_guest_session_faults_begin(guestContext)){[self finish:@"Cannot acquire renderer fault handling"];return;}
     self.faultsInstalled=YES;
     if(self.image && self.testGate && !osl_guest_session_test_gate_after_buffers(guestContext)){[self finish:@"Cannot configure diagnostic cancellation gate"];return;}

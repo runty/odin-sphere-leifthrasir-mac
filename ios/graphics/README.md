@@ -757,3 +757,21 @@ Captures and frame statistics are under `native-first-frames/draw-capture/`.
 The x86-64 IR-pass/cache-reload and 386-check portable-program fixtures pass
 after the diagnostic change. Continue the later CPU/loading path and recapture
 once scene draws appear.
+
+## Longer UIKit engineering runs
+
+The UIKit probe accepts `OSL_GUEST_RUN_MS=100..60000` through its developer
+launch environment. Its default remains 2000 ms. Invalid integers are rejected
+before signal ownership, SDL initialization or guest execution. The owned
+session's immutable budget reaches the same scaled CPU/worker limits as the
+native frontend. Its report records `execution_budget_ms`, and the outer
+diagnostic wait allows 75 seconds for a minute run and teardown.
+
+`osl_guest_session_create_with_budget` rejects invalid bounds; the existing
+factory retains its default. The native ownership fixture checks both range
+endpoints, normal and extended real-guest runs, cancellation before startup
+and during callbacks, signal restoration and resource retirement. The normal
+fixture and boundary ASan pass at the 5,044-entry checkpoint. ASan instruments
+the boundary and fixture; the game archive, renderer and driver are uninstrumented.
+Early executed translation gaps remain valid explicit stops even in a longer
+run. This API extends engineering coverage; playable mobile scenes remain open.

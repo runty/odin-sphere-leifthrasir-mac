@@ -18,6 +18,8 @@
 extern "C" uint64_t osl_aot_memory_allocated();
 extern "C" uint64_t runtime_eventflag_live_count();
 struct OslGuestSession {
+    explicit OslGuestSession(uint32_t budget):budget_ms(budget){}
+    const uint32_t budget_ms;
     NativeGpu gpu;
     std::atomic<bool> stop{false},running{false},started{false};
     std::atomic<unsigned> calls{0};
@@ -71,7 +73,11 @@ extern "C" int osl_guest_session_sdk(const char *path,uint32_t *sdk) {
     } catch(...) {return 0;}
 }
 extern "C" OslGuestSession *osl_guest_session_create() {
-    try{return new OslGuestSession;}catch(...){return nullptr;}
+    return osl_guest_session_create_with_budget(2000);
+}
+extern "C" OslGuestSession *osl_guest_session_create_with_budget(uint32_t milliseconds) {
+    if(milliseconds<100 || milliseconds>60000)return nullptr;
+    try{return new OslGuestSession(milliseconds);}catch(...){return nullptr;}
 }
 extern "C" int osl_guest_session_faults_begin(OslGuestSession *session) {
     if(!pthread_main_np() || !session || fault_owner || session->faults)return 0;
@@ -105,7 +111,8 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
                 }
                 return handled;
             },[](void *opaque){NativeGpu::finish(&static_cast<OslGuestSession *>(opaque)->gpu);},&session->stop};
-    services.audio_context=&audio;services.audio_call=GuestAudio::call;
+        services.execution_budget_ms=session->budget_ms;
+        services.audio_context=&audio;services.audio_call=GuestAudio::call;
         const std::string guest=osl_mobile_game_report_with_gpu(path,&services);
         audio.finish();
         const auto &gpu=session->gpu;
@@ -113,7 +120,7 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
         const bool released=osl_aot_memory_allocated()==0 && runtime_eventflag_live_count()==0;
         const bool clean=gpu.closed==gpu.opened && gpu.queues_created==gpu.queues_deleted && released &&
             (!gpu.observed_mapping || (gpu.mapped_before_reset && unmapped));
-        std::ostringstream out;out<<std::boolalpha<<"{\"guest\":"<<guest<<",\"cleanup\":{\"passed\":"<<clean
+        std::ostringstream out;out<<std::boolalpha<<"{\"execution_budget_ms\":"<<session->budget_ms<<",\"guest\":"<<guest<<",\"cleanup\":{\"passed\":"<<clean
             <<",\"opened\":"<<gpu.opened<<",\"closed\":"<<gpu.closed<<",\"queues_created\":"<<gpu.queues_created
             <<",\"queues_deleted\":"<<gpu.queues_deleted<<",\"events_added\":"<<gpu.events_added
             <<",\"attributes_set\":"<<gpu.attributes_set<<",\"buffers_registered\":"<<gpu.buffers_registered

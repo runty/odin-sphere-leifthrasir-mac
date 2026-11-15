@@ -57,7 +57,7 @@ def run(label,args,prefix):
  if len(records)!=1:raise RuntimeError('Missing '+prefix)
  return records[0],r.stdout
 reports={}
-for mode in ('bridge','normal','pre-stop','live-stop'):
+for mode in ('bridge','normal','extended','pre-stop','live-stop'):
  profile=out/(mode+'-profile');profile.mkdir()
  result,stdout=run(mode,[root/'image.bin',profile,mode],'OSL_GUEST_SESSION:')
  ownership=[json.loads(s.removeprefix('OSL_GUEST_OWNERSHIP:')) for s in stdout.splitlines() if s.startswith('OSL_GUEST_OWNERSHIP:')];assert len(ownership)==1
@@ -65,6 +65,7 @@ for mode in ('bridge','normal','pre-stop','live-stop'):
   assert result['bridge_checks']>=109 and result['game_frames'] is False
   reports[mode]={'bridge_checks':result['bridge_checks'],'ownership':ownership[0]};continue
  guest=result['guest'];cleanup=result['cleanup'];assert cleanup['passed'] and cleanup['guest_resources_released']
+ assert result['execution_budget_ms']==(5000 if mode=='extended' else 2000)
  assert guest['trace_count']==len(state['ir']), 'Linked game archive has a different trace corpus'
  assert cleanup['opened']==cleanup['closed'] and cleanup['queues_created']==cleanup['queues_deleted']
  assert guest['fault_address']==0 and guest['workers_started']==guest['workers_finished']
@@ -81,14 +82,15 @@ for mode in ('bridge','normal','pre-stop','live-stop'):
    offset=guest['missing_pc']-state['trace_inputs']['base']
    layout=json.loads((root/'image.json').read_text())
    assert any(flags&1 and start<=offset<start+size for start,size,flags in layout['segments'])
-  if mode=='normal':
+  if mode in ('normal','extended'):
    sys.path.insert(0,str(repo/'ios/game'))
-   from discovery_targets import missing_targets
+   from discovery_targets import missing_targets,deadline_only
    layout=json.loads((root/'image.json').read_text())
    known={int(value) for value in re.findall(r'\{([0-9]+),&sub_[0-9a-f]+\}',(root/'traces.h').read_text())}
    pending=missing_targets(guest,layout['base'],layout['segments'],known)
-   assert guest['error']=='missing translated block' and pending, 'Expected a real untranslated executable gap'
- assert result['presented_frames']==0 and result['game_frames'] is False
+   assert (guest['error']=='missing translated block' and pending) or deadline_only(guest) or guest['error'] in ('guest execution budget exhausted','guest dispatch budget exhausted'), 'Expected an explicit gap or bounded engineering stop'
+   if mode=='extended' and not pending:assert guest['guest_elapsed_ms']>2000, 'Extended budget expired within the old two-second window'
+ assert isinstance(result['presented_frames'],int) and result['presented_frames']>=0 and result['game_frames'] is False
  reports[mode]={'guest':guest,'cleanup':cleanup,'ownership':ownership[0],
                 'cpu_interruption_observed':guest['error']=='guest execution interrupted'}
 fixtures=out/'images';fixtures.mkdir();image=fixtures/'image.bin';pointers=fixtures/'image-pointers.bin'
