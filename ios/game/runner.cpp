@@ -153,6 +153,13 @@ static void releaseThreadMutexes(Session &session,uint64_t id) {
 
 
 
+static State initialGuestState() {
+    State state{};
+    state.x87.fxsave.cwd.flat = 0x037f;
+    state.x87.fxsave.mxcsr.flat = 0x1f80;
+    return state;
+}
+
 struct WorkerAttachment {
     Session &session;MobileWorkers::Worker &worker;int exceptions=std::uncaught_exceptions();
     WorkerAttachment(Session &owner,MobileWorkers::Worker &cpu):session(owner),worker(cpu){active=&session;active_worker=&worker;}
@@ -655,7 +662,11 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         bool executable=false;for(const auto &segment:segments)if((segment.flags&1) && normalized>=segment.address && normalized-segment.address<segment.size)executable=true;
         if(!executable)return hostReturn(s,m,orbisError(22));
         if(s.gpr.r8.qword)for(unsigned i=0;i<31;++i){auto byte=guestPointer(*m,s.gpr.r8.qword+i,1);if(!byte)return m;if(!*byte)break;}
-        uint64_t id=0;const int error=session.workers->spawn(entry,s.gpr.rcx.qword,attributes,[&session](auto &worker){runWorker(session,worker);},id);
+        uint64_t id=0;const int error=session.workers->spawn(entry,s.gpr.rcx.qword,attributes,[&session, mxcsr=s.x87.fxsave.mxcsr.flat, control=s.x87.fxsave.cwd.flat](auto &worker){
+            worker.state.x87.fxsave.mxcsr.flat=mxcsr;
+            worker.state.x87.fxsave.cwd.flat=control;
+            runWorker(session,worker);
+        },id);
         if(!error)std::memcpy(output,&id,8);
         uint64_t result=0;GuestConditions::error(*m,error,result);return m->fault.empty() ? hostReturn(s,m,result) : m;
     }
@@ -1011,7 +1022,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         for (const auto &module : modules) {
             session->stage =
                 session->completed_modules == 0 ? "libc initializer" : "Fios2 initializer";
-            session->state = State{};
+            session->state = initialGuestState();
             session->state.gpr.rsp.qword = session->stack_address + session->stack.size() - 0xf8;
             store64(session->memory, session->state.gpr.rsp.qword, 0xfeedface);
             dispatch(session->state, session->image_address + module.init, &session->memory);
@@ -1026,7 +1037,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         }
         if (session->completed_modules == std::size(modules)) {
             session->stage = "eboot entry";
-            session->state = State{};
+            session->state = initialGuestState();
             session->state.gpr.rsp.qword = session->stack_address + session->stack.size() - 0xf8;
             store64(session->memory, session->state.gpr.rsp.qword, 0xfeedface);
             store64(session->memory, session->stack_address + 0x100, 1);
@@ -1200,6 +1211,9 @@ static bool serviceChecks() {
     // Unavailable crash reporting returns explicit library errors and never
     // reads callback/user-data addresses or writes caller buffers.
     std::fill(session.stack.begin()+0x100,session.stack.begin()+0x200,0x7b);
+    const auto initial=initialGuestState();
+    require(initial.x87.fxsave.cwd.flat==0x037f);
+    require(initial.x87.fxsave.mxcsr.flat==0x1f80);
     require(call("sceCoredumpRegisterCoredumpHandler",0,16384,UINT64_MAX)==GuestCrashDiagnostics::invalid);
     for(uint64_t size:{0ull,1ull,0x3fffull,0x4000ull,0x1fffffffull})
         require(call("sceCoredumpRegisterCoredumpHandler",UINT64_MAX,size,0x20000101)==GuestCrashDiagnostics::thread_create_failed);

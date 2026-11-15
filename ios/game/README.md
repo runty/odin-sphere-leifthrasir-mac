@@ -1023,3 +1023,22 @@ The fresh discovery tree is `ios-game-rounding/`, using
 `cpu-backends-rounding/` and `native-gpu-rounding-arm64/`. Every seed PC
 is lifted again, retaining the original unwind bounds and runtime guards.
 Check the producer before changing its inputs or restarting discovery.
+
+### Floating-point defaults and the first real initialization packet
+
+The first replay with the rounding implementation hit its unmasked exception
+guard at the same VROUNDSS. The primary entry and module initializers had used
+zero-initialized MXCSR and x87 control state. Following OpenCrown's startup
+defaults, those entry states now use MXCSR `0x1f80` and x87 control `0x037f`.
+New guest workers snapshot their creator's MXCSR and x87 control word before
+starting. Explicit guest changes to those controls carry into the child.
+
+With those defaults, the original 4,061-entry guest passes the stopped
+VROUNDSS and stops at another missing translated block. The actual native
+frontend records its first Gnm initialization call writing 256 words, one
+flip-wait packet and one vblank wait. All 18 workers join and all three
+registered buffers release. These are startup packets; no game command batch
+or presented game frame is recorded. ASan and TSan each pass 4,342 imported
+service cases and four worker/exception cleanup cases. Evidence is
+`ios-rounding-fenv-check.log`, `ios-game-rounding/attempt-00001.log` and
+`rounding-fenv-qualified/{address,thread}/verification.json`.
