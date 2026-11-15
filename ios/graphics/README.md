@@ -1,5 +1,43 @@
 # iPhoneOS Vulkan-on-Metal experiment
 
+## Display snapshots including host dialogs — 2026-11-15
+
+The opt-in snapshot request now accepts `OSL_FRAME_SNAPSHOT_SOURCE=game|display`.
+The default remains `game`, copying the fresh guest frame before the overlay.
+`display` copies the acquired swapchain image after the game blit, letterboxing
+and actual host overlay, before presentation. Its counter includes reused-frame
+presentations. Both modes keep the source image and mapped staging buffer alive
+through the presentation fence; invalidation precedes encoding, and display
+alpha is opaque. HDR and images over 4096 pixels per side remain unsupported.
+With capture off, no readback allocation, copy or fence wait is added.
+
+On the UIKit harness use `OSL_CAPTURE_DISPLAY_FRAME=1` and
+`OSL_FRAME_SNAPSHOT_AT=1300`. The unique PNG goes under RendererDiagnostics,
+and the report names its source. `OSL_CAPTURE_GAME_FRAME=1` retains game capture;
+requesting both rejects. Previous path/source environment values are restored
+on teardown. The native frontend accepts the absolute path/source directly.
+
+Request/PNG checks pass 41 cases normally and under ASan/UBSan, with independent
+channel/alpha/row decoding. The real native game-only first-frame smoke still
+passes. A fresh-profile native run copies an actual 960×540 display frame at
+presentation 1,300: the Save game heading, full create-save-data message and
+separate Yes/No buttons are upright and readable, with Yes highlighted. It has
+590 RGB values. The run keeps the dialog pending through 180 seconds / 3,268
+presentations, joins all 23 workers and passes cleanup without a memory fault.
+Evidence: `display-readback/native-dialog/verification.json` and
+`display-readback/native-game-smoke/verification.json` at the Odin build root.
+Both SDK renderer archives compile; the device consumer links its signed ICD.
+The next checkpoint verifies display pixels on the physical iPad. This does
+not qualify physical touch input or game scenes beyond startup dialogs.
+
+The same discovery corpus now contains 9,589 entries. Native attempt 16 creates
+the real system-data file, metadata and icon, then stops at a new CPU block;
+attempt 17 cold mounts that save read-only without opening the creation dialog.
+They join 26 and 25 workers respectively with no memory fault and clean resource
+release. The saved data is backed up byte-for-byte. This is system-data
+creation/existing-mount evidence, not character-progress save/reload acceptance.
+Evidence: `save-message-startup/system-save-created/verification.json`.
+
 The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with
 only Apple/system runtime dependencies. Fresh clean iPad `b1b10cc` launches 18
 and 19 execute actual 64-word Vulkan fill, fence and mapped GPU readback on the

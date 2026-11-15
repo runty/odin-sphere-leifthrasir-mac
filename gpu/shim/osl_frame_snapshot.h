@@ -8,13 +8,15 @@
 #include <string>
 
 namespace OslFrameSnapshot {
+enum class Source { Game, Display };
 struct Request {
     std::string path;
     uint64_t frame;
+    Source source=Source::Game;
 };
 
 // A developer-only, one-shot readback. No request means no GPU allocation/wait.
-inline std::optional<Request> Parse(const char* path, const char* at) {
+inline std::optional<Request> Parse(const char* path, const char* at, const char* source=nullptr) {
     if (!path || !*path || std::strlen(path) > 4096) return std::nullopt;
     uint64_t frame = 1000;
     if (at) {
@@ -23,6 +25,11 @@ inline std::optional<Request> Parse(const char* path, const char* at) {
         if (result.ec != std::errc{} || result.ptr != end) return std::nullopt;
     }
     if (!frame || frame > 1000000) return std::nullopt;
-    return Request{path, frame};
+    Source selected=Source::Game;
+    if(source) {
+        if(!std::strcmp(source,"display"))selected=Source::Display;
+        else if(std::strcmp(source,"game"))return std::nullopt;
+    }
+    return Request{path, frame, selected};
 }
 } // namespace OslFrameSnapshot

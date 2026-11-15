@@ -55,6 +55,7 @@ struct FrameReadback {
     VmaAllocation allocation{};
     VmaAllocationInfo mapping{};
     size_t bytes{};
+    u32 width{},height{};
     bool bgra{};
     ~FrameReadback() {
         if (buffer) vmaDestroyBuffer(allocator, buffer, allocation);
@@ -62,17 +63,18 @@ struct FrameReadback {
 };
 
 std::unique_ptr<FrameReadback> RecordFrameReadback(const Instance& instance,
-        const Frame& frame, vk::Format format, vk::CommandBuffer commands) {
+        vk::Image image, u32 width, u32 height, bool hdr, vk::Format format,
+        vk::CommandBuffer commands) {
     const bool bgra = format == vk::Format::eB8G8R8A8Unorm || format == vk::Format::eB8G8R8A8Srgb;
     const bool rgba = format == vk::Format::eR8G8B8A8Unorm || format == vk::Format::eR8G8B8A8Srgb;
-    if ((!bgra && !rgba) || frame.is_hdr || !frame.width || !frame.height ||
-        frame.width > 4096 || frame.height > 4096) {
+    if ((!bgra && !rgba) || hdr || !width || !height || width > 4096 || height > 4096) {
         std::printf("Frame snapshot: unsupported SDR format or dimensions\n");
         return {};
     }
     auto result = std::make_unique<FrameReadback>();
     result->allocator = instance.GetAllocator();
-    result->bytes = size_t(frame.width) * frame.height * 4;
+    result->width=width;result->height=height;
+    result->bytes = size_t(width) * height * 4;
     result->bgra = bgra;
     const VkBufferCreateInfo buffer_info{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -93,9 +95,9 @@ std::unique_ptr<FrameReadback> RecordFrameReadback(const Instance& instance,
     }
     const vk::BufferImageCopy region{
         .imageSubresource{.aspectMask = vk::ImageAspectFlagBits::eColor, .layerCount = 1},
-        .imageExtent{frame.width, frame.height, 1},
+        .imageExtent{width, height, 1},
     };
-    commands.copyImageToBuffer(frame.image, vk::ImageLayout::eTransferSrcOptimal,
+    commands.copyImageToBuffer(image, vk::ImageLayout::eTransferSrcOptimal,
                               vk::Buffer{result->buffer}, region);
     const vk::BufferMemoryBarrier host_read{
         .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
@@ -201,7 +203,8 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
       rasterizer{std::make_unique<Rasterizer>(instance, draw_scheduler, runtime, liverpool)},
       texture_cache{rasterizer->GetTextureCache()} {
     const char* snapshot_path = std::getenv("OSL_FRAME_SNAPSHOT_PATH");
-    snapshot = OslFrameSnapshot::Parse(snapshot_path, std::getenv("OSL_FRAME_SNAPSHOT_AT"));
+    snapshot = OslFrameSnapshot::Parse(snapshot_path, std::getenv("OSL_FRAME_SNAPSHOT_AT"),
+                                      std::getenv("OSL_FRAME_SNAPSHOT_SOURCE"));
     if (snapshot_path && !snapshot) std::printf("Frame snapshot: invalid request; disabled\n");
     const u32 num_images = swapchain.GetImageCount();
     const vk::Device device = instance.GetDevice();
@@ -690,7 +693,8 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     const vk::Image swapchain_image = swapchain.Image();
     auto& scheduler = present_scheduler;
     const auto cmdbuf = scheduler.CommandBuffer();
-    const bool capture = snapshot && !is_reusing_frame && is_game_frame &&
+    const bool display_snapshot = snapshot && snapshot->source==OslFrameSnapshot::Source::Display;
+    const bool capture = snapshot && (display_snapshot || (!is_reusing_frame && is_game_frame)) &&
                          ++snapshot_frames == snapshot->frame;
     std::unique_ptr<FrameReadback> readback;
 
@@ -762,8 +766,9 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
         }
         cmdbuf.blitImage(frame->image, vk::ImageLayout::eTransferSrcOptimal, swapchain_image,
                          vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
-        if (capture) {
-            readback = RecordFrameReadback(instance, *frame, swapchain.GetSurfaceFormat().format, cmdbuf);
+        if (capture && !display_snapshot) {
+            readback = RecordFrameReadback(instance,frame->image,frame->width,frame->height,
+                                           frame->is_hdr,swapchain.GetSurfaceFormat().format,cmdbuf);
         }
         // The runtime UI (dialogs, loading note, frame counter) over the frame, at display resolution.
         const bool ui = OslOverlay::Visible();
@@ -812,6 +817,32 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
                                    vk::PipelineStageFlagBits::eBottomOfPipe,
                                    vk::DependencyFlagBits::eByRegion, {}, {}, to_present);
         }
+        if(capture && display_snapshot) {
+            // The acquired swapchain image is still ours: include the game,
+            // letterboxing and actual host overlay before signaling Present.
+            // Swapchain images already request TRANSFER_SRC usage. The fence
+            // below covers this copy; no image or staging buffer retires early.
+            vk::ImageMemoryBarrier barrier{
+                .srcAccessMask=vk::AccessFlagBits::eMemoryWrite,
+                .dstAccessMask=vk::AccessFlagBits::eTransferRead,
+                .oldLayout=vk::ImageLayout::ePresentSrcKHR,
+                .newLayout=vk::ImageLayout::eTransferSrcOptimal,
+                .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+                .image=swapchain_image,
+                .subresourceRange=color_range,
+            };
+            cmdbuf.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
+                                   vk::PipelineStageFlagBits::eTransfer,{}, {}, {},barrier);
+            readback=RecordFrameReadback(instance,swapchain_image,extent.width,extent.height,
+                                         swapchain.GetHDR(),swapchain.GetSurfaceFormat().format,cmdbuf);
+            barrier.srcAccessMask=vk::AccessFlagBits::eTransferRead;
+            barrier.dstAccessMask=vk::AccessFlagBits::eNone;
+            barrier.oldLayout=vk::ImageLayout::eTransferSrcOptimal;
+            barrier.newLayout=vk::ImageLayout::ePresentSrcKHR;
+            cmdbuf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                   vk::PipelineStageFlagBits::eBottomOfPipe,{}, {}, {},barrier);
+        }
     }
     if (EmulatorSettings.IsVkHostMarkersEnabled()) {
         cmdbuf.endDebugUtilsLabelEXT();
@@ -838,11 +869,12 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
             std::memcpy(pixels.data(), readback->mapping.pMappedData, pixels.size());
             // The displayed swapchain is opaque; guest alpha is not display opacity.
             for (size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
-            const bool written = OslPng::WriteRgba(snapshot->path.c_str(), frame->width, frame->height,
+            const bool written = OslPng::WriteRgba(snapshot->path.c_str(), readback->width, readback->height,
                                                   pixels.data(), pixels.size(), readback->bgra);
-            std::printf("Frame snapshot: %s %s (%ux%u, %s, opaque display alpha)\n",
+            std::printf("Frame snapshot: %s %s (%ux%u, %s, %s, opaque display alpha)\n",
                         written ? "wrote" : "cannot write", snapshot->path.c_str(),
-                        frame->width, frame->height, readback->bgra ? "BGRA8" : "RGBA8");
+                        readback->width, readback->height, readback->bgra ? "BGRA8" : "RGBA8",
+                        display_snapshot ? "display with overlay" : "game before overlay");
         } else {
             std::printf("Frame snapshot: GPU completion/invalidation failed; no PNG written\n");
         }

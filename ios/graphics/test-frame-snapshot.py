@@ -22,6 +22,10 @@ int main(int argc,char **argv) {
  std::filesystem::path out=argv[1];std::filesystem::create_directories(out);
  unsigned checks=0;auto require=[&](bool ok){++checks;if(!ok)throw std::runtime_error("snapshot check "+std::to_string(checks));};
  auto request=Parse("frame.png",nullptr);require(request && request->frame==1000 && request->path=="frame.png");
+ require(request->source==Source::Game);
+ require(Parse("display.png","1100","display")->source==Source::Display);
+ require(Parse("game.png","1","game")->source==Source::Game);
+ for(auto s:{"","DISPLAY","Game"," display","display ","unknown"})require(!Parse("frame.png","1",s));
  for(auto s:{"1","1000","1000000"})require(Parse("frame.png",s).has_value());
  for(auto s:{"","0","-1","+1"," 1","1 ","1x","1.0","1000001","18446744073709551616"})require(!Parse("frame.png",s));
  require(!Parse(nullptr,"1"));require(!Parse("","1"));
