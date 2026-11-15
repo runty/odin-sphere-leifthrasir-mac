@@ -1,5 +1,7 @@
 #include "runtime.h"
 #include <cstdlib>
+#include <cstdio>
+#include <cfenv>
 #include <array>
 #include <atomic>
 #include <cstring>
@@ -243,16 +245,15 @@ extern "C" Memory *__remill_atomic_end(Memory *m) {
     guestAtomics.unlock();
     return m;
 }
-extern "C" Memory *__remill_compare_exchange_memory_32(Memory *m, uint64_t address,
-                                                       uint32_t &expected, uint32_t desired) {
+template<class T> static Memory *compareExchange(Memory *m,uint64_t address,T &expected,T desired) {
     auto recovery = m->recovery;
     m->recovery = nullptr;
     guestAtomics.lock();
-    if (auto pointer = guestPointer(*m, address, 4, true)) {
-        uint32_t current;
-        std::memcpy(&current, pointer, 4);
+    if (auto pointer = guestPointer(*m, address, sizeof(T), true)) {
+        T current;
+        std::memcpy(&current, pointer, sizeof(T));
         if (current == expected)
-            std::memcpy(pointer, &desired, 4);
+            std::memcpy(pointer, &desired, sizeof(T));
         expected = current;
     }
     guestAtomics.unlock();
@@ -260,4 +261,69 @@ extern "C" Memory *__remill_compare_exchange_memory_32(Memory *m, uint64_t addre
     if (!m->fault.empty())
         resumeGuestFault(*m);
     return m;
+}
+
+// OpenCrown's typed CAS family, retaining Odin's fault/recovery and host lock.
+#define COMPARE_EXCHANGE(BITS, TYPE) \
+    extern "C" Memory *__remill_compare_exchange_memory_##BITS(Memory *m,uint64_t address,TYPE &expected,TYPE desired) { \
+        return compareExchange(m,address,expected,desired); \
+    }
+COMPARE_EXCHANGE(8,uint8_t)
+COMPARE_EXCHANGE(16,uint16_t)
+COMPARE_EXCHANGE(32,uint32_t)
+COMPARE_EXCHANGE(64,uint64_t)
+#undef COMPARE_EXCHANGE
+extern "C" Memory *__remill_compare_exchange_memory_128(Memory *m,uint64_t address,uint128_t &expected,uint128_t &desired) {
+    // Remill's wide ABI passes desired by reference, unlike narrow operands.
+    return compareExchange(m,address,expected,desired);
+}
+
+// Adapted from OpenCrown 4d90913, ios/cpu/fp80/exceptions.c. Remill uses
+// x87 bit positions; Darwin arm64 FE_* values differ. Odin has no FP80
+// arithmetic provider, so those operations remain explicit backend gaps.
+// Preserve the two x87-only flags in thread-local storage instead of losing
+// them when the host has no standard fenv representation.
+namespace {
+thread_local uint32_t fpu_extra_flags=0;
+int host_fpu_mask(uint32_t mask) {
+    return ((mask&1)?FE_INVALID:0) | ((mask&4)?FE_DIVBYZERO:0) |
+           ((mask&8)?FE_OVERFLOW:0) | ((mask&16)?FE_UNDERFLOW:0) |
+           ((mask&32)?FE_INEXACT:0);
+}
+uint32_t remill_fpu_mask(int flags) {
+    return ((flags&FE_INVALID)?1u:0u) | ((flags&FE_DIVBYZERO)?4u:0u) |
+           ((flags&FE_OVERFLOW)?8u:0u) | ((flags&FE_UNDERFLOW)?16u:0u) |
+           ((flags&FE_INEXACT)?32u:0u);
+}
+}
+extern "C" int32_t __remill_fpu_exception_test(int32_t mask) {
+    return int32_t((remill_fpu_mask(std::fetestexcept(host_fpu_mask(uint32_t(mask)))) |
+                    fpu_extra_flags) & uint32_t(mask) & 127u);
+}
+extern "C" void __remill_fpu_exception_clear(int32_t mask) {
+    std::feclearexcept(host_fpu_mask(uint32_t(mask)));
+    fpu_extra_flags &= ~uint32_t(mask);
+}
+extern "C" void __remill_fpu_exception_raise(int32_t mask) {
+    std::feraiseexcept(host_fpu_mask(uint32_t(mask)));
+    fpu_extra_flags |= uint32_t(mask)&0x42u;
+}
+
+// Remill's 0..3 rounding control is independent of the host FE_* encoding.
+extern "C" int32_t __remill_fpu_get_rounding() {
+    switch(std::fegetround()) {
+    case FE_TONEAREST:return 0;
+    case FE_DOWNWARD:return 1;
+    case FE_UPWARD:return 2;
+    case FE_TOWARDZERO:return 3;
+    default:std::fputs("AOT: unsupported host FP rounding mode\n",stderr);std::abort();
+    }
+}
+extern "C" void __remill_fpu_set_rounding(int32_t mode) {
+    static const int native[]={FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
+    // Invalid intrinsic arguments are an internal ABI error, not a mode to
+    // silently mask. Never throw a C++ exception through lifted LLVM frames.
+    if(mode<0 || mode>3 || std::fesetround(native[mode])) {
+        std::fputs("AOT: invalid FP rounding mode\n",stderr);std::abort();
+    }
 }

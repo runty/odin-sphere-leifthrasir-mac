@@ -619,3 +619,28 @@ Preserve save/trophy checks and the game's own scene transitions when adapting
 it. This setting difference does not establish the cause of a black mobile
 frame or justify claiming title progress. Current startup discovery remains
 from actual original-image stops.
+
+
+## Runtime bridge and seed qualification — 2026-11-15
+
+The latest completed native replay contains 19,535 entries and reaches actual
+gap `0x1056ac97` at 152.895 seconds, with no memory fault and 42 joined workers.
+Later expanded-corpus linking exposed missing FP exception helpers. OpenCrown's
+CAS family and FP exception/rounding mappings now supply those bridges using
+Odin's checked memory, locking and recovery. Native arm64/Rosetta, fatal sanitizer,
+414 original-module and both mobile SDK fixture builds pass. FP80 arithmetic and
+full wide-instruction alignment-fault qualification remain open.
+[Runtime verification](../ios/README.md#atomic-widths-and-floating-point-control-bridges--2026-11-15).
+
+All original verified unwind entries and strict switch targets are staged;
+42,105 raw entries are available after deduplication against demand discovery.
+This is static availability, awaiting normal compilation and replay. It supplies
+no new physical-device/gameplay/audio/save acceptance.
+[Publication and provenance](../ios/game/README.md#complete-validated-seed-catalog--2026-11-15).
+
+The active OpenCrown mobile branch has also advanced to `ce065bb`. Its new
+read-only cursor feedback and relative-touch model are references for later
+input work, not directly transferable Odin cursor addresses or game layouts.
+The primary imported OpenCrown baseline stays `9ca8945c`. Inspect both worktrees
+for upcoming lifecycle/input/audio/packaging work and qualify each adopted adapter
+against Odin's own ABI, original-image identities and actual execution evidence.

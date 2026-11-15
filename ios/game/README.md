@@ -17,11 +17,14 @@ Launch 28's 158.987-second converted PCM capture is entirely silent, with five
 sampled empty-queue observations; music/voice output remains unqualified.
 The iPhone is away and untouched. [Physical evidence and limits](../graphics/README.md).
 
-Native original-image discovery now has a verified 15,432-entry checkpoint,
-with copied player data and all 42 workers joined. It stops at `0x101f7604`,
-a case target in the existing strict switch atlas. Bounded unwind prefetch
-supplies availability, not execution proof. Title/town/combat, physical input,
-audible output and character-progress save/load acceptance remain open.
+Native original-image discovery has a verified 19,535-entry checkpoint,
+with copied player data, no memory fault and all 42 workers joined. It reaches
+`0x1056ac97` at 152.895 seconds. A later runner link exposed missing FP exception
+bridges; it did not publish a new execution checkpoint. Host adapters now pass
+[atomic and FP qualification](../README.md#atomic-widths-and-floating-point-control-bridges--2026-11-15).
+A larger qualified seed set is available for the next replay, not yet executed.
+Title/town/combat, physical input, audible output and character-progress save/load
+acceptance remain open.
 
 ### Earlier initial-notice checkpoint
 
@@ -1345,3 +1348,31 @@ python3 ios/game/test-prefetch-parallel.py --root "$ESTABLISHED_CACHE" \
   --remill "$BACKEND" --function-bounds "$VERIFIED_BOUNDS" \
   --output "$NEW_EXTERNAL_FIXTURE"
 ```
+
+### Complete validated seed catalog — 2026-11-15
+
+Offline staging combines all 33,413 verified unwind entries with 7,530 targets
+from 723 strict, original-byte-validated switch tables. This 40,943-entry catalog
+contains metadata-qualified entries, not every possible executed block. Original
+module/image/ELF/table/owner bytes, signed table offsets, executable ranges,
+no-return inputs, reader outputs and the exact lifter/semantics identity are
+revalidated before publication. The generic control-flow analysis comes from
+OpenCrown; Odin's original inputs and qualification remain separate.
+
+Staging prepares 19,331 pending candidates: 19,185 accepted, 146 unsupported
+static candidates skipped. Meanwhile demand discovery advances the live cache.
+Publication compares against that current cache, preserves 712 byte-identical
+duplicates and four existing skips, and adds 18,473 accepted/142 skipped records.
+All prior raw hashes remain exact. Recovery copies are written first, one atomic
+merged ledger second, then raw files are promoted and audited. The raw cache now
+contains 42,105 entries, including previously discovered blocks outside this
+catalog. No existing raw trace is overwritten. The offline manifest stays immutable.
+
+A raw-IR inventory against the new runtime finds no missing Remill bridges in
+that available set. Linking and actual replay remain independent verification.
+Discovery now uses `--prefetch 0` with the same verified function bounds, retaining
+actual missing-block discovery and explicit unsupported-demand failures. Static
+counts do not establish title/gameplay coverage. Private evidence:
+`qualified-seeds/{inputs,prepared,published}.json`, `publish.py`, and
+`runtime-bridges/bridge-inventory.json` at the external build root. No game bytes,
+translated IR or captured player data are committed to the source repository.

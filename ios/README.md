@@ -334,3 +334,41 @@ tradeoff, not whole-game FPS. Exact inputs/results, sanitizer logs and CPU
 manifest are under `checked-memory-scaling/` at the external Odin build root.
 The Remill backend and guest State ABI are unchanged; rebuild host runtime
 objects/checkpoints normally rather than editing provenance hashes.
+
+### Atomic widths and floating-point control bridges — 2026-11-15
+
+The expanded original-image corpus exposed missing Remill runtime symbols at
+link time. Odin adapts OpenCrown `4d90913`'s CAS family and floating-point control
+mapping, keeping Odin's recursive lock, checked guest spans and fault recovery.
+CAS operands of 8/16/32/64/128 bits update the expected value on success and
+failure; the 128-bit desired operand follows Remill's by-reference ABI. A fault
+unwinds an enclosing guest atomic scope through the existing recovery path.
+This does not qualify x86 alignment-fault behavior for every wide instruction.
+
+Exception test/clear/raise translate Remill's x87 bit positions into Darwin
+`FE_*` values. Denormal and stack-fault flags, which lack standard host masks,
+are retained per thread. Rounding getters/setters translate all four modes;
+invalid intrinsic arguments fail explicitly without throwing through LLVM
+frames. This supplies host control/flag bridges, not FP80 arithmetic support.
+Extended-precision arithmetic remains an explicit unsupported demand.
+
+```sh
+python3 ios/cpu/test-cas-widths.py --output "$WORK/cas-check" --remill "$BACKEND"
+python3 ios/cpu/test-fpu-exceptions.py --output "$WORK/fpu-check" --remill "$BACKEND"
+```
+
+Each script also accepts `--sanitizer address` (ASan/UBSan) or `--sanitizer thread`
+for arm64. Normal runs test native arm64 and x86-64 under Rosetta. All five CAS
+widths pass bounds, protected-memory recovery, operand/canary and concurrency
+checks, with 16,160 successful concurrent increments per architecture. The FP
+fixture passes 266,293 checks per architecture: exception masks/selective clear,
+real native arithmetic flags, positive/negative half-ULP rounding, preserved flags
+and eight-thread isolation. The runtime is compiled with production optimization
+and default FP policy; only the independent arithmetic fixture requests strict
+fenv access. Fatal sanitizer diagnostics find no errors. The existing 1,564
+shared-memory checks and all 414 original-module comparisons also pass; static
+fixture libraries build for both mobile SDKs. These are host/oracle and compile
+results, not execution of the new bridges on a physical iPad or gameplay proof.
+Evidence: `runtime-bridges/` at the private external build root. Runtime source
+hash changes normally invalidate host objects; the backend and guest State/
+memory header ABI are unchanged, so matching raw translated IR remains valid.
