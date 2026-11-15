@@ -7,14 +7,17 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The physical iPad mini A20 Pro runs signed `46e7935`, corpus `7183d968`
-with 5,044 entries. Two longer cold launches run 35.0/34.2 seconds, each
-submitting 3,260 Gnm batches and presenting 652 buffers before missing block
-`0x10000425`. CPU 414, memory 19, GPU readback 64, all 22 worker joins and
-renderer/signal/window cleanup pass. The original empty three-directory
-profile survives unchanged. Recognizable mobile imagery, gameplay and new
-in-game save/reload remain open. The iPhone retains the earlier `460ecdb`
-checkpoint while away; physical testing is iPad-only.
+The physical iPad mini A20 Pro now runs signed `dcf581b`, corpus `71eddd63`
+with 9,521 entries and the nineteen-patch backend. Cold launches 16/17 use a
+180,000 ms engineering ceiling and run 35.1/32.3 seconds. They present
+645/599 buffers and submit 3,228/2,998 Gnm batches, stopping at the same
+missing block `0x106b9c7a` reached by the native Mac. CPU 414, memory 19,
+GPU readback 64, all 22 worker joins and complete cleanup pass. The original
+empty three-directory profile is unchanged; both owned processes are stopped
+and absent. Recognizable mobile imagery, gameplay and new in-game save/reload
+remain open. The iPhone retains `460ecdb` while away and is not contacted.
+Both SDK game/boundary archives compile; Simulator renderer-consumer linking
+remains open. Evidence is `startup-simd-ipad/device/verification.json`.
 
 The later native cache reaches 9,521 entries and an actual `VEXTRACTPS`
 fallback at `0x106b796c` after 63.4 seconds, with all 22 workers joined.
@@ -38,11 +41,20 @@ real-module comparisons and both SDK archives pass. The reusable checker is
 Build this backend in a new directory. Existing fourteen/fifteen-patch caches
 remain frozen. Regenerate guest IR for the new lifter/semantics identities,
 using old manifests only as address availability seeds. A fresh
-`ios-game-startup-simd` cache is being generated from the old 9,521-address
-manifest; no old IR or objects are reused, and seeded availability is not
-execution evidence. Evidence is `extract-reuse/startup-final/` and
-`cpu-backends-startup-simd/` at the build root. Full guest and physical-device
-execution with this backend remain pending.
+`ios-game-startup-simd` cache regenerated all 9,521 seeded addresses without
+copying old IR or objects. Seeded availability remains execution-unverified.
+Real startup passes the VEXTRACTPS stop and reaches `0x106b9c7a` after
+65.9 seconds with no memory fault and 22 joined workers. Its frozen checkpoint
+is the one tested twice on the iPad above.
+
+Further native discovery reaches 9,585 entries. A 180-second run reaches its
+host deadline without a missing-block stop, joins all 23 workers and presents
+2,040 buffers, with nine graphics pipelines. Those counters do not establish
+a recognizable scene. A bounded ten-minute native run with opt-in flip-interval
+captures is now inspecting that later path. Evidence is
+`extract-reuse/startup-final/`, `cpu-backends-startup-simd/`,
+`startup-simd-ipad/` and `native-first-frames/startup-simd-600s-capture/` at the
+build root.
 
 Native development now uses [the adapted OpenCrown switch tools](control-flow/README.md).
 The expanded conditional fixture passes 42 checks, with strict output bytes

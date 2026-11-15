@@ -820,3 +820,25 @@ for timing comparisons. Current long runs use a process-scoped AC-only sleep
 assertion. Evidence is `indexed-dispatch-check/`, `long-budget-parser/`,
 `long-budget-session-address/`, `long-budget-sdk-syntax/` and
 `native-indexed-180s-checkpoint.log` at the external build root.
+
+
+## Nineteen-patch backend on physical iPad — 2026-11-15
+
+Signed `dcf581b`, corpus `71eddd63`, has 9,521 AOT entries generated anew
+with the qualified OpenCrown startup SIMD patches. The iPad mini A20 Pro cold
+launches 16/17 accept a 180,000 ms ceiling and stop after 35.1/32.3 seconds at
+`0x106b9c7a`, matching the native Mac. They present 645/599 buffers, submit
+3,228/2,998 Gnm batches and join all 22 workers. CPU 414, memory 19, 64-word
+GPU readback and renderer/window/signal/resource cleanup pass. The disposable
+profile's three empty directories survive unchanged, and both exact owned
+PIDs are stopped with absence verified. This is not a new in-game save test.
+Evidence is `startup-simd-ipad/device/verification.json` under the external
+Odin build root. The phone remains away and untouched.
+
+Both SDK game archives and UIKit/guest boundary archives compile for the same
+frozen checkpoint. The device renderer links the signed ICD; Simulator still
+has no renderer-consumer link or Metal 4 driver execution claim. Recognizable
+mobile imagery, audible gameplay, physical input and new-save reload remain
+open. The later native 9,585-entry run reaches a three-minute deadline with
+2,040 presentations and 23 joins; a longer captured run is investigating its
+additional graphics pipelines, without equating presentation with imagery.
