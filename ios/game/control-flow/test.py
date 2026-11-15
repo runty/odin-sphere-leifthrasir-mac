@@ -698,6 +698,20 @@ fixtures.update(
         ),
     }
 )
+# Longer table-base setup, without relaxing liveness or guarded-entry proofs.
+setup_prefix = "mov eax,edi\ncmp eax,2\nja @DEFAULT\nlea rcx,[rip+@TABLE]\n"
+fixtures.update({
+    "base_setup_eight": (setup_prefix + "nop\n" * 8, True, ""),
+    "base_setup_fifteen": (setup_prefix + "nop\n" * 15, True, ""),
+    "base_setup_sixteen": (setup_prefix + "nop\n" * 16, False, ""),
+    "base_setup_mixed": (setup_prefix + "vmovss xmm0,dword ptr [rdi]\nmov ebx,5\nmov r8d,10\nmov r9d,3\nmov dword ptr [rsp-8],9\nmov dword ptr [rsp-12],2\nmov r10d,8\nmov r11d,1\nmov esi,6", True, ""),
+    "base_setup_clobber": (setup_prefix + "nop\n" * 8 + "mov ecx,99", False, ""),
+    "base_setup_partial_index": (setup_prefix + "nop\n" * 8 + "mov al,1", False, ""),
+    "base_setup_call": (setup_prefix + "nop\n" * 8 + "call .Lnormal_target", False, ""),
+    "base_setup_branch": (setup_prefix + "nop\n" * 8 + "jnz @DEFAULT", False, ""),
+    "base_setup_alternate": ("test esi,esi\njnz fixture_base_setup_alternate_enter\n" + setup_prefix + "nop\n" * 8 + "fixture_base_setup_alternate_enter:\nnop", False, ""),
+    "base_setup_table_bypass": (setup_prefix + "nop\n" * 8 + "fixture_base_setup_table_bypass_enter:\nnop", False, ""),
+})
 post_add_fixtures = {
     "base_copy64": "",
     "base_copy64_source_reused": "",
@@ -804,6 +818,8 @@ for name, (pre, accepted, badcase) in fixtures.items():
         if name == "scheduled_table_bypass"
         else [f"fixture_{name}_case0", f"fixture_{name}_post", f"fixture_{name}_case2"]
         if name == "post_table_bypass"
+        else [f"fixture_{name}_case0", f"fixture_{name}_enter", f"fixture_{name}_case2"]
+        if name == "base_setup_table_bypass"
         else None
     )
     code, data = function(

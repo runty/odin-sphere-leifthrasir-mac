@@ -133,3 +133,22 @@ flag clobbers and alternate predecessors reject.
 `late-index-test.py` takes the same output/XED/LLVM options as `test.py`; its
 23 owned functions pass 49 checks. The existing 118-check matrix and 42-check
 conditional isolation/baseline comparison also pass with this extension.
+
+## Longer table-base setup
+
+The backward search from the indexed signed32 load to its RIP-relative table
+base now permits at most 16 instructions, including the materialization/copy
+instructions. This covers longer independent register/stack/vector setup after
+LEA. Every intervening base/index write and branch/call still rejects; unique
+predecessors and table-edge bypass checks remain mandatory. Guard scheduling,
+post-ADD cleanup limits, immutable table bytes, index bounds, owning CFG closure
+and instruction-overlap checks retain their existing rules.
+
+The owned matrix now passes 128 checks across 119 functions. New cases cover
+8/15 independent setup instructions, mixed vector/register/stack operations,
+the 16-intervening-instruction rejection, late base/partial-index clobbers,
+calls, branches and alternate direct/table predecessors. Existing late-copy
+and isolated conditional-tier suites pass 49 and 33 checks respectively. This
+changes static analysis availability only; actual translation/replay and device
+acceptance remain separate evidence. Private fixture results are under
+`long-base-setup/` at the external Odin build root.

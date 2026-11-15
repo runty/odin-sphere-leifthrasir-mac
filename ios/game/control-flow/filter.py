@@ -170,7 +170,10 @@ for group in Path("candidates.tsv").read_text().split("CANDIDATE\t")[1:]:
         disp = None
         base_source = breg
         base_copies = []
-        for k in range(mi - 1, max(-1, mi - 9), -1):
+        # The table base may precede a longer independent setup sequence.
+        # Keep the search bounded: at most 16 instructions including LEA/copies.
+        # Existing write, control-flow and predecessor proofs still apply.
+        for k in range(mi - 1, max(-1, mi - 17), -1):
             z = w[k]
             ma = re.fullmatch(
                 r"lea " + base_source + r", ptr \[rip([+-]0x[0-9a-f]+)\]", z["asm"]
