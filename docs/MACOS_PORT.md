@@ -717,3 +717,11 @@ availability (61,706), with execution pending. This addresses exact translated
 return locations without changing guest instructions or CPU return behavior.
 The installed iPad remains the separately verified 60,361-entry engineering build;
 recognizable mobile gameplay and audible audio are still unverified.
+
+The 61,706-entry original-return cohort actually clears that owner and reaches a
+new loader routine, with cleanup, exact save hashes and a fresh black image.
+A reproducible private pipeline command now packages the byte-checked owner
+recovery workflow and independently audits its first 40-entry batch. Static
+availability reaches 61,746; the new native execution is pending. This still does
+not establish recognizable mobile gameplay, sound or character-progress loading.
+[Exact scope](../ios/game/README.md#reusable-observed-owner-recovery--2026-11-15).

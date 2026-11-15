@@ -1613,3 +1613,32 @@ Previous raw entries stay byte-identical and the original return behavior is
 not restricted. Availability is 61,706; the new cohort is execution-unverified.
 Reports: `repeated-owner-analysis/loader-owner-return-seeds/`, including
 `return-qualification.json`. The next bounded replay remains a separate gate.
+
+### Reusable observed-owner recovery — 2026-11-15
+
+Actual replay of the 61,706-entry return cohort clears the prior owner and reaches
+`0x106f92e5` in owner `0x106f90e0..0x106f9464`: corpus `9999cee8`, 162.054 seconds,
+3,500 presentations, 43 joined workers, no memory fault and renderer cleanup.
+Exact original/copied save hashes match. The fresh frame-2,600 PNG is decoded
+and visually inspected as opaque black. Evidence is frozen under
+`inrange-jbe-discovery/checkpoint-61706/`; this remains startup progress rather
+than visible gameplay.
+
+The private pipeline now packages the qualified producers in
+`ps4/odin-ios-owner-batch.py`. It pins its templates and completed checkpoint,
+keeps immutable generated helpers, and selects original owner branches,
+conditional fallthroughs, decoded call returns and locally checked tables.
+Every new entry is a single basic block; real unsupported first blocks stay
+gaps. Full guard/CFG closure is not inferred, nor are runtime jumps restricted.
+Preparation, independent XED qualification and publication are separate commands.
+Publication requires the independent receipt and replays the original byte/
+bounds/backend/raw/ledger qualification before touching the inactive cache.
+It refuses a live consumer and altered generated helpers.
+
+The first new-owner batch prepares, independently decodes and publishes all
+40 entries, with zero skips and every previous raw hash preserved. Independent
+checks cover 40 prefixes / 155 instructions. Availability grows to 61,746;
+execution of that final cohort is pending. Evidence:
+`observed-owner-batches/after-61706/` (inputs `1a652eba`, records `9ac3649a`),
+and `observed-owner-batches/factory-checks/`. No device action is part of this
+helper; the installed iPad remains the separate 60,361-entry engineering build.
