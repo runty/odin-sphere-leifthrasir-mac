@@ -424,6 +424,11 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
         session.common_dialog_initialized = true;
         return hostReturn(s, m, 0);
     }
+    if (!std::strcmp(name, "sceCommonDialogIsUsed")) {
+        // OpenCrown's idle common-dialog query also returns zero. This frontend
+        // stops on Open until a presenter is connected, so none can be active.
+        return hostReturn(s, m, 0);
+    }
     if (saveDialogFunction(name)) {
         if (!session.compatibility_modules[160]) {
             missingService(session) = name;
@@ -1313,9 +1318,13 @@ static bool serviceChecks() {
     require(call("sceSysmoduleLoadModule", 173) == 0 && session.memory.fault.empty());
     require(session.compatibility_modules.find(160) == session.compatibility_modules.end());
     require(call("sceSysmoduleLoadModule", 160) == 0 && session.memory.fault.empty());
+    require(call("sceCommonDialogIsUsed") == 0);
+    require(call("sceCommonDialogInitialize") == 0 && session.common_dialog_initialized);
+    require(call("sceCommonDialogIsUsed") == 0);
     require(call("sceSaveDataDialogInitialize") == 0);
     require(call("sceSaveDataDialogInitialize") == 0x80b80004u);
     require(call("sceSaveDataDialogUpdateStatus") == 1);
+    require(call("sceCommonDialogIsUsed") == 0);
     require(call("sceSaveDataDialogGetResult") == 0x80b80005u);
     require(call("sceSaveDataDialogOpen") == 0x80b8000du);
     call("sceSaveDataDialogOpen", 0x20000080);

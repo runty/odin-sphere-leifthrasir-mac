@@ -975,3 +975,30 @@ archives compile at corpus
 `52abc4684c1cd5908243b1980ed20b0bf9fca0bf5b753fa763ef06358dc7c30f`.
 Actual guest Gnm submission and presented-frame counts remain zero.
 Frozen state/headers/ledger: `ios-game-uikit-next/checkpoint-function-bounds/`.
+
+### OpenCrown reuse and the 4,022-entry checkpoint
+
+OpenCrown revision `68cb2a7b` supplies the MOVMSKPS/PD patch used by this
+backend. Odin's original routine containing the stopped VMOVMSKPS returns the
+same bits as Rosetta on 1,728 finite input triples. The adapted instruction
+matrix passes 38,400 comparisons. Discovery subsequently reached the actual
+`sceCommonDialogIsUsed` import. The idle query now follows OpenCrown's zero
+result. This frontend stops on dialog Open until a presenter is available.
+
+At 4,022 entries, the native GPU replay passes that query and stops in a child
+at missing `0x10743600`. Both initializers complete, all 18 workers join,
+three buffers register and teardown releases them. Game submissions and frames
+remain zero. ASan covers 4,340 imported-service checks and four worker/exception
+cleanup checks at corpus `cf0c090c`. Private evidence is in
+`common-dialog-qualified/` and `ios-movemask-common-dialog-check.log`.
+
+Discovery now accepts `--jobs 1..32`, default four, for independent seed lifts
+and guarded object compilation. Ordered results preserve archive order. Each
+compiler writes a temporary object before publishing it and its cache stamp.
+The shared seed decoder is built before starting concurrent lifts. Serial and
+four-worker authored-seed runs produced identical trace/object hashes and the
+same first missing block. A concurrent provider edit was rejected before a
+mixed checkpoint could publish. Evidence is in `parallel-discovery/`.
+
+Check the OpenCrown sources and tests before each subsequent milestone as
+recorded in the main port plan.
