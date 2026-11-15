@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Discover missing guest blocks by running bounded AOT startup attempts on arm64 Mac."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -18,6 +19,7 @@ from service_build import compile_services, inputs as service_inputs, link_optio
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
+p.add_argument("--jobs", type=int, default=4, help="Independent trace lifters and compilers (1 to 32)")
 p.add_argument("--rounds", type=int, default=16)
 p.add_argument("--prefetch", type=int, default=0, help="Extra speculative direct-call/relocation candidates per round (0 to 256); never execution evidence")
 p.add_argument("--function-bounds",type=Path,help="Verified original unwind ranges limiting new lifts, with segment fallback for unindexed code")
@@ -37,6 +39,8 @@ if len(root.parts) < 3 or root.parts[1] != "Volumes" or not Path("/Volumes", roo
 source = Path(__file__).resolve().parent
 if not 256 <= a.window_bytes <= 65536:
     p.error("--window-bytes must be between 256 and 65536")
+if not 1 <= a.jobs <= 32:
+    p.error("--jobs must be between 1 and 32")
 if a.rounds < 1:
     p.error("--rounds must be positive")
 if not 0 <= a.prefetch <= 256:
@@ -142,7 +146,7 @@ if a.seed_from:
         p.error("Seed PC list belongs to a different prepared image")
     if list(cache.glob("*.ll")):
         p.error("Seed requires a new trace cache")
-    for name in old["ir"]:
+    def lift_seed(name):
         pc = int(Path(name).stem, 16)
         offset = pc - layout["base"]
         segment = next((s for s in layout["segments"] if s[2] & 1 and s[0] <= offset < s[0] + s[1]), None)
@@ -150,6 +154,10 @@ if a.seed_from:
             p.error("Seed PC is outside executable memory")
         code = image[offset:min(offset + a.window_bytes, segment[0] + segment[1])]
         lift(pc, code, cache / name)
+    # Build the shared decoder once before independent lifters use it.
+    decode_size(b"\xc3")
+    with ThreadPoolExecutor(max_workers=a.jobs) as pool:
+        list(pool.map(lift_seed, old["ir"]))
     print("Re-lifted seed PC list with the isolated backend", flush=True)
 
 
@@ -217,6 +225,19 @@ if a.prefetch:candidates(layout,image,pointer_bytes,())  # validate before execu
 # A successful narrowing is deterministic for this process's pinned image and
 # lifter. Reuse only its exact resulting file hash; x87 remains an explicit gap.
 narrowed_traces=set()
+def compile_trace(job):
+    guarded_path, obj, fingerprint = job
+    stamp = obj.with_suffix(".sha256")
+    if not obj.exists() or not stamp.exists() or stamp.read_text() != fingerprint:
+        temporary = obj.with_suffix(".new.o")
+        run("compile-" + obj.stem, [llvm / "clang", "-target", "arm64-apple-macos15",
+            "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", temporary])
+        stamp.unlink(missing_ok=True)
+        temporary.replace(obj)
+        stamp.write_text(fingerprint)
+    return obj
+
+
 for round in range(a.rounds):
     preparation_start=time.perf_counter()
     previous_hits,previous_misses=preparation.hits,preparation.misses
@@ -224,7 +245,7 @@ for round in range(a.rounds):
     narrowed_lifted,narrowed_reused,error_paths_retained=0,0,0
     entries = {}
     declarations = set()
-    objs = []
+    compile_jobs = []
     for ir in sorted(cache.glob("*.ll")):
         raw=ir.read_text()
         analysis=preparation.analyze(raw)
@@ -257,16 +278,15 @@ for round in range(a.rounds):
         guarded_path = objects / (ir.stem + ".guarded.ll")
         prepared=preparation.prepare(raw,guarded_path)
         fingerprint=prepared.guarded_sha256
-        stamp = obj.with_suffix(".sha256")
-        if not obj.exists() or not stamp.exists() or stamp.read_text() != fingerprint:
-            run("compile-" + ir.stem, [llvm / "clang", "-target", "arm64-apple-macos15", "-isysroot", sdk, "-O2", "-c", guarded_path, "-o", obj])
-            stamp.write_text(fingerprint)
-        objs.append(obj)
+        compile_jobs.append((guarded_path, obj, fingerprint))
         for name in prepared.definitions:
             if int(name, 16) in entries:
                 raise RuntimeError("Duplicate lifted entry")
             entries[int(name, 16)] = "sub_" + name
         declarations.update(prepared.declarations)
+    # Preserve deterministic archive ordering while each worker owns its output.
+    with ThreadPoolExecutor(max_workers=a.jobs) as pool:
+        objs = list(pool.map(compile_trace, compile_jobs))
     print("TRACE_PREPARATION:"+json.dumps({'ir_files':len(objs),'hits':preparation.hits-previous_hits,
           'misses':preparation.misses-previous_misses,'analysis_hits':preparation.analysis_hits-previous_analysis_hits,
           'analysis_misses':preparation.analysis_misses-previous_analysis_misses,'narrowed_lifted':narrowed_lifted,
