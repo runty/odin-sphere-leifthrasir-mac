@@ -1642,3 +1642,38 @@ execution of that final cohort is pending. Evidence:
 `observed-owner-batches/after-61706/` (inputs `1a652eba`, records `9ac3649a`),
 and `observed-owner-batches/factory-checks/`. No device action is part of this
 helper; the installed iPad remains the separate 60,361-entry engineering build.
+
+### Local tables and the existing no-return policy — 2026-11-15
+
+The 61,746-entry native replay reaches another original case, `0x106f930c`,
+in the same owner: corpus `83293013`, 157.672 seconds / 3,607 presentations,
+43 joins, no fault, renderer cleanup and unchanged original/copied save hashes.
+Its fresh frame-2,600 image is decoded and visually inspected as opaque black;
+`inrange-jbe-discovery/checkpoint-61746/` freezes the exact evidence.
+
+That case was absent from the old primary CFG: the owner's indirect switch is
+unresolved there. The earlier local JBE inventory recognizes its four-slot table
+but rejects the owner after following a stack-failure call into table data and
+encountering a decode failure. Re-running that inventory with the **existing
+qualified ABI no-return rule** for `__stack_chk_fail` validates 125 tables in
+121 owners, versus 101 tables previously. This qualification establishes the
+import/relocation identity and ABI policy; the external original callee body is
+absent. It does not grant full index/guard proof or alter runtime call behavior.
+Original table/file/prepared bytes and instruction boundaries are still checked.
+
+The owner helper now merges only that observed owner's locally validated
+instruction boundaries. It adds the excluded table cases and their decoded
+branches, conditional fallthroughs and call returns. All 20 new first-block
+entries accept and independently decode, 83 instructions, including the actual
+`0x106f930c` case and its following `0x106f931e` call return. Audited publication
+preserves all previous raw entries; availability is 61,766, execution pending.
+Reports: `repeated-owner-analysis/inrange-inventory-noreturn/` (inputs `491cdff4`,
+tables `a6ceb8bf`) and `observed-owner-batches/after-61746/` (inputs `97a59da5`,
+records `0edab459`).
+
+The private pipeline includes its pinned source templates, requires assertions
+for verification and starts helper Python with environment flag overrides
+disabled. Default generation uses frozen checkpoint metadata only; positive
+independent qualification and separate tampered-helper/live-consumer/optimized-
+Python refusals are recorded in `observed-owner-batches/factory-checks-v3/`.
+These checks do not substitute for native execution or physical gameplay.

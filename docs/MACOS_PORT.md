@@ -725,3 +725,11 @@ recovery workflow and independently audits its first 40-entry batch. Static
 availability reaches 61,746; the new native execution is pending. This still does
 not establish recognizable mobile gameplay, sound or character-progress loading.
 [Exact scope](../ios/game/README.md#reusable-observed-owner-recovery--2026-11-15).
+
+The next actual case exposes an incomplete earlier owner inventory. Reusing the
+existing import/ABI no-return policy validates its original switch and following
+call paths; all 20 new first-block entries pass independent byte/decoder audits
+and publish, growing availability to 61,766. The external original failure-callee
+body is absent, full guard proof remains ungranted, and runtime semantics are
+unchanged. The next actual test is running; the latest inspected image is black.
+[Evidence and qualification scope](../ios/game/README.md#local-tables-and-the-existing-no-return-policy--2026-11-15).
