@@ -1381,3 +1381,32 @@ counts do not establish title/gameplay coverage. Private evidence:
 `qualified-seeds/{inputs,prepared,published}.json`, `publish.py`, and
 `runtime-bridges/bridge-inventory.json` at the external build root. No game bytes,
 translated IR or captured player data are committed to the source repository.
+
+### Qualified switch joins after longer setup — 2026-11-15
+
+The bounded table-base extension in `6bd9670` resolves the previously unknown
+primary dispatcher in the owner containing actual stop `0x105c04b1`. With the
+same original image, ELF, validated unwind atlas and separately verified
+no-return declaration, strict analysis grows from 723 tables / 7,530 targets to
+733 / 7,690, retaining every previous target. The newly complete owner contains
+ten tables, including the actual missing case. Bounds/guard dominance, original
+table bytes, executable destinations, decoded case reachability and nonoverlap
+still pass. An initial analysis omitted the explicit no-return CLI argument;
+its outputs are retained separately and are not used for qualified seeding.
+
+A separate offline cohort also gathers ordinary relative branch destinations
+inside complete validated owners. Source and target must both be independently
+decoded instruction boundaries in the same nonoverlapping unwind range; the
+original relative encoding is reconstructed and checked against prepared bytes.
+Unfamiliar encodings are skipped. This includes the observed direct-branch join
+`0x105d3b29`, which is not itself a switch slot. It does not linearly scan
+arbitrary bytes for instruction starts or infer destinations from sampled PCs.
+
+The cohort contains 18,885 unique strict-switch/direct-branch targets, with
+11,336 absent from the frozen 42,107-PC seed. They are being lifted separately
+with the new twenty-patch backend, retaining checked memory and explicit failures.
+No staging entry is execution evidence or part of the installed iPad. Publication
+waits for the active rebuild to finish a checkpoint; records/recovery copies and
+exact source/backend/image hashes must audit before replay. Private evidence:
+`long-base-setup/{verification.json,catalog-noreturn,seeds,prepare.py}`. The prior
+nineteen-patch code/cache remains preserved.
