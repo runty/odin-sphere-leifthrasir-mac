@@ -7,39 +7,46 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest native execution uses 61,828 entries: corpus `61fdb44a`, 158.292
-seconds / 3,390 presentations, next missing PC `0x106e0968`, 43 joined workers,
+Latest native execution uses **67,546 entries**: corpus `fc0deff0`, 171.070
+seconds / 3,010 presentations, next missing PC `0x106e297e`, 43 joined workers,
 no memory fault, renderer cleanup and unchanged original/copied player saves.
-Its fresh frame-2,600 PNG is decoded and visually inspected opaque black.
-Evidence is frozen in `inrange-jbe-discovery/checkpoint-61828/`.
+The fresh frame-2,600 image is decoded and visually inspected opaque black.
+The input file hash matches, but no guest input reads occur before the worker
+stop. The input gate explicitly fails; this establishes startup/integrity only,
+not a timing comparison, scripted route, visible scene or physical controls.
+The failed input-required verifier and a separate limited report are preserved
+in `inrange-jbe-discovery/` and `checkpoint-67546/`.
 
-A read-only inventory of 30,612 original owners identifies 334,522 missing
-entry candidates. Bounded prefetch selects 307 original owners within two
-direct-call hops from historically observed owners plus the actual missing
-owner. Validated alternate CFG roots contribute instruction boundaries; failed
-or overlapping components are excluded. This is static selection, not a claim
-that those owners execute. All 5,718 selected first blocks accept and pass
-independent XED checks, 24,187 instructions. Audited publication preserves every
-prior raw hash and grows availability to **67,546 entries**. That cohort's
-bounded native build/replay is running; it has no new execution result yet.
-Phase: `observed-owner-batches/after-61828-two-hop-v2/`, inputs `1f00861a`,
-records `4dbdd8d4`.
+Both actual worker gaps, `0x106e297e` and `0x106af835`, are included in the next
+batch. A read-only survey now includes historical worker missing-PC reports:
+23 gap owners, 492 statically selected owners within two direct-call hops.
+This is selection, not a claim that all selected owners execute. All **926**
+new first blocks accept and pass independent XED checks, **5,325 instructions**,
+including two retained fatal UD2 stops. Audited publication preserves every
+prior raw hash and grows availability to **68,472 entries**. Its bounded native
+build/replay is running, with a unique frame-2,900 capture and post-checkpoint
+freeze; no execution result is claimed yet. Phase:
+`observed-owner-batches/after-67546-worker-two-hop/`, inputs `33717ed4`,
+records `30279b91`. The previous 5,718-entry audit remains immutable.
 
-Three original UD2 fatal traps expose a narrow audit assumption: XED classifies
-them as MISC. A separately versioned audit accepts only exact original 0f0b,
-XED ud2/length 2 and a retained remill-error stop. The original prepared phase
-remains immutable. A fixture using actual staged LLVM, production guarding
-and runtime confirms that the guest stops without returning or changing
-RAX/RSP. Invalid bytes/mnemonic/length/missing stop, optimized Python and wrong
-parent hashes are rejected. This adds no instruction semantics or runtime jump
-policy. Full original-byte/backend/bridge/ledger checks precede publication.
-Evidence: phase `audit-ud2-v1/` and `entry-prefetch-survey/ud2-stop-test/`.
+The revised boundary audit is separately versioned: exact original 0f0b,
+XED ud2/length 2 and a retained remill-error stop are required. Its qualified
+bridge fixture can be reused across batches without pretending the fixture's
+original PC was selected again. Creation pins its raw LLVM, verifies the
+original image's trap bytes and reruns the actual guarded fixture with the
+unchanged production runtime. A wrong original fixture is refused before any
+revision is created. Parent producers, records, inputs and helpers are unchanged.
+No instruction semantics or runtime branch policy is changed.
 
-The iPad is available over USB and Developer Mode is enabled; only its explicit
-UDID is queried. The phone remains excluded. **The installed device build is
-still the separate 60,361-entry checkpoint below.** No recognizable mobile
-scene, audible output, physical gameplay input or character-progress save/load
-acceptance follows from static preparation or native startup.
+The iPad is wired/paired with Developer Mode enabled, and only its explicit
+UDID is queried. Before another update, its three existing system-save files
+are backed up and match the previous verified hashes. Only the older stopped
+Odin probe is closed; other apps are untouched. **The installed device build is
+still the 60,361-entry checkpoint below.** A 67,546-entry SDK recipe is held
+because native scenes remain black and input is unobserved; continue actual
+worker-gap recovery before rebuilding the device app. The phone is excluded.
+Recognizable mobile scenes, audible output, physical controls and character-
+progress save/load remain open.
 
 The current physical iPad checkpoint is signed `e5cbb68`, corpus `f55967f7`,
 with 60,361 entries, the twenty-patch backend and restored recursive global
