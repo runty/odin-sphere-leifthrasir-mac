@@ -661,3 +661,37 @@ claim. Matching game/boundary archives compile. Private evidence:
 `presentation-qualified/`, `ios-guest-session-presentation/`, and
 `ios-game-uikit-next/checkpoint-presentation/`. Actual game calls/frames and
 physical apps are unchanged; further executed-path discovery remains active.
+
+## Portable shader resource tables
+
+The first real native guest shader setup reached the renderer's arm64 stub for
+`FlattenExtendedUserdataPass`. The pass now shares its existing GVN, pointer
+tree, duplicate handling and IR rewrite with an arm64 bytecode generator.
+`portable_srt.h` evaluates the supported offset arithmetic and nested table
+reads. Each draw refreshes its flattened resources from the current user data.
+
+Programs have a versioned checked encoding, at most 65,536 instructions and
+flat words, expression depth 128, table nesting 64 and a process code-blob
+budget of 32 MiB. Decoding checks opcodes, references, buffer extents and
+balanced pointer operations. Runtime also checks the program's flat extent
+against the draw's buffer metadata. Registered programs are immutable.
+Apple's same-process `vm_read_overwrite` supplies checked descriptor reads.
+An inaccessible pointer yields zero for that load, allowing a later refresh
+to observe newly populated data.
+
+The existing persistent code slot now holds a data pointer. Invocation goes
+through `PersistentSrtInfo::Walk`. x86-64 continues to execute its generated
+walker. arm64 interprets the encoded program without allocating executable
+memory. Pipeline cache reload registers and validates the encoded bytes.
+
+`osl-srt-pass-tests` exercises the actual IR pass, nested pointers, dynamic
+offsets, duplicate offsets, refresh and re-registration on both Mac CPUs.
+`osl-portable-srt-tests` passes 386 checks and 800 concurrent walks on both
+CPUs. Its arm64 ASan and TSan builds also pass. Both device and Simulator
+renderer archives compile and their consumers link. Evidence is under
+`portable-srt-tests/` and `portable-srt-sdk/` at the external Odin build root.
+
+The native guest now passes the former shader assertion and continues through
+additional missing CPU blocks. No game frame is established. The physical
+devices retain the independently qualified `460ecdb` startup app until an
+updated full frontend checkpoint is packaged and checked.

@@ -1692,8 +1692,8 @@ void PersistentSrtInfo::Serialize(Serialization::Archive& ar) const {
     Serialization::Writer srt{ar};
 
     srt.Write(this, sizeof(*this));
-    if (walker_func_size) {
-        srt.Write(reinterpret_cast<void*>(walker_func), walker_func_size);
+    if (walker_code_size) {
+        srt.Write(walker_code, walker_code_size);
     }
 }
 
@@ -1703,13 +1703,13 @@ bool PersistentSrtInfo::Deserialize(Serialization::Archive& ar) {
     srt.Read(this, sizeof(*this));
 
     // osl: the stored pointer is from the process that wrote the blob.
-    walker_func = nullptr;
-    if (walker_func_size) {
-        if (walker_func_size > ar.Remaining()) {
+    walker_code = nullptr;
+    if (walker_code_size) {
+        if (walker_code_size > ar.Remaining()) {
             throw Serialization::CorruptData{};
         }
-        walker_func = RegisterWalkerCode(ar.CurrPtr(), walker_func_size);
-        ar.Advance(walker_func_size);
+        walker_code = RegisterWalkerCode(ar.CurrPtr(), walker_code_size);
+        ar.Advance(walker_code_size);
     }
 
     return true;

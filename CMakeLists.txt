@@ -220,6 +220,17 @@ target_include_directories(osl-tiling-tests PRIVATE gpu/shim gpu/shadps4 tests s
 target_compile_options(osl-tiling-tests PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(osl-tiling-tests PRIVATE oslgpu)
 
+add_executable(osl-portable-srt-tests EXCLUDE_FROM_ALL tests/portable-srt.cpp)
+set_target_properties(osl-portable-srt-tests PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+target_link_libraries(osl-portable-srt-tests PRIVATE Threads::Threads)
+
+add_executable(osl-srt-pass-tests EXCLUDE_FROM_ALL tests/srt-pass.cpp)
+set_target_properties(osl-srt-pass-tests PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+target_include_directories(osl-srt-pass-tests PRIVATE gpu/shim gpu/shadps4 src
+    ${CMAKE_BINARY_DIR}/gpu/include gpu/third_party/gcn/include
+    gpu/third_party/half/include gpu/third_party/xbyak)
+target_link_libraries(osl-srt-pass-tests PRIVATE oslgpu)
+
 # Focused tests of the runtime's locks and guest memory table (tools/test.ps1); not part of the default build.
 add_executable(osl-runtime-tests EXCLUDE_FROM_ALL tests/runtime_sync_tests.c src/runtime_rwlock.c src/runtime_mutex.c src/runtime_eventflag.c src/runtime_thread.c src/runtime_sema.c)
 target_include_directories(osl-runtime-tests PRIVATE src)

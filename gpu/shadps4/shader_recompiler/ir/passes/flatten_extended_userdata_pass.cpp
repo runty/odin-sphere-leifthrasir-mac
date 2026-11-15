@@ -5,6 +5,12 @@
 #include <unordered_map>
 #include <boost/container/flat_map.hpp>
 #include <queue>
+#include <memory>
+#include <stdexcept>
+#include "shader_recompiler/ir/passes/portable_srt.h"
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#endif
 #include <xbyak/xbyak.h>
 #include <xbyak/xbyak_util.h>
 #ifdef _WIN32
@@ -57,10 +63,10 @@ static void RegisterSrtWalkerFaultHandler() {
 
 namespace Shader {
 
-PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
+const u8* RegisterWalkerCode(const u8* ptr, size_t size) {
     std::scoped_lock lock{g_srt_codegen_mutex};
     RegisterSrtWalkerFaultHandler();
-    const auto func_addr = (PFN_SrtWalker)g_srt_codegen.getCurr();
+    const auto func_addr = g_srt_codegen.getCurr();
     g_srt_codegen.db(ptr, size);
     g_srt_codegen.ready();
     return func_addr;
@@ -193,6 +199,10 @@ static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
     return true;
 }
 
+} // namespace
+#endif
+
+namespace {
 using namespace Shader;
 
 struct PassInfo {
@@ -290,6 +300,30 @@ static inline void SetFlatbufOffset(IR::Inst* inst, u16 offset) {
     UNREACHABLE_MSG("Instruction not supported");
 }
 
+static bool IsAllowedOffsetInstruction(const IR::Inst* inst) {
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::GetUserData:
+    case IR::Opcode::ReadConst:
+    case IR::Opcode::ReadConstBuffer:
+    case IR::Opcode::IAdd32:
+    case IR::Opcode::ISub32:
+    case IR::Opcode::IMul32:
+    case IR::Opcode::ShiftLeftLogical32:
+    case IR::Opcode::ShiftRightLogical32:
+    case IR::Opcode::BitwiseAnd32:
+    case IR::Opcode::BitwiseOr32:
+    case IR::Opcode::BitwiseXor32:
+    case IR::Opcode::BitwiseNot32:
+    case IR::Opcode::UMin32:
+    case IR::Opcode::UMax32:
+    case IR::Opcode::BitFieldUExtract:
+        return true;
+    default:
+        return false;
+    }
+}
+
+#ifdef ARCH_X86_64
 static bool ComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& pass_info,
                           const IR::Value& off_dw);
 
@@ -558,29 +592,6 @@ static bool EmitComputeOffsetBitFieldUExtract(Xbyak::CodeGenerator& c, Xbyak::Re
     return true;
 }
 
-static bool IsAllowedOffsetInstruction(const IR::Inst* inst) {
-    switch (inst->GetOpcode()) {
-    case IR::Opcode::GetUserData:
-    case IR::Opcode::ReadConst:
-    case IR::Opcode::ReadConstBuffer:
-    case IR::Opcode::IAdd32:
-    case IR::Opcode::ISub32:
-    case IR::Opcode::IMul32:
-    case IR::Opcode::ShiftLeftLogical32:
-    case IR::Opcode::ShiftRightLogical32:
-    case IR::Opcode::BitwiseAnd32:
-    case IR::Opcode::BitwiseOr32:
-    case IR::Opcode::BitwiseXor32:
-    case IR::Opcode::BitwiseNot32:
-    case IR::Opcode::UMin32:
-    case IR::Opcode::UMax32:
-    case IR::Opcode::BitFieldUExtract:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static bool ComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& pass_info,
                           const IR::Value& off_dw) {
     ASSERT(reg != ecx && reg != edx);
@@ -720,7 +731,7 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
 
     RegisterSrtWalkerFaultHandler();
 
-    info.srt_info.walker_func = c.getCurr<PFN_SrtWalker>();
+    info.srt_info.walker_code = c.getCurr<const u8*>();
     pass_info.dst_off_dw = NUM_USER_DATA_REGS;
     ASSERT(pass_info.dst_off_dw == info.srt_info.flattened_bufsize_dw);
 
@@ -731,16 +742,104 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
     c.ret();
     c.ready();
 
-    info.srt_info.walker_func_size =
-        c.getCurr() - reinterpret_cast<const u8*>(info.srt_info.walker_func);
+    info.srt_info.walker_code_size =
+        c.getCurr() - reinterpret_cast<const u8*>(info.srt_info.walker_code);
 
     if (EmulatorSettings.IsDumpShaders()) {
-        DumpSrtProgram(info, reinterpret_cast<const u8*>(info.srt_info.walker_func),
-                       info.srt_info.walker_func_size);
+        DumpSrtProgram(info, reinterpret_cast<const u8*>(info.srt_info.walker_code),
+                       info.srt_info.walker_code_size);
     }
 
     info.srt_info.flattened_bufsize_dw = pass_info.dst_off_dw;
 }
+
+#else
+
+struct PortableBuilder {
+    PassInfo& pass;
+    std::vector<PortableSrt::Instruction> code;
+
+    u32 Emit(PortableSrt::Op op, u32 a=0, u32 b=0, u32 c=0, u32 dst=0) {
+        if (code.size() >= PortableSrt::max_instructions)
+            throw std::runtime_error("SRT instruction budget exhausted");
+        code.push_back({op,a,b,c,dst});
+        return static_cast<u32>(code.size()-1);
+    }
+
+    u32 Offset(const IR::Value& value, unsigned depth=0) {
+        using PortableSrt::Op;
+        if (depth > 128) throw std::runtime_error("SRT expression nesting exceeds bounds");
+        if (value.IsImmediate()) return Emit(Op::Constant,value.U32());
+        auto inst=value.Inst();
+        if (inst->GetOpcode()==IR::Opcode::GetUserData) {
+            const u32 reg=static_cast<u32>(inst->Arg(0).ScalarReg());
+            if (reg >= NUM_USER_DATA_REGS) throw std::runtime_error("Invalid SRT user-data register");
+            return Emit(Op::FlatWord,reg);
+        }
+        if (inst->GetOpcode()==IR::Opcode::ReadConst ||
+            inst->GetOpcode()==IR::Opcode::ReadConstBuffer) {
+            const auto offset=GetFlatbufOffset(pass.DeduplicateInstruction(inst));
+            if (!offset) throw std::runtime_error("SRT offset reads an unavailable table value");
+            return Emit(Op::FlatWord,offset);
+        }
+        Op op;
+        switch(inst->GetOpcode()) {
+        case IR::Opcode::IAdd32: op=Op::Add; break;
+        case IR::Opcode::ISub32: op=Op::Subtract; break;
+        case IR::Opcode::IMul32: op=Op::Multiply; break;
+        case IR::Opcode::ShiftLeftLogical32: op=Op::ShiftLeft; break;
+        case IR::Opcode::ShiftRightLogical32: op=Op::ShiftRight; break;
+        case IR::Opcode::BitwiseAnd32: op=Op::And; break;
+        case IR::Opcode::BitwiseOr32: op=Op::Or; break;
+        case IR::Opcode::BitwiseXor32: op=Op::Xor; break;
+        case IR::Opcode::BitwiseNot32: op=Op::Not; break;
+        case IR::Opcode::UMin32: op=Op::Minimum; break;
+        case IR::Opcode::UMax32: op=Op::Maximum; break;
+        case IR::Opcode::BitFieldUExtract: op=Op::Extract; break;
+        default: throw std::runtime_error("Unsupported SRT offset operation");
+        }
+        const auto a=Offset(inst->Arg(0),depth+1);
+        const auto b=op==Op::Not ? 0 : Offset(inst->Arg(1),depth+1);
+        const auto c=op==Op::Extract ? Offset(inst->Arg(2),depth+1) : 0;
+        return Emit(op,a,b,c);
+    }
+
+    void Visit(const IR::Value& offset, IR::Inst* subtree, unsigned depth=0) {
+        using PortableSrt::Op;
+        if (depth >= 64) throw std::runtime_error("SRT table nesting exceeds bounds");
+        if ((subtree->GetOpcode()==IR::Opcode::ReadConst ||
+             subtree->GetOpcode()==IR::Opcode::ReadConstBuffer) && !GetFlatbufOffset(subtree))
+            return;
+        auto uses=pass.GetUsesAsPointer(subtree);
+        if (!uses) throw std::runtime_error("SRT pointer has no recorded uses");
+        Emit(Op::PushPointer,Offset(offset));
+        for (const auto& [source,use]:*uses) {
+            if (pass.dst_off_dw==UINT16_MAX)
+                throw std::runtime_error("SRT flattened table exceeds bounds");
+            const auto expression=Offset(source);
+            Emit(Op::Read,expression,0,0,pass.dst_off_dw);
+            SetFlatbufOffset(use,pass.dst_off_dw++);
+        }
+        for (const auto& [source,use]:*uses)
+            if (pass.GetUsesAsPointer(use)) Visit(source,use,depth+1);
+        Emit(Op::PopPointer);
+    }
+};
+
+static void GenerateSrtProgram(Info& info, PassInfo& pass) {
+    if (pass.srt_roots.empty()) return;
+    PortableBuilder builder{pass,{}};
+    pass.dst_off_dw=NUM_USER_DATA_REGS;
+    ASSERT(pass.dst_off_dw==info.srt_info.flattened_bufsize_dw);
+    for(const auto& [reg,root]:pass.srt_roots)
+        builder.Visit(IR::Value(static_cast<u32>(reg)),root);
+    auto bytes=PortableSrt::Encode(builder.code,pass.dst_off_dw);
+    info.srt_info.walker_code=RegisterWalkerCode(bytes.data(),bytes.size());
+    info.srt_info.walker_code_size=bytes.size();
+    info.srt_info.flattened_bufsize_dw=pass.dst_off_dw;
+}
+
+#endif
 
 static bool IsReadConstSource(const IR::Value base) {
     auto* inst = base.TryInst();
@@ -931,22 +1030,56 @@ void FlattenExtendedUserdataPass(IR::Program& program) {
 
 } // namespace Shader::Optimization
 
-#else
-
 namespace Shader {
+#ifdef ARCH_X86_64
+void RunSrtWalker(const u8* code, size_t, u32, const u32* user, u32* flat) {
+    reinterpret_cast<PFN_SrtWalker>(const_cast<u8*>(code))(user, flat);
+}
+#else
+// Registered programs and their encoded cache blobs remain immutable for the
+// renderer process lifetime, with the same 32 MiB code budget as x86 walkers.
+struct PortableWalker {
+    std::vector<u8> bytes;
+    PortableSrt::Program program;
+};
+static std::mutex portable_mutex;
+static std::unordered_map<const u8*, std::shared_ptr<const PortableWalker>> portable_walkers;
+static size_t portable_bytes = 0;
 
-PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
-    UNREACHABLE_MSG("RegisterWalkerCode unimplemented for target architecture.");
+const u8* RegisterWalkerCode(const u8* ptr, size_t size) {
+    auto walker = std::make_shared<PortableWalker>();
+    walker->program = PortableSrt::Decode(ptr, size);
+    walker->bytes.assign(ptr, ptr + size);
+    std::scoped_lock lock(portable_mutex);
+    if (size > 32_MB - portable_bytes)
+        throw std::runtime_error("Portable SRT program budget exhausted");
+    const auto code = walker->bytes.data();
+    portable_walkers.emplace(code, walker);
+    portable_bytes += size;
+    return code;
 }
 
-namespace Optimization {
-
-void FlattenExtendedUserdataPass(IR::Program& program) {
-    UNREACHABLE_MSG("FlattenExtendedUserdataPass unimplemented for target architecture.");
-}
-
-} // namespace Optimization
-
-} // namespace Shader
-
+void RunSrtWalker(const u8* code, size_t size, u32 flat_words, const u32* user, u32* flat) {
+    std::shared_ptr<const PortableWalker> walker;
+    {
+        std::scoped_lock lock(portable_mutex);
+        auto found = portable_walkers.find(code);
+        if (found == portable_walkers.end() || found->second->bytes.size() != size ||
+            found->second->program.header.flat_words != flat_words)
+            throw std::runtime_error("Unregistered portable SRT program");
+        walker = found->second;
+    }
+    PortableSrt::Execute(walker->program, user, flat,
+        [](uintptr_t address, void* dst, size_t bytes) {
+#if defined(__APPLE__)
+            vm_size_t copied = 0;
+            return vm_read_overwrite(mach_task_self(), static_cast<vm_address_t>(address), bytes,
+                reinterpret_cast<vm_address_t>(dst), &copied) == KERN_SUCCESS && copied == bytes;
+#else
+            throw std::runtime_error("Portable SRT checked reads unavailable on this platform");
+            return false;
 #endif
+        });
+}
+#endif
+} // namespace Shader
