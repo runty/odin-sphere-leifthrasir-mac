@@ -141,6 +141,34 @@ root. Original Mac-player files keep their exact hashes; the production Mac
 app, iCloud and the away iPhone remain untouched. Native demand discovery
 continues separately with later frame-indexed controls against disposable data.
 
+## Startup PCM capture — 2026-11-15
+
+The existing shared `OSL_AUDIO_DUMP`/`OSL_AUDIO_STATS` hooks run on the physical
+iPad without changing source or installing another app. Signed `94a5cd7`
+launch 28 retains corpus `ce2f4220`, the idle script and disposable existing
+system data. The converted 48 kHz stereo float32 capture is 61,050,880 bytes /
+7,631,360 frames / 158.987 seconds. Every sample has zero amplitude; there are
+no NaNs, infinities or out-of-unit values. This establishes silence at the
+current startup stop, not working game music/voice. Human listening and later
+combat audio remain unverified.
+
+The log confirms the real CoreAudio backend and a stereo F32LE device with a
+1,024-frame quantum. Sampled producer queue windows include five empty-queue
+observations and a maximum output-call gap of 35.52 ms. These counters do not
+measure hardware callbacks or prove five audible glitches. An initial reading
+of only recent windows missed those observations; the complete analysis
+records them. The first signal-required analysis rejects the silent capture.
+The final report explicitly marks audio acceptance false.
+
+The run stops again at `0x105bc240` after 159.281 seconds / 2,761 presentations,
+joins all 42 workers and passes CPU 414, memory 19, GPU readback 64 and complete
+renderer cleanup. All three system-save creation hashes remain unchanged.
+Owned PID 46117 is stopped and absent; the away iPhone is untouched. Raw PCM,
+queue observations, decoder and verification remain private under
+`mapped-cache-ipad/device-audio/` at the external build root. No audio is
+published in the repository. Continue actual startup/code discovery before
+qualifying signal output in a known scene.
+
 ## Initial driver experiment (historical)
 
 The KosmicKrisp driver compiles as arm64 iPhoneOS, minimum iOS 27.2, with

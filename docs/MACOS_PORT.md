@@ -32,7 +32,14 @@ iPhone away. Original player saves, production Mac app and iCloud are untouched.
 At the start of each port milestone or newly observed failure, check the current
 OpenCrown port and its regression tests before building an Odin implementation.
 Record the revision, relevant source and Odin verification in the milestone log.
-The latest adapter/backend comparisons used [OpenCrown 9ca8945c](https://github.com/runty/OpenCrown-PC/tree/9ca8945c10e913260b1b3e22a6c680f0396e05e6).
+The imported nineteen-patch backend and mapped-cache comparison used [OpenCrown 9ca8945c](https://github.com/runty/OpenCrown-PC/tree/9ca8945c10e913260b1b3e22a6c680f0396e05e6).
+For upcoming work also inspect the active mobile branch, currently
+[4d90913](https://github.com/runty/OpenCrown-PC/commit/4d909139f4d442d69cf96750f77d1ab46a3d1f74)
+(`OpenCrown-town` / `codex/ios-town-performance`); the older main port checkout
+remains frozen at `9ca8945c`. The newer MOVBE-store patch and differential tests
+are available there if Odin reaches that instruction. Backend changes still
+need Odin qualification and a fresh re-lifted corpus. Do not replace a live
+backend/cache in place.
 
 | Odin milestone | OpenCrown implementation to check | Odin verification |
 | --- | --- | --- |
@@ -587,3 +594,28 @@ by round-trip hashes. There are still zero presented game frames; CPU startup
 stops at a missing translated block. These are bounded startup checks, not
 full gameplay or new in-game save/resume acceptance. The Mac remains `af52e09`.
 [Scope and reproducible bridge build](../ios/graphics/README.md#uikit-guest-connection--2026-11-14).
+
+## Discovery and startup audio checkpoint — 2026-11-15
+
+Original unwind metadata now optionally supplies bounded prefetch candidates.
+The first 1,024-entry atlas batch accepts 1,023 and skips one unsupported static
+candidate. The 11,333-entry native replay reaches a new executed function entry
+`0x101f79d0` after 159.484 seconds / 2,764 presentations, joins 42 workers and
+cleans up without a memory fault. Its frame-2,700 image remains black, so title
+and gameplay acceptance remain open. Static candidate provenance/raw hashes,
+59 unit checks, four CLI rejects, 28 bounds checks, eight frozen-input checks
+and a real concurrent-source-edit rejection pass. [Prefetch policy](../ios/game/README.md#bounded-prefetch-from-verified-unwind-entries--2026-11-15).
+
+A second unchanged iPad build/run captures actual converted stereo PCM: 158.987
+seconds, all silent, no nonfinite samples. Five sampled empty-queue observations
+remain recorded; audible game output is unqualified. System-save hashes and
+cleanup pass again. [Exact capture limits](../ios/graphics/README.md#startup-pcm-capture--2026-11-15).
+
+The working Mac reference has `skip_intro=1`; mobile does not yet expose the
+launcher's checked Skip intro adapter. `launcher/skip_intro.c` and its supported
+build sites are the existing implementation to reuse when that option is
+ported. Its native-x86 stubs cannot be injected into signed arm64 execution.
+Preserve save/trophy checks and the game's own scene transitions when adapting
+it. This setting difference does not establish the cause of a black mobile
+frame or justify claiming title progress. Current startup discovery remains
+from actual original-image stops.
