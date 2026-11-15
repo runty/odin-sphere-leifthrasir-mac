@@ -1485,3 +1485,15 @@ Both mobile SDK helper/IR fixture archives compile; these are not physical-devic
 or gameplay performance results. Sanitized IR and C++ use the same Apple
 compiler-rt ABI; normal shims use the production Homebrew LLVM compiler.
 Private evidence: `native-libc-bulk/{exports.json,final-checks/verification.json}`.
+
+The complete candidate runner links against the frozen, ABI-matching 60,317-entry
+object corpus and passes 4,371 service checks plus all four injected worker/host
+cleanup cases. This includes actual copy/move wrapper State/bytes and per-session
+counter checks. It is a service integration result, separate from executing the
+new helpers through the actual game. An isolated normal native comparison is
+started from the exact frozen 60,317-PC raw set, same backend/input/profile,
+with no new candidates published into that comparison. Its outcome and timing
+must be checked before making any startup or gameplay performance claim.
+Evidence: `native-libc-bulk/{baseline/verification.json,services/verification.json,
+native-progress.log}`. Baseline `634f4cd5` reaches `0x105d0b0b` at 170.964 seconds,
+2,911 presentations, 43 joined workers and full cleanup; frame 3,200 is not reached.
