@@ -7,7 +7,25 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The latest physical iPad build is signed `fe01964`, corpus `5095116e`, with
+The latest iPad build is signed `fd55ae1`, corpus `f4b3357e`, with 9,585
+entries. A real GPU pixel readback shows upright, readable initial guest UI:
+**“There is no save data.”** Native capture is 960×540; physical iPad capture
+is 1512×850. This verifies the initial save-data notice, not title/town/combat.
+The device's 90-second run presents 4,045 buffers and joins all 23 workers,
+with CPU 414, memory 19, GPU readback 64, no memory fault and full cleanup.
+Its three empty profile directories remain unchanged; owned PID 43635 is
+stopped and absent. Both SDK renderer/game/boundary archives compile; the
+UIKit capture source also compiles for Simulator. The iPhone stays untouched.
+Evidence is `frame-snapshot-ipad/device/verification.json` and
+`native-first-frames/frame-snapshot-native/verification.json` at the build root.
+
+Next is input-driven menu progress. The notice explains why the earlier
+unattended runs kept drawing the same UI. Consult OpenCrown's frame-indexed
+input grammar and real-input precedence, together with Odin's existing desktop
+pad replay, before adding a bounded scripted source to the AOT harness.
+Touch controls, playable scenes/audio and new-save cold reload remain open.
+
+The preceding physical iPad build is signed `fe01964`, corpus `5095116e`, with
 9,585 entries. Launch 18 runs 166.7 seconds, presents 8,641 buffers and
 submits 43,205 Gnm batches. Its explicit 9,000,000-dispatch engineering limit
 stops execution before the 180-second ceiling. It has no missing-block stop

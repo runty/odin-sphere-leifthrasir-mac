@@ -912,3 +912,23 @@ and cleanup. Evidence is `native-first-frames/frame-snapshot-native/verification
 The pixel dimensions follow the presenter's actual window-sized frame, not the
 1920×1080 guest render target from the command captures. Both SDK renderer
 archives compile; physical pixel readback is the next check.
+
+
+## Physical pixel readback — 2026-11-15
+
+Signed `fd55ae1`, corpus `f4b3357e`, captures a real 1512×850 iPad GPU frame
+with 1,278 RGB values and opaque display alpha. It independently decodes and
+visually shows the same upright **“There is no save data.”** notice as native.
+This establishes recognizable initial guest UI; title, town and combat remain
+unverified. The PNG is a private artifact, not shipped game content in Git.
+
+Physical launch 20 uses a 90,000 ms ceiling and stops at its deadline after
+4,045 presentations / 20,225 Gnm batches. CPU 414, memory 19, GPU readback 64,
+23 joined workers, no memory fault and complete cleanup pass. The original
+three empty profile directories remain unchanged and exact owned PID 43635
+is stopped and absent. Evidence is `frame-snapshot-ipad/device/verification.json`.
+Both SDK renderer/game/guest-boundary archives compile. The device consumer
+links its signed ICD; Simulator still has no full renderer consumer or Metal 4
+execution claim. The UIKit capture source compiles against the Simulator SDK.
+The phone is away and not contacted; no physical control/audio or new save
+acceptance is claimed.
