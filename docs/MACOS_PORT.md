@@ -733,3 +733,30 @@ and publish, growing availability to 61,766. The external original failure-calle
 body is absent, full guard proof remains ungranted, and runtime semantics are
 unchanged. The next actual test is running; the latest inspected image is black.
 [Evidence and qualification scope](../ios/game/README.md#local-tables-and-the-existing-no-return-policy--2026-11-15).
+
+### Mobile backend and input diagnostics update — 2026-11-15
+
+Native AOT startup now executes a 68,656-entry corpus (`4e7130e0`), stopping
+explicitly at original `VPUNPCKLDQ`, PC `0x106f0c48`, after 227.293 seconds /
+3,288 presentations. All 43 workers join, renderer resources clean up and
+original/copied saves match. The requested frame 4,000 is not reached; no new
+capture is claimed. Two separately checked local tables expose ten case targets
+and 180 newly qualified first blocks, without claiming full guard/index proof.
+
+OpenCrown's packed SIMD patches are qualified on an isolated twenty-two-patch
+backend: 44 routines, 9,280 vectors, 10,616,320 word checks and 408,320
+return/read-only input checks pass with Odin's actual runtime. Float sticky
+exception status and #XM delivery remain excluded. Whole-game LLVM still needs
+fresh lifting before this backend can run the game. Older backends and the
+installed iPad engineering app remain intact. The separate synthetic comparison
+app passes the same 10,616,320 word checks on the physical iPad mini A20 Pro
+(iPadOS 27.2.1), with matching fixture/backend/oracle hashes and verified owned
+process cleanup. The game app and its profile are untouched.
+
+A reporting correction preserves old evidence: zero scripted-fallback samples
+does not prove zero guest pad polls because physical input has priority. The
+old total is unknown and the scripted acceptance gate still fails. New counters
+distinguish total/primary/fallback/disconnected reads; explicit script-only mode
+makes future engineering runs deterministic without changing normal defaults.
+Mobile scenes, audible game output, physical controls and character-progress
+save/load remain open. See [current mobile status](../ios/game/README.md).

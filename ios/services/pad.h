@@ -10,6 +10,9 @@ struct PadSample {
     uint32_t buttons=0;
     float left_x=0,left_y=0,right_x=0,right_y=0,l2=0,r2=0;
 };
+struct PadReadStats {
+    uint64_t total=0, primary=0, fallback=0, disconnected=0;
+};
 class MobilePad {
     struct Impl;
     std::unique_ptr<Impl> impl;
@@ -31,4 +34,5 @@ public:
     int32_t vibration(int32_t handle,const uint8_t *motors);
     uint64_t fallbackReads() const;
     uint64_t fallbackActiveReads() const;
+    PadReadStats readStats() const;
 };

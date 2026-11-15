@@ -461,3 +461,38 @@ while original-code discovery continues. The stripe candidate, tests, binary,
 checkpoint and reports remain preserved in the isolated worktree and
 `memory-stripes/`; the iPad was never updated with it. A future revision needs
 a new real-game comparison and input/readiness evidence before adoption.
+
+## Confirmed packed SIMD reuse — 2026-11-15
+
+The default backend audit/build now uses twenty-two patches, adding OpenCrown's
+confirmed AVX integer selectors and packed floating-point value helpers. The
+old twenty-patch checkpoint uses `audit-backend.py --legacy-startup`; the isolated
+twenty-one-patch integer checkpoint uses `--legacy-packed-integer`. Neither flag
+changes those preserved backends. Fresh game LLVM is mandatory after a semantics
+change. `cpu/test-packed-integer.py` retains the integer-only matrix;
+`cpu/test-packed-simd.py` qualifies all fifteen added selectors with actual Odin
+checked-memory execution and a native x86/Rosetta reference. The full matrix
+passes 10,616,320 word checks and 408,320 return/read-only input checks. Float
+sticky MXCSR status and #XM delivery are explicitly excluded; integer MXCSR and
+all tested control bits are retained. These are CPU tests, not game acceptance.
+
+`cpu/build-packed-probe.py` packages only hash-qualified synthetic fixtures into
+a separate UIKit app, with no game data, graphics or saves. It never installs
+or launches; device selection remains explicit in the deployment command. The
+app writes `Documents/packed-cpu.json` with dimensions, failures, backend/oracle
+hashes, device model and OS. For example:
+
+```sh
+python3 ios/cpu/test-packed-simd.py --root /Volumes/office/Build/OdinSphere/packed-simd-tests --remill /Volumes/office/Build/OdinSphere/cpu-backends-packed-simd
+python3 ios/cpu/build-packed-probe.py --root /Volumes/office/Build/OdinSphere/packed-simd-ipad-app-v2 --fixture /Volumes/office/Build/OdinSphere/packed-simd-tests --remill /Volumes/office/Build/OdinSphere/cpu-backends-packed-simd --team 53MX9ZJV4U
+```
+
+The current user authorizes only the iPad; never select the phone as a fallback.
+Old zero scripted-fallback counters do not prove zero total guest pad reads;
+see the [current startup status](game/README.md#current-engineering-status--2026-11-15).
+
+The physical iPad mini A20 Pro (`iPad19,1`, iPadOS 27.2.1) passes that complete
+synthetic matrix with zero failures. Host/backend/oracle hashes match, and the
+owned app process is stopped and absent afterward. Evidence:
+`packed-simd-ipad-device/verification.json`. No game data/profile is packaged or
+modified by this app. The full game still needs a fresh corpus and replay.

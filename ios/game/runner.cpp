@@ -78,6 +78,7 @@ struct Session {
     DirectMemory direct_memory;
     Memory memory;
     std::shared_ptr<ScriptedPad> scripted_pad;
+    ScriptedPad::PrimaryMode input_mode;
     MobilePad pad;
     MobileStorage storage;
     OfflineServices offline;
@@ -92,7 +93,8 @@ struct Session {
     explicit Session(const MobileGpuServices *renderer=nullptr)
         : scripted_pad(ScriptedPad::load(std::getenv("OSL_INPUT_SCRIPT"),
               renderer && renderer->frame_count ? std::function<uint64_t()>([renderer]{return renderer->frame_count(renderer->context);}) : std::function<uint64_t()>{})),
-          pad({},scripted_pad ? std::function<PadSample(unsigned)>([input=scripted_pad](unsigned slot){return input->sample(slot);}) : std::function<PadSample(unsigned)>{}),
+          input_mode(ScriptedPad::selectPrimary(std::getenv("OSL_INPUT_MODE"),bool(scripted_pad))),
+          pad(input_mode.source,scripted_pad ? std::function<PadSample(unsigned)>([input=scripted_pad](unsigned slot){return input->sample(slot);}) : std::function<PadSample(unsigned)>{}),
           gpu(renderer), stopping(renderer && renderer->stop_requested ? *renderer->stop_requested : local_stopping) {
         memory.external_pointer = DirectMemory::pointer;
         memory.stop_requested = &stopping;
@@ -1154,6 +1156,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
             }
     }
     const double elapsed_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - guest_started).count();
+    const auto pad_reads=session->pad.readStats();
     std::ostringstream out;
     out << "{\"stage\":\"" << session->stage
         << "\",\"completed_modules\":" << session->completed_modules
@@ -1180,7 +1183,12 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"direct_window_bytes\":" << DirectMemory::windowSize()
         << ",\"direct_backing_view_bytes\":" << DirectMemory::backingViewSize()
         << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
-        << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
+        << ",\"pad_backend\":\"" << (session->input_mode.physical_enabled ? "GameController" : "script-only test source") << "\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
+        << ",\"input_mode\":\"" << session->input_mode.name << "\""
+        << ",\"physical_controller_source_enabled\":" << (session->input_mode.physical_enabled ? "true" : "false")
+        << ",\"pad_read_calls\":" << pad_reads.total
+        << ",\"pad_primary_reads\":" << pad_reads.primary
+        << ",\"pad_disconnected_reads\":" << pad_reads.disconnected
         << ",\"input_script_sha256\":\"" << (session->scripted_pad ? session->scripted_pad->digest() : "") << "\""
         << ",\"input_script_events\":" << (session->scripted_pad ? session->scripted_pad->events() : 0)
         << ",\"input_script_samples\":" << (session->scripted_pad ? session->scripted_pad->samples() : 0)

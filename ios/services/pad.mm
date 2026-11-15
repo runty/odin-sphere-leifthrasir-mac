@@ -55,6 +55,7 @@ struct MobilePad::Impl {
     bool initialized=false,opened[4]={},connected[4]={};
     bool used_fallback[4]={};
     uint64_t fallback_reads=0,fallback_active_reads=0;
+    uint64_t total_reads=0,primary_reads=0,disconnected_reads=0;
     uint64_t identities[4]={};
     uint8_t counts[4]={};
     __strong GCController *controllers[4]={};
@@ -138,12 +139,13 @@ int32_t MobilePad::read(int32_t handle,PadData *out) {
     if (!impl->handle(handle)) return invalid_handle;
     if (!out) return invalid;
     auto sample=impl->sample(handle-1);
+    ++impl->total_reads;
     std::memset(out,0,sizeof(*out));
     out->left_x=out->left_y=out->right_x=out->right_y=128; out->orientation[3]=1;
     struct timespec now; clock_gettime(CLOCK_MONOTONIC,&now);
     out->timestamp=uint64_t(now.tv_sec)*1000000+now.tv_nsec/1000;
     out->connected=sample.connected; out->connected_count=impl->counts[handle-1];
-    if (!sample.connected) return 0;
+    if (!sample.connected) { ++impl->disconnected_reads; return 0; }
     out->buttons=sample.buttons;
     out->left_x=axis(sample.left_x); out->left_y=axis(sample.left_y);
     out->right_x=axis(sample.right_x); out->right_y=axis(sample.right_y);
@@ -154,11 +156,15 @@ int32_t MobilePad::read(int32_t handle,PadData *out) {
         ++impl->fallback_reads;
         if(out->buttons || out->left_x!=128 || out->left_y!=128 || out->right_x!=128 ||
            out->right_y!=128 || out->l2 || out->r2)++impl->fallback_active_reads;
-    }
+    } else ++impl->primary_reads;
     return 0;
 }
 uint64_t MobilePad::fallbackReads() const {
     std::lock_guard<std::mutex> lock(impl->mutex);return impl->fallback_reads;
+}
+PadReadStats MobilePad::readStats() const {
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    return {impl->total_reads,impl->primary_reads,impl->fallback_reads,impl->disconnected_reads};
 }
 uint32_t MobilePad::dialogButtons() {
     std::lock_guard<std::mutex> lock(impl->mutex);

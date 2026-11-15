@@ -7,30 +7,59 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest native execution uses **68,472 entries**: corpus `d8620c65`, 166.925
-seconds / 2,946 presentations, next missing PC `0x106e29f9`, 43 joined workers,
-no memory fault, renderer cleanup and unchanged original/copied player saves.
-The fresh frame-2,900 image is decoded and visually inspected opaque black.
-The input file hash matches but there are no guest input reads. This establishes
-startup/integrity only, not a scripted route, timing comparison, recognizable
-scene or physical controls. Evidence: `inrange-jbe-discovery/checkpoint-68472/`.
-The prior 67,546-entry input gate remains explicitly failed and preserved.
+Latest native execution uses **68,656 entries**, corpus `4e7130e0`: 227.293
+seconds / 3,288 presentations, 43 joined workers, no memory fault, renderer
+cleanup and unchanged original/copied player saves. It stops explicitly at
+unsupported `VPUNPCKLDQ xmm0,xmm0,[rip+...]`, PC `0x106f0c48`. The requested
+frame-4,000 capture is not reached; there is no fresh image from this attempt.
+Evidence: `inrange-jbe-discovery/checkpoint-68656/`.
 
-The latest gap is a direct branch from a previously observed entry in the same
-routine. The older CFG inventory did not include that observed entry component.
-A separate inventory reruns the unchanged OpenCrown-derived validator with
-actual top-level and worker missing-PC roots. All 30,612 original owners remain
-classified as before; 30 observed components pass decode/overlap checks, with
-no merged conflicts. External edges and unresolved exits remain explicit.
-These roots do not prove whole-owner control flow or guard dominance.
+Two original local relative tables in owner `0x106e28d0..0x106e37a8` expose
+four and six cases. Their original/prepared bytes, readonly mapping, signed
+relative targets, local count comparisons and decoded case boundaries are
+independently checked. A separate CFG inventory includes all ten case targets;
+180 new first blocks qualify and publish with prior raw hashes preserved.
+Eight case targets are new and two were already available. This is compile
+availability under supplied local table edges, **not global guard dominance or
+full index-range proof**; runtime branch policy is unchanged. Reports:
+`observed-owner-local-tables/`, `all-owner-cfg-local-tables/`,
+`observed-owner-batches/after-68476-local-tables/` including `case-coverage.json`.
 
-The private producer's `--cfg-directory` selects and pins that new inventory
-without rewriting the old one. Four newly exposed original first blocks pass
-independent XED checks, 16 instructions, and audited publication preserves every
-prior raw hash: **68,476 available entries**. Phase
-`observed-owner-batches/after-68472-observed-components/`, inputs `3bc294c7`,
-records `6fe8ed3b`; inventory `all-owner-cfg-after-68472/`. Its bounded native
-build/replay is running, with no execution result yet.
+**Input-counter correction:** older reports' zero `input_script_read_samples`
+means zero scripted-fallback reads, not zero total guest reads. A connected
+physical controller can preempt the fallback. Total reads in those frozen runs
+are unknown; their scripted route/input gate remains failed. The sidecar
+`input-observation-erratum.json` records this without rewriting old evidence.
+New reports distinguish total, primary, fallback and disconnected valid reads.
+Normal physical-controller precedence remains the default. Explicit engineering
+`OSL_INPUT_MODE=script-only` requires a loaded immutable `OSL_INPUT_SCRIPT` and
+suppresses physical sampling for that test only. The service checks pass 39
+basic and 145 scripted cases, including ASan/UBSan and both mobile SDK compiles;
+this does not qualify physical controls or real guest menu progress.
+
+OpenCrown's confirmed packed integer and floating-point helpers are reused in
+an isolated **twenty-two-patch** backend, `cpu-backends-packed-simd`. Only the
+float patch's insertion context changes; helper/selector additions are identical
+to OpenCrown's payload. Static XED inventory confirms three integer and three
+float forms in decoded original code; presence is not execution evidence.
+The combined native x86/Rosetta versus arm64 comparison passes **44 routines,
+9,280 vectors, 10,616,320 word comparisons and 408,320 return/read-only input
+checks** with Odin's actual checked-memory runtime. Integer MXCSR is compared
+in full; floating-point sticky status bits 0..5 and #XM delivery remain outside
+the runtime's model and qualification. Previous twenty- and twenty-one-patch
+backends are preserved unchanged. Reports: `isa-presence/`,
+`packed-simd-backend/`, `packed-simd-tests/`.
+
+The game corpus must be freshly re-lifted with this backend. The old checkpoint
+supplies only its PC list, never old LLVM or objects across a semantics change.
+Source hashes are now captured before the long seed pass and checked again
+after it; progress is emitted every 256 seed entries. The separate signed CPU
+comparison app passes the same **10,616,320 word and 408,320 return/read-only
+input checks on the physical iPad mini A20 Pro**, iPadOS 27.2.1. Device reports
+match the host oracle, fixture and backend hashes. Its owned process is stopped
+and absent; other apps and the installed game profile are untouched. Evidence:
+`packed-simd-ipad-device/verification.json`. This is synthetic CPU acceptance,
+not a newly booted game. Only the iPad is used; the phone is excluded.
 
 ### Preparation cost without changing guarded code
 
@@ -44,7 +73,8 @@ grammar checks pass, including missing labels, unterminated tables and helper-
 image refusal; the compiled register-only loop still stops at its budget and
 deadline. Reports: `preparation-profile/{equivalence.json,new-prefix-equivalence.json,
 grammar-cache-tests,guard-fixture,promotion.json}`. This qualifies build-text
-preparation only, not game FPS. The next actual build measures its cost.
+preparation only, not game FPS. Later native preparation takes 164.186 and
+167.967 seconds; these are build timings, not gameplay frame timings.
 
 The revised boundary audit is separately versioned: exact original 0f0b,
 XED ud2/length 2 and a retained remill-error stop are required. Its qualified
@@ -60,8 +90,8 @@ UDID is queried. Before another update, its three existing system-save files
 are backed up and match the previous verified hashes. Only the older stopped
 Odin probe is closed; other apps are untouched. **The installed device build is
 still the 60,361-entry checkpoint below.** A 67,546-entry SDK recipe is held
-because native scenes remain black and input is unobserved; continue actual
-worker-gap recovery before rebuilding the device app. The phone is excluded.
+because recognizable native scenes remain unverified; continue backend and
+worker-gap recovery before rebuilding the device game app. The phone is excluded.
 Recognizable mobile scenes, audible output, physical controls and character-
 progress save/load remain open.
 

@@ -1,0 +1,172 @@
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2818,3 +2818,168 @@
+ IF_AVX(DEF_ISEL(VBLENDVPD_XMMdq_XMMdq_MEMdq_XMMdq) = BLENDVPD<VV128W, V128, MV128, V128>;)
+ IF_AVX(DEF_ISEL(VBLENDVPD_YMMqq_YMMqq_YMMqq_YMMqq) = BLENDVPD<VV256W, V256, V256, V256>;)
+ IF_AVX(DEF_ISEL(VBLENDVPD_YMMqq_YMMqq_MEMqq_YMMqq) = BLENDVPD<VV256W, V256, MV256, V256>;)
++
++namespace {
++ALWAYS_INLINE uint32_t PackedDaz32(State &state, uint32_t bits) {
++  if ((state.x87.fxsave.mxcsr.flat & (1u << 6)) &&
++      !(bits & 0x7f800000u)) return bits & 0x80000000u;
++  return bits;
++}
++ALWAYS_INLINE bool PackedLess32(uint32_t a, uint32_t b) {
++  if ((a ^ b) & 0x80000000u) return (a >> 31) != 0;
++  return (a >> 31) ? (a & 0x7fffffffu) > (b & 0x7fffffffu) : a < b;
++}
++// MIN/MAX return the second source for NaNs and equal signed zeros. Integer
++// comparisons preserve NaN payloads (including a second-source signaling NaN).
++// These value helpers retain the runtime's existing SIMD exception-model limits.
++template <bool maximum, typename D, typename S>
++DEF_SEM(PackedMinMax32, D dst, V256 src1, S src2) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    auto a = PackedDaz32(state, UExtractV32(first, i));
++    auto b = PackedDaz32(state, UExtractV32(second, i));
++    bool nan = (a & 0x7fffffffu) > 0x7f800000u ||
++               (b & 0x7fffffffu) > 0x7f800000u;
++    bool zeros = ((a | b) & 0x7fffffffu) == 0;
++    bool choose_first = !nan && !zeros &&
++        (maximum ? PackedLess32(b, a) : PackedLess32(a, b));
++    result = UInsertV32(result, i, choose_first ? a : b);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++// The XMM variant has four source elements; keep the source type explicit.
++template <typename D>
++DEF_SEM(PackedMax128, D dst, V128 src1, V128 src2) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    auto a = PackedDaz32(state, UExtractV32(first, i));
++    auto b = PackedDaz32(state, UExtractV32(second, i));
++    bool nan = (a & 0x7fffffffu) > 0x7f800000u ||
++               (b & 0x7fffffffu) > 0x7f800000u;
++    bool zeros = ((a | b) & 0x7fffffffu) == 0;
++    result = UInsertV32(result, i, !nan && !zeros && PackedLess32(b, a) ? a : b);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++ALWAYS_INLINE uint32_t PackedSubtract32(State &state, uint32_t a, uint32_t b) {
++  a = PackedDaz32(state, a); b = PackedDaz32(state, b);
++  const auto abs_a = a & 0x7fffffffu, abs_b = b & 0x7fffffffu;
++  if (abs_a > 0x7f800000u) return a | 0x00400000u;
++  if (abs_b > 0x7f800000u) return b | 0x00400000u;
++  if (abs_a == 0x7f800000u && abs_b == 0x7f800000u && !((a ^ b) >> 31))
++    return 0xffc00000u;  // Invalid infinity minus the same infinity.
++  union { uint32_t bits; float32_t value; } left, right, output;
++  left.bits = a; right.bits = b;
++  output.value = FSub(left.value, right.value);
++  if ((state.x87.fxsave.mxcsr.flat & (1u << 15)) &&
++      !(output.bits & 0x7f800000u)) output.bits &= 0x80000000u;
++  return output.bits;
++}
++DEF_SEM(PackedHsub256, VV256W dst, V256 src1, V256 src2) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t lane = 0; lane < 2; ++lane) {
++    size_t base = lane * 4;
++    _Pragma("unroll") for (size_t pair = 0; pair < 2; ++pair) {
++      result = UInsertV32(result, base + pair, PackedSubtract32(state,
++          UExtractV32(first, base + pair * 2), UExtractV32(first, base + pair * 2 + 1)));
++      result = UInsertV32(result, base + 2 + pair, PackedSubtract32(state,
++          UExtractV32(second, base + pair * 2), UExtractV32(second, base + pair * 2 + 1)));
++    }
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++DEF_SEM(PackedUnpackLPS, VV256W dst, V256 src1, V256 src2) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t lane = 0; lane < 2; ++lane) {
++    _Pragma("unroll") for (size_t i = 0; i < 2; ++i) {
++      result = UInsertV32(result, lane * 4 + i * 2,
++          UExtractV32(first, lane * 4 + 0 + i));
++      result = UInsertV32(result, lane * 4 + i * 2 + 1,
++          UExtractV32(second, lane * 4 + 0 + i));
++    }
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++DEF_SEM(PackedUnpackHPS, VV256W dst, V256 src1, V256 src2) {
++  auto first = UReadV32(src1);
++  auto second = UReadV32(src2);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t lane = 0; lane < 2; ++lane) {
++    _Pragma("unroll") for (size_t i = 0; i < 2; ++i) {
++      result = UInsertV32(result, lane * 4 + i * 2,
++          UExtractV32(first, lane * 4 + 2 + i));
++      result = UInsertV32(result, lane * 4 + i * 2 + 1,
++          UExtractV32(second, lane * 4 + 2 + i));
++    }
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++DEF_SEM(PackedUnpackLPD, VV256W dst, V256 src1, V256 src2) {
++  auto first = UReadV64(src1);
++  auto second = UReadV64(src2);
++  auto result = UClearV64(UReadV64(dst));
++  _Pragma("unroll") for (size_t lane = 0; lane < 2; ++lane) {
++    _Pragma("unroll") for (size_t i = 0; i < 1; ++i) {
++      result = UInsertV64(result, lane * 2 + i * 2,
++          UExtractV64(first, lane * 2 + 0 + i));
++      result = UInsertV64(result, lane * 2 + i * 2 + 1,
++          UExtractV64(second, lane * 2 + 0 + i));
++    }
++  }
++  UWriteV64(dst, result);
++  return memory;
++}
++DEF_SEM(PackedUnpackHPD, VV256W dst, V256 src1, V256 src2) {
++  auto first = UReadV64(src1);
++  auto second = UReadV64(src2);
++  auto result = UClearV64(UReadV64(dst));
++  _Pragma("unroll") for (size_t lane = 0; lane < 2; ++lane) {
++    _Pragma("unroll") for (size_t i = 0; i < 1; ++i) {
++      result = UInsertV64(result, lane * 2 + i * 2,
++          UExtractV64(first, lane * 2 + 1 + i));
++      result = UInsertV64(result, lane * 2 + i * 2 + 1,
++          UExtractV64(second, lane * 2 + 1 + i));
++    }
++  }
++  UWriteV64(dst, result);
++  return memory;
++}
++DEF_SEM(PackedSqrt128, VV128W dst, V128 src) {
++  auto input = UReadV32(src);
++  auto result = UClearV32(UReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(input); ++i) {
++    union { uint32_t bits; float32_t value; } value;
++    value.bits = PackedDaz32(state, UExtractV32(input, i));
++    const auto magnitude = value.bits & 0x7fffffffu;
++    if (magnitude > 0x7f800000u) value.bits |= 0x00400000u;
++    else if ((value.bits >> 31) && magnitude) value.bits = 0xffc00000u;
++    else value.value = __builtin_sqrtf(value.value);
++    result = UInsertV32(result, i, value.bits);
++  }
++  UWriteV32(dst, result);
++  return memory;
++}
++}  // namespace
++IF_AVX(DEF_ISEL(VHSUBPS_YMMqq_YMMqq_YMMqq) = PackedHsub256;)
++IF_AVX(DEF_ISEL(VUNPCKLPS_YMMqq_YMMqq_YMMqq) = PackedUnpackLPS;)
++IF_AVX(DEF_ISEL(VUNPCKHPS_YMMqq_YMMqq_YMMqq) = PackedUnpackHPS;)
++IF_AVX(DEF_ISEL(VUNPCKLPD_YMMqq_YMMqq_YMMqq) = PackedUnpackLPD;)
++IF_AVX(DEF_ISEL(VUNPCKHPD_YMMqq_YMMqq_YMMqq) = PackedUnpackHPD;)
++IF_AVX(DEF_ISEL(VMINPS_YMMqq_YMMqq_MEMqq) = PackedMinMax32<false, VV256W, MV256>;)
++IF_AVX(DEF_ISEL(VMAXPS_YMMqq_YMMqq_YMMqq) = PackedMinMax32<true, VV256W, V256>;)
++IF_AVX(DEF_ISEL(VMAXPS_XMMdq_XMMdq_XMMdq) = PackedMax128<VV128W>;)
++IF_AVX(DEF_ISEL(VSQRTPS_XMMdq_XMMdq) = PackedSqrt128;)
++

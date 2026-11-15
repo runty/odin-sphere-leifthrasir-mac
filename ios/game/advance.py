@@ -151,25 +151,6 @@ def lift(pc, code, output):
                            "--address", str(pc), "--bytes", code.hex(), "--ir_out", output], 120)
 
 
-if a.seed_from:
-    old = json.loads(a.seed_from.read_text())
-    if old["image_sha256"] != layout["image_sha256"]:
-        p.error("Seed PC list belongs to a different prepared image")
-    if list(cache.glob("*.ll")):
-        p.error("Seed requires a new trace cache")
-    def lift_seed(name):
-        pc = int(Path(name).stem, 16)
-        offset = pc - layout["base"]
-        segment = next((s for s in layout["segments"] if s[2] & 1 and s[0] <= offset < s[0] + s[1]), None)
-        if segment is None:
-            p.error("Seed PC is outside executable memory")
-        code = image[offset:min(offset + a.window_bytes, segment[0] + segment[1])]
-        lift(pc, code, cache / name)
-    # Build the shared decoder once before independent lifters use it.
-    decode_size(b"\xc3")
-    with ThreadPoolExecutor(max_workers=a.jobs) as pool:
-        list(pool.map(lift_seed, old["ir"]))
-    print("Re-lifted seed PC list with the isolated backend", flush=True)
 
 
 repo = source.parents[1]
@@ -205,6 +186,32 @@ def check_sources():
     if source_snapshot() != compiled_sources:
         raise RuntimeError("Startup sources changed during discovery; rerun before publishing a checkpoint")
     if function_bounds:function_bounds.verify_current()
+if a.seed_from:
+    old = json.loads(a.seed_from.read_text())
+    if old["image_sha256"] != layout["image_sha256"]:
+        p.error("Seed PC list belongs to a different prepared image")
+    if list(cache.glob("*.ll")):
+        p.error("Seed requires a new trace cache")
+    def lift_seed(name):
+        pc = int(Path(name).stem, 16)
+        offset = pc - layout["base"]
+        segment = next((s for s in layout["segments"] if s[2] & 1 and s[0] <= offset < s[0] + s[1]), None)
+        if segment is None:
+            p.error("Seed PC is outside executable memory")
+        code = image[offset:min(offset + a.window_bytes, segment[0] + segment[1])]
+        lift(pc, code, cache / name)
+    # Build the shared decoder once before independent lifters use it.
+    decode_size(b"\xc3")
+    check_sources()
+    seed_started=time.perf_counter()
+    with ThreadPoolExecutor(max_workers=a.jobs) as pool:
+        for completed,_ in enumerate(pool.map(lift_seed, old["ir"]),1):
+            if completed%256==0 or completed==len(old["ir"]):
+                print("SEED_PROGRESS:"+json.dumps({"relifted":completed,"total":len(old["ir"]),"seconds":time.perf_counter()-seed_started}),flush=True)
+    check_sources()
+    print("Re-lifted seed PC list with the isolated backend", flush=True)
+
+
 service_objects = compile_services(repo, objects / "services", "arm64-apple-macos15", sdk)
 check_sources()
 

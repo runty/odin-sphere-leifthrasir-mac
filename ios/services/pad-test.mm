@@ -64,6 +64,8 @@ int main() {
             std::memset(guarded,0x7b,sizeof(guarded));
             require(pad.read(1,reinterpret_cast<PadData *>(guarded+8))==0);
             require(guarded[0]==0x7b && guarded[7]==0x7b && guarded[sizeof(guarded)-8]==0x7b && guarded[sizeof(guarded)-1]==0x7b);
+            const auto reads=pad.readStats();
+            require(reads.total==7 && reads.primary==4 && reads.fallback==0 && reads.disconnected==3);
             GCController *controller=[GCController controllerWithExtendedGamepad];
             require(controller.isSnapshot && controller.extendedGamepad!=nil);
             GCExtendedGamepad *gamepad=controller.extendedGamepad;
