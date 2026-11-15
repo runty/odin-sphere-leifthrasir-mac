@@ -16,6 +16,23 @@ profile survives unchanged. Recognizable mobile imagery, gameplay and new
 in-game save/reload remain open. The iPhone retains the earlier `460ecdb`
 checkpoint while away; physical testing is iPad-only.
 
+The later native cache reaches 9,521 entries and an actual `VEXTRACTPS`
+fallback at `0x106b796c` after 63.4 seconds, with all 22 workers joined.
+The capture still contains a black clear and depth-only draw. OpenCrown's
+startup lane patch is now rebased onto Odin with its added implementation
+unchanged. It supplies `VPINSRB`, `VPINSRD` and `VEXTRACTPS` register/memory
+forms. The new audited backend passes 467,456 native-Rosetta comparisons
+using Odin's checked-memory runtime: 82 lane-form routines plus the original
+12-instruction matrix-extraction span, including unaligned-store canaries,
+source preservation and full GPR results. The observed instruction also
+lifts without the fallback and compiles for both mobile SDKs.
+
+Build this backend in a new directory. Existing fourteen-patch caches remain
+frozen; the complete audit now expects fifteen patches. Regenerate guest IR
+for the new lifter/semantics identities, using old manifests only as address
+availability seeds. Full guest execution with this backend is still pending.
+Evidence is `extract-reuse/` and `cpu-backends-extract/` at the build root.
+
 Native development now uses [the adapted OpenCrown switch tools](control-flow/README.md).
 The expanded conditional fixture passes 42 checks, with strict output bytes
 identical to the original tools; the unchanged strict and late-copy matrices
