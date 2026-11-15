@@ -52,7 +52,7 @@ for locked in (False,True):
 objects=[];declarations=[];calls=[];assembly='.intel_syntax noprefix\n.text\n'
 for index,(name,instruction,offset,wide,bits) in enumerate(specs):
  loads='mov rax,qword ptr [rdi+16]\nmov rdx,qword ptr [rdi+24]\nmov rbx,qword ptr [rdi+32]\nmov rcx,qword ptr [rdi+40]\n'
- if wide and bits==64:loads='mov rax,qword ptr [rdi+16]\nmov rdx,rax\nshr rdx,32\nmov ebx,dword ptr [rdi+32]\nmov rcx,qword ptr [rdi+32]\nshr rcx,32\n'
+ if wide and bits==64:loads='mov rax,qword ptr [rdi+16]\nmov rdx,rax\nshr rdx,32\nmovabs r8,0x13579bdf00000000\nor rdx,r8\nmov ebx,dword ptr [rdi+32]\nmov rcx,qword ptr [rdi+32]\nshr rcx,32\n'
  code='push rbx\n'+loads+'xor r8,r8\nsub r8,1\n'+instruction+'\nmov qword ptr [rsi+64],rax\nmov qword ptr [rsi+72],rdx\nmov qword ptr [rsi+80],rbx\nmov qword ptr [rsi+88],rcx\npushfq\npop r8\nand r8,'+str(0x40 if wide else 0x8d5)+'\nmov qword ptr [rsi+96],r8\npop rbx\nret\n'
  asm=out/(name+'.s');asm.write_text('.intel_syntax noprefix\n.text\n'+code)
  if not a.native_only:
