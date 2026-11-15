@@ -12,7 +12,7 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mac app | Clean `0757088` installed. The relocated app passes 307 imports, seven launcher pages and two 300-frame runs. A 900-frame SDL dummy-audio run preserved the copied slot. The installed bundle passes a separate 600-frame render. The previous alpha also passed fresh-profile PKG installation and visible keyboard Play | Separate OS account, mouse Play and the deferred gameplay soak |
 | Mac installer | Full x86-64 dependency rebuild, signed bundle, transactional update, verified app backup and byte-preserved existing saves | Public distribution signing and notarization |
 | Mobile CPU | Original eboot/libc/Fios2 tests pass 414 comparisons on both physical devices. Reused OpenCrown MOVMSKPS/PD semantics passed 38,400 comparisons. Its ROUND patch passed 13,824,000 native comparisons and the separate suppression/fault checks in OpenCrown's reference harness with Odin's backend. | The native original-game replay passes VROUNDSS after fixing initial MXCSR/x87 controls and worker inheritance. Continue CPU/ABI qualification through combat. |
-| Mobile startup | Physical iPad `6804c65`, corpus `1c976ba8` (42,107 entries), twenty-patch backend. Cold launches 29/30 reach `0x105c04b1` after 163.784/162.074 seconds and 2,869/2,859 presentations; CPU 414, memory 19, GPU readback 64, all 42 joins and cleanup pass. System-save hashes survive update/quit/cold relaunch. Fresh frame 2,600 is black. The phone retains `460ecdb` while away and is excluded. | Recognizable title/town/combat, nonempty audio, physical touch/controller gameplay and sustained pacing. |
+| Mobile startup | Physical iPad `ac26c94`, corpus `fd56f65f` (53,312 entries), twenty-patch backend. Cold launches 31/32 reach `0x105b4083` after 155.918/159.634 seconds and 2,761/2,923 presentations; CPU 414, memory 19, GPU readback 64, all 42 joins and cleanup pass. System-save hashes survive update/quit/cold relaunch. Fresh frame 2,600 is black. The phone retains `460ecdb` while away and is excluded. | Recognizable title/town/combat, nonempty audio, physical touch/controller gameplay and sustained pacing. |
 | Mobile storage and lifecycle | The guest creates three system-save files on iPad; their exact hashes survive quitting, an app update and cold read-only mounting. Native copied-player-save discovery reaches 42 joined workers and later missing CPU blocks. | Character-progress save/load, interruption recovery, and suspend/resume during gameplay. |
 | Mobile engineering harness | Both SDK renderer/game/boundary archives compile. Native AOT background event pumping matches UIKit; 109 native bridge checks pass. The optional iPad UI-test runner compiles/signs but times out enabling automation before any test runs. | Physical touch acceptance, Simulator GPU execution and remaining UIKit appearance warnings. |
 
@@ -670,13 +670,16 @@ progress reload still need actual device verification.
 The new twenty-patch checkpoint is verified on the iPad across an app update and
 a second cold launch: CPU/memory/GPU checks, 42 joins, exact system-save hashes
 and full cleanup pass. Its fresh later frame remains black; character progress
-and audible output are not qualified. [Physical evidence and limits](../ios/graphics/README.md#twenty-patch-physical-startup--2026-11-15).
+and audible output are not qualified. [Physical evidence and limits](../ios/graphics/README.md#expanded-physical-startup-and-cold-repeat--2026-11-15).
 
 Native discovery has advanced to 53,312 compiled entries, actual gap
 `0x105b4083`, with cleanup and no memory fault. Broader read-only analysis reuses
 OpenCrown's validator over all original eboot owners and observed roots. A
-bounded 7,027-target next cohort explicitly retains incomplete-owner assumptions;
-it does not change runtime branches or make strict coverage claims.
+bounded 7,027-target next cohort publishes 6,995 candidates with 32 explicit FP80
+skips, retaining incomplete-owner assumptions. Eight original switch siblings of
+an observed case are also published, with the rejected ABI/index proof explicit.
+Native compilation/replay starts from 60,315 available entries; no new execution
+is implied by publication. Runtime branches and strict proof policy are unchanged.
 [Inventory and staging scope](../ios/game/README.md#anchored-owner-inventory-and-bounded-incomplete-candidates--2026-11-15).
 
 An isolated Mac launcher copy opens/shuts down and preserves its copied/original

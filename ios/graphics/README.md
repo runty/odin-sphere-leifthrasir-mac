@@ -1138,3 +1138,29 @@ unbalanced appearance transition on SDL teardown. CoreDevice's 134 MiB install
 cache is reclaimed without touching device apps. Private evidence:
 `atomic-ipad/{device,device-repeat}/verification.json`, signed app and frozen
 both-SDK archives at the external Odin build root.
+
+
+## Expanded physical startup and cold repeat — 2026-11-15
+
+The next frozen checkpoint is signed `ac26c9469c445ceb18967764c4c9cc785dc5b950`,
+corpus `fd56f65ffd33759d6854e48ae0f4b54b007a1b159e2b16bf20d7c86d0292c06b`,
+53,312 entries. Both mobile SDK game/boundary archives are built, using the
+same twenty-patch backend and qualified runtime. Physical iPad launches 31/32
+reach `0x105b4083`, matching the frozen native checkpoint, at 155.918/159.634
+seconds with 2,761/2,923 presentations. CPU 414, memory 19, actual GPU readback
+64, 42 joined workers, no memory fault and all renderer/resource/mapping/signal
+cleanup checks pass. Exact owned PIDs 48693/48832 are stopped and absent.
+
+Launch 31 confirms a new UUID game PNG at frame 2,600 before retrieval.
+Independent decoding and visual inspection find 1512×850 opaque black pixels,
+SHA `c1bf8367d8385c43894029fdc37c4d7e7c12427e5a69ee3f0c4f66a7fa637d0d`.
+Launch 32 requests no new PNG. Presentations and black readback do not qualify
+recognizable title/town/combat. Scripted active reads are 20/14, not physical
+input. Audio-service calls are 29,176/29,873, without a new PCM/listening claim.
+
+All three system-save creation hashes survive the update/run/quit/cold repeat;
+character-progress save/load remains unverified. Original Mac player hashes,
+other device apps and the away iPhone are untouched. The UIKit appearance warning
+persists. CoreDevice's additional 272 MiB install cache is reclaimed separately.
+Private evidence: `atomic-ipad-expanded/{device,device-repeat}/verification.json`,
+`freeze.json`, both SDK archives and signed app at the external build root.

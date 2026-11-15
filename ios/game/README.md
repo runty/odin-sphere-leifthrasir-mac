@@ -7,23 +7,26 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-The current physical iPad checkpoint is signed `6804c65`, corpus `1c976ba8`,
-with 42,107 entries and the twenty-patch backend. Launches 29/30 pass CPU 414,
+The current physical iPad checkpoint is signed `ac26c94`, corpus `fd56f65f`,
+with 53,312 entries and the twenty-patch backend. Launches 31/32 pass CPU 414,
 memory 19 and GPU readback 64, join all 42 workers and complete renderer cleanup.
-They reach the same actual block `0x105c04b1` as the matching native checkpoint,
-after 163.784/162.074 seconds and 2,869/2,859 presentations. All three system-save
+They reach the same actual block `0x105b4083` as the matching native checkpoint,
+after 155.918/159.634 seconds and 2,761/2,923 presentations. All three system-save
 creation hashes survive the update, quitting and the same-build cold relaunch.
-This does not verify loading character progress. Scripted input has 14/16 active
-reads; physical touch/controller gameplay remains unverified. The fresh physical
-frame-2,600 game readback is opaque black. UIKit appearance-transition warnings
-remain. Both owned PIDs are stopped/absent; the other probe and away iPhone are
-untouched. [Physical evidence](../graphics/README.md#twenty-patch-physical-startup--2026-11-15).
+This does not verify loading character progress. Scripted input has 20/14 active
+reads; physical touch/controller gameplay remains unverified. Launch 31's fresh
+physical frame-2,600 game readback is opaque black; launch 32 requests no snapshot.
+UIKit appearance-transition warnings remain. Both owned PIDs are stopped/absent;
+the other probe and away iPhone are untouched.
+[Physical evidence](../graphics/README.md#expanded-physical-startup-and-cold-repeat--2026-11-15).
 
-The larger native code set now compiles 53,312 entries and reaches actual gap
-`0x105b4083` at 155.485 seconds, with no memory fault and 42 joined workers.
-It has passed the earlier `0x105c04b1` case and later demands. The requested
-frame 3,200 was not reached, so those expanded attempts have no fresh image.
-The separately frozen larger checkpoint is being built for both mobile SDKs.
+The matching native checkpoint reaches `0x105b4083` at 155.485 seconds, with no
+memory fault and 42 joined workers. It passes the earlier `0x105c04b1` case and
+later demands. The requested frame 3,200 is not reached, so those expanded native
+attempts have no fresh image. Both mobile SDK game/boundary archives are built
+and the device consumer is signed from the frozen 53,312-entry checkpoint.
+A further 7,003 original-byte candidates are published separately for native
+compilation/replay; their availability is not execution evidence or an app update.
 Title/town/combat, nonempty audio, physical input and character-progress save/load
 acceptance remain open. Static availability never means every entry executed.
 
@@ -1399,13 +1402,15 @@ Unfamiliar encodings are skipped. This includes the observed direct-branch join
 arbitrary bytes for instruction starts or infer destinations from sampled PCs.
 
 The cohort contains 18,885 unique strict-switch/direct-branch targets, with
-11,336 absent from the frozen 42,107-PC seed. They are being lifted separately
-with the new twenty-patch backend, retaining checked memory and explicit failures.
-No staging entry is execution evidence or part of the installed iPad. Publication
-waits for the active rebuild to finish a checkpoint; records/recovery copies and
-exact source/backend/image hashes must audit before replay. Private evidence:
-`long-base-setup/{verification.json,catalog-noreturn,seeds,prepare.py}`. The prior
-nineteen-patch code/cache remains preserved.
+11,336 absent from the frozen 42,107-PC seed. Staging accepts 11,201 and
+explicitly skips 135 static FP80 candidates. Recovery-first publication audits
+all immutable inputs and every previous/promoted raw hash, growing the cache to
+53,308 entries; four later actual demands grow the compiled checkpoint to 53,312.
+The active twenty-patch backend is used throughout, with no old backend IR copied.
+The frozen checkpoint is installed and independently replayed on the iPad.
+Private evidence: `long-base-setup/{verification.json,catalog-noreturn,seeds}`
+and `atomic-ipad-expanded/`. Static staging counts do not prove every entry runs.
+The prior nineteen-patch code/cache remains preserved.
 
 ### Anchored owner inventory and bounded incomplete candidates — 2026-11-15
 
@@ -1431,6 +1436,17 @@ PCs (hard cap 8,192), including mandatory actual demand `0x105b4083`, for offlin
 lifting with the same backend. Per-target metadata preserves incomplete CFGs and
 all unknown exits. Original bytes and checked memory remain in force; no index
 is clamped, no jump is restricted, and an unsupported actual demand still fails.
-This cohort is staged separately under `nearby-owner-prefetch/`; it is not part
-of the installed app or an execution claim. Publish/replay only after its records,
-recovery copies, intrinsic inventory and immutable inputs audit.
+This cohort is prepared separately under `nearby-owner-prefetch/`: 6,995 accepts
+and 32 explicit static FP80 skips. Recovery/raw/ledger/input hashes and the
+intrinsic inventory pass before publication, growing availability to 60,307.
+It is not part of the installed app or an execution claim.
+
+An additional actual stop `0x10219217` identifies its original relative switch
+table in owner `0x10219190..0x10219458`. The unchanged strict validator rejects
+guard/index equivalence across a conditional call. Reading original table bytes
+identifies ten slots / nine unique destinations; eight absent siblings are lifted
+and published with the same backend, growing availability to 60,315. Their ABI/
+index proof remains **unproven**. Observing one case does not prove index bounds;
+these candidates do not relax the strict validator, clamp indices or change
+runtime jump policy. Evidence: `observed-abi-switch/`. The next native replay,
+not these availability counts, determines whether startup actually advances.
