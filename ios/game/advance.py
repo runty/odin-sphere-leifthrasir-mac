@@ -12,6 +12,7 @@ import time
 from trace_preparation import TracePreparationCache
 from discovery_targets import missing_targets
 from trace_candidates import candidates, nearest
+from function_bounds import FunctionBounds
 from service_build import compile_services, inputs as service_inputs, link_options
 
 p = argparse.ArgumentParser(description=__doc__)
@@ -19,6 +20,8 @@ p.add_argument("--root", required=True, type=Path)
 p.add_argument("--remill", required=True, type=Path)
 p.add_argument("--rounds", type=int, default=16)
 p.add_argument("--prefetch", type=int, default=0, help="Extra speculative direct-call/relocation candidates per round (0 to 256); never execution evidence")
+p.add_argument("--function-bounds",type=Path,help="Verified original unwind ranges limiting new lifts, with segment fallback for unindexed code")
+p.add_argument("--retain-error-paths",action="store_true",help="Keep compilable Remill error/trap branches; executing one still stops explicitly")
 p.add_argument("--window-bytes", type=int, default=16384, help="Maximum executed trace window, clipped at instruction boundaries")
 p.add_argument("--seed-from", type=Path, help="Re-lift only the PC list from a matching old build-state; never reuse its IR")
 p.add_argument("--decoder-prefix", type=Path)
@@ -42,6 +45,7 @@ layout = json.loads((root / "image.json").read_text())
 image = (root / "image.bin").read_bytes()
 if hashlib.sha256(image).hexdigest() != layout["image_sha256"]:
     p.error("Prepared image hash mismatch")
+function_bounds=FunctionBounds(a.function_bounds.resolve(),root,layout,source.parents[1]) if a.function_bounds else None
 llvm = Path("/opt/homebrew/opt/llvm/bin")
 sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
 cache = root / "traces"
@@ -125,6 +129,7 @@ def decode_size(code, window=False):
 
 
 def lift(pc, code, output):
+    if function_bounds:code=code[:function_bounds.length(pc,len(code))]
     # Remill must see complete instructions at the window boundary.
     code = code[:decode_size(code, window=True)]
     run("lift-" + hex(pc), [a.remill / "remill-build/bin/lift/remill-lift-23", "--os", "linux", "--arch", "amd64_avx",
@@ -150,6 +155,7 @@ if a.seed_from:
 
 repo = source.parents[1]
 source_paths = (source / "advance.py", source / "runner.cpp", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
+                source / "function_bounds.py",source / "unwind_reader.py",source / "build-function-bounds.py",repo / "scripts/ps4_module.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None
 if a.gpu_build:
@@ -179,6 +185,7 @@ compiled_sources = source_snapshot()
 def check_sources():
     if source_snapshot() != compiled_sources:
         raise RuntimeError("Startup sources changed during discovery; rerun before publishing a checkpoint")
+    if function_bounds:function_bounds.verify_current()
 service_objects = compile_services(repo, objects / "services", "arm64-apple-macos15", sdk)
 check_sources()
 
@@ -214,7 +221,7 @@ for round in range(a.rounds):
     preparation_start=time.perf_counter()
     previous_hits,previous_misses=preparation.hits,preparation.misses
     previous_analysis_hits,previous_analysis_misses=preparation.analysis_hits,preparation.analysis_misses
-    narrowed_lifted,narrowed_reused=0,0
+    narrowed_lifted,narrowed_reused,error_paths_retained=0,0,0
     entries = {}
     declarations = set()
     objs = []
@@ -222,7 +229,7 @@ for round in range(a.rounds):
         raw=ir.read_text()
         analysis=preparation.analyze(raw)
         narrowing_key=(ir.name,analysis.raw_sha256)
-        if analysis.extended_precision or (analysis.remill_error and narrowing_key not in narrowed_traces):
+        if analysis.extended_precision or (analysis.remill_error and not a.retain_error_paths and narrowing_key not in narrowed_traces):
             # Keep unexecuted long-double formatting paths out of a broad trace.
             # An actual x87 block remains an explicit backend gap, never a no-op.
             pc = int(ir.stem, 16)
@@ -242,8 +249,10 @@ for round in range(a.rounds):
             if analysis.extended_precision:
                 raise RuntimeError("Executed block requires unsupported x87 extended precision at " + hex(pc))
             narrowed_traces.add((ir.name,analysis.raw_sha256))
-        elif analysis.remill_error:
+        elif analysis.remill_error and narrowing_key in narrowed_traces:
             narrowed_reused+=1
+        elif analysis.remill_error:
+            error_paths_retained+=1
         obj = objects / (ir.stem + ".o")
         guarded_path = objects / (ir.stem + ".guarded.ll")
         prepared=preparation.prepare(raw,guarded_path)
@@ -261,7 +270,7 @@ for round in range(a.rounds):
     print("TRACE_PREPARATION:"+json.dumps({'ir_files':len(objs),'hits':preparation.hits-previous_hits,
           'misses':preparation.misses-previous_misses,'analysis_hits':preparation.analysis_hits-previous_analysis_hits,
           'analysis_misses':preparation.analysis_misses-previous_analysis_misses,'narrowed_lifted':narrowed_lifted,
-          'narrowed_reused':narrowed_reused,'seconds':time.perf_counter()-preparation_start}),flush=True)
+          'narrowed_reused':narrowed_reused,'error_paths_retained':error_paths_retained,'seconds':time.perf_counter()-preparation_start}),flush=True)
     text = "#pragma once\n"
     for symbol in entries.values():
         text += f'extern "C" Memory *{symbol}(State &,uint64_t,Memory *);\n'
@@ -282,6 +291,8 @@ for round in range(a.rounds):
              "headers": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ("image-layout.h", "traces.h", "thunks.cpp")},
              "sources": compiled_sources}
     state['static_translation']=static_ledger
+    state['translation_policy']={'retain_error_paths':a.retain_error_paths,
+        'function_bounds':function_bounds.manifest if function_bounds else None}
     command = [root / "guest-startup",root / "image.bin"]
     prefix = "OSL_STARTUP_RESULT:"
     if a.gpu_build:
@@ -325,7 +336,7 @@ for round in range(a.rounds):
     if runtime_inputs()!=state["runtime_inputs"]:raise RuntimeError("Asset root changed during the startup attempt")
     report["trace_count"] = len(entries)
     state["reference"] = report
-    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs","static_translation") + (("runner_mode","native_gpu") if a.gpu_build else ())
+    corpus_keys = ("image_sha256", "trace_inputs", "ir", "headers", "sources","runtime_inputs","static_translation","translation_policy") + (("runner_mode","native_gpu") if a.gpu_build else ())
     state["corpus_sha256"] = hashlib.sha256(json.dumps({k: state[k] for k in corpus_keys}, sort_keys=True).encode()).hexdigest()
     atomic_json(root / "build-state.json", state)
     atomic_json(root / (name + ".json"), report)
@@ -343,7 +354,8 @@ for round in range(a.rounds):
         lift(pc,image[offset:offset+length],cache/(hex(pc)+".ll"))
     if a.prefetch:
         catalog=candidates(layout,image,pointer_bytes,(int(symbol,16) for symbol in declarations))
-        attempted={int(Path(name).stem,16) for name in static_ledger['entries']}
+        attempted={int(Path(name).stem,16) for name,record in static_ledger['entries'].items()
+                   if record['status']=='accepted' or not a.retain_error_paths or record.get('retain_error_paths',False)}
         known={int(path.stem,16) for path in cache.glob('*.ll')}
         batch=nearest(catalog,pending,known|attempted,a.prefetch)
         staging=root/'speculative-traces';staging.mkdir(exist_ok=True)
@@ -351,7 +363,8 @@ for round in range(a.rounds):
             offset=pc-layout['base']
             segment=next(s for s in layout['segments'] if s[2]&1 and s[0]<=offset<s[0]+s[1])
             name=hex(pc)+'.ll';staged=staging/name
-            record={'classification':'static candidate; execution unverified','provenance':catalog[pc]}
+            record={'classification':'static candidate; execution unverified','provenance':catalog[pc],
+                    'retain_error_paths':a.retain_error_paths}
             try:
                 lift(pc,image[offset:min(offset+a.window_bytes,segment[0]+segment[1])],staged)
             except RuntimeError as error:
@@ -363,7 +376,8 @@ for round in range(a.rounds):
             else:
                 raw=staged.read_text();analysis=preparation.analyze(raw)
                 record['raw_sha256']=analysis.raw_sha256
-                if analysis.extended_precision or analysis.remill_error:
+                record['remill_error_paths']=analysis.remill_error
+                if analysis.extended_precision or (analysis.remill_error and not a.retain_error_paths):
                     record.update(status='skipped',reason='speculative unsupported/error path; actual demand remains authoritative')
                 elif analysis.definitions!=(format(pc,'x'),):
                     raise RuntimeError('Unexpected speculative lifted definition at '+hex(pc))

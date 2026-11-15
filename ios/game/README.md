@@ -912,3 +912,66 @@ pointer hash/count or generated header/thunk hash, preserving original inputs.
 Private evidence: `static-prefetch-qualified/`,
 `ios-game-uikit-next/checkpoint-static-prefetch/`. Actual game Gnm submissions
 and frames remain zero; compiled-entry growth alone is not gameplay coverage.
+
+### Verified function bounds and retained error branches
+
+`build-function-bounds.py` reuses the source tree's plaintext SELF parser and
+an attributed copy of the OpenCrown unwind reader at `d6f8110d`. It validates
+CFI record framing, CIE/FDE encoding/bounds, the sorted index and executable
+function ranges. Original frame/index bytes must match the immutable prepared
+image for eboot, libc and Fios2. This yields 30,612 / 2,084 / 717 ranges,
+33,413 total; these describe function bounds, not executed functions or complete
+control-flow coverage. CFI programs and LSDA/personality behavior are not
+interpreted. Owned reader tests pass 26 checks; range/input/lookup tests pass 28.
+
+```sh
+python3 ios/game/build-function-bounds.py --root "$ROOT" --output "$WORK/function-bounds"
+# Add to an ordinary advance.py invocation:
+# --function-bounds "$WORK/function-bounds/bounds.json" --retain-error-paths
+```
+
+`--function-bounds` clips a newly requested lift to its containing validated
+range. Unindexed assembly/leaves/interior targets retain the existing segment
+and window fallback. The consumer verifies the image/layout, reader/builder,
+original module hashes and sorted nonoverlapping executable ranges, and discovery
+rechecks the manifest/module inputs before publication. Existing translated IR
+is retained; this option does not relabel or regenerate old code. Both options
+are explicit; the previous default behavior remains available.
+
+A containing function can still have a valid unexecuted trap/error branch.
+Bounds alone do not remove that branch: two private trial lifts at
+`0x1000473c` and `0x106b50f0` still contain Remill error calls when bounded to
+1,440 and 460 bytes. `--retain-error-paths` keeps compilable error branches
+instead of shrinking the entire trace because one exists. Executing the branch
+still calls the original checked runtime stop; it never returns success or
+turns an unsupported instruction into a no-op. FP80 remains a separate explicit
+gap, and actual later demand failures remain authoritative.
+
+A real lifted owned x86 fixture has a normal return branch and a UD2 branch.
+Native arm64, ASan and UBSan runs prove that the normal branch returns its
+expected value without changing input or stack bytes and that the retained trap exits
+through the enclosing guest checkpoint without returning to guest code. The
+backend reports the post-UD2 PC (`start+12` for this fixture), so this is not
+an exact instruction-start PC claim. The sanitizer build uses one LLVM toolchain
+for lifted objects and the C++ runtime/harness; mixing LLVM 23 ASan objects with
+Apple's older runtime fails to link and is not counted as a successful check.
+
+The static ledger records the admission policy. Previously rejected speculative
+error branches can be retried under the explicit retained-error option; accepted
+raw hashes remain fixed, and FP80 candidates are still rejected. The completed
+corpus hash includes the translation policy and function-bounds manifest.
+Private evidence is in `unwind-bounds-qualified/`; source fixtures contain no
+game-derived code.
+
+The first eight real native attempts with both options grow from 1,909 to
+2,000 compiled entries; a checkpoint-only flush reaches 2,013. All 1,909 prior
+raw hashes are unchanged. The corpus contains 599 admitted static candidates
+and 21 recorded speculative rejections; individual candidate execution remains
+unverified. Strict native replay completes both initializers, starts/joins
+17 workers, registers three buffers and stops at `0x107d4870` in 386.608 ms.
+Bridge 109 and separate boundary ASan lifecycle/five input-negative checks pass.
+The boundary normal path still has no child workers. Both mobile game SDK
+archives compile at corpus
+`52abc4684c1cd5908243b1980ed20b0bf9fca0bf5b753fa763ef06358dc7c30f`.
+Actual guest Gnm submission and presented-frame counts remain zero.
+Frozen state/headers/ledger: `ios-game-uikit-next/checkpoint-function-bounds/`.
