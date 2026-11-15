@@ -15,6 +15,14 @@ The reference target is a local offline Mac app running the CUSA05083 US base bu
 | Mobile startup | Signed `460ecdb`, corpus `cf0c090c` (4,022 entries), ran on both iPhone 17 Pro Max and iPad mini A20 Pro. Each completed two initializers, joined 18 workers, registered three buffers and stopped in a child at `0x10743600`. Earlier `190b84a` cold-launched twice on each device. | First real guest GPU submission, visible title, combat and sustained frame pacing. |
 | Mobile audio, storage and lifecycle | Eleven and nineteen guest audio API calls on the new iPad/phone run. Their MobileProfile bytes survived the update/launch unchanged. The earlier 35 private input files matched their source hashes after cold relaunch on each device. Renderer shutdown, worker joins and restoration of the UIKit window passed. | Actual PCM, touch/controller gameplay, new in-game save, cold reload, suspend and resume during play. |
 
+The native arm64 renderer now has a portable shader-resource walker.
+Its actual IR-pass tests pass on both Mac CPUs, and both mobile SDK renderer
+archives link. The 4,476-entry guest submitted command batches and presented
+up to 21 buffers in two seconds. A longer run presented 102 before a new
+worker hit another missing block. The captured startup image was black.
+Recognizable title/battle images remain open. The player made the iPad
+available for unattended testing and is taking the iPhone away for the night.
+
 ## OpenCrown reference for upcoming work
 
 At the start of each port milestone or newly observed failure, check the current

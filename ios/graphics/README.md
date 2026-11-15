@@ -699,7 +699,7 @@ updated full frontend checkpoint is packaged and checked.
 ## Longer bounded startup discovery
 
 The native replay subsequently reached 4,476 compiled entries and actual guest
-command submissions. Three two-second attempts presented 12, 20 and 21 buffers.
+command submissions. Three two-second attempts presented 19, 20 and 21 buffers.
 A longer run presented 102 buffers before a new worker reached another missing
 block. The CUA screenshot captured black output, so a recognizable game scene
 still needs verification. Physical devices still have the earlier startup app.
