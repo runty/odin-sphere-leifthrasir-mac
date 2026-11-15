@@ -15,6 +15,7 @@ from discovery_targets import deadline_only, missing_targets
 from trace_candidates import candidates, nearest
 from function_bounds import FunctionBounds
 from service_build import compile_services, inputs as service_inputs, link_options
+from build_inputs import response_inputs
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--root", required=True, type=Path)
@@ -167,7 +168,7 @@ if a.seed_from:
 
 
 repo = source.parents[1]
-source_paths = (source / "advance.py", source / "runner.cpp", source / "trace_lookup.h", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
+source_paths = (source / "advance.py", source / "runner.cpp", source / "trace_lookup.h", source / "build_inputs.py", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
                 source / "function_bounds.py",source / "unwind_reader.py",source / "build-function-bounds.py",repo / "scripts/ps4_module.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None
@@ -309,7 +310,7 @@ for round in range(a.rounds):
     (root / "thunks.cpp").write_text(thunks)
     check_sources()
     run("runner-build", ["xcrun", "clang++", "-arch", "arm64", "-std=c++17", "-O2", "-DOSL_GAME_CLI=1", "-I" + str(a.remill / "remill/include"),
-        "-I" + str(root), "-I" + str(source.parent / "cpu"), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", *service_objects, *objs, *link_options(), "-o", root / "guest-startup"], 120)
+        "-I" + str(root), "-I" + str(source.parent / "cpu"), "-I" + str(repo / "src"), "-I" + str(repo / "launcher"), source / "runner.cpp", source.parent / "cpu/runtime.cpp", root / "thunks.cpp", response_inputs(root/'runner-inputs.rsp', [*service_objects,*objs]), *link_options(), "-o", root / "guest-startup"], 120)
     state = {"image_sha256": layout["image_sha256"],
              "trace_inputs": identity,
              "ir": {obj.stem + ".ll": hashlib.sha256((cache / (obj.stem + ".ll")).read_bytes()).hexdigest() for obj in objs},
@@ -332,7 +333,7 @@ for round in range(a.rounds):
                 "-I"+str(repo / "src"),"-I"+str(repo / "launcher"),"-c",path,"-o",obj],120)
             library_objects.append(obj)
         archive = mac / "libodin-startup.new.a"; archive.unlink(missing_ok=True)
-        run("gpu-archive",[llvm / "llvm-ar","rcs",archive,*library_objects,*service_objects,*objs],120)
+        run("gpu-archive",[llvm / "llvm-ar","rcs",archive,response_inputs(mac/'archive-inputs.rsp', [*library_objects,*service_objects,*objs])],120)
         check_sources()
         archive.replace(mac / "libodin-startup.a")
         run("gpu-build",["cmake","--build",gpu_build,"--target","osl-aot-gpu-probe","-j6"],180)

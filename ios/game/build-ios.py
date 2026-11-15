@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 from guard_ir import instrument
 from service_build import compile_services
+from build_inputs import response_inputs
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--sdk", choices=("iphoneos", "iphonesimulator", "macosx"), default="iphoneos")
@@ -94,7 +95,7 @@ for name, path in (("runner", source / "runner.cpp"), ("thunks", root / "thunks.
     objects.append(obj)
 archive = out / "libodin-startup.new.a"
 archive.unlink(missing_ok=True)
-run("archive", [llvm / "llvm-ar", "rcs", archive, *objects])
+run("archive", [llvm / "llvm-ar", "rcs", archive, response_inputs(out/'archive-inputs.rsp',objects)])
 check_inputs() # Never publish a mixed archive if sources changed during compilation.
 archive.replace(out / "libodin-startup.a")
 runtime_hash = hashlib.sha256((source.parent / "cpu/runtime.h").read_bytes() + (source.parent / "cpu/runtime.cpp").read_bytes()).hexdigest()
