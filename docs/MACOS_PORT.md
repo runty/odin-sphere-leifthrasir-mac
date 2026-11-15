@@ -34,7 +34,7 @@ OpenCrown port and its regression tests before building an Odin implementation.
 Record the revision, relevant source and Odin verification in the milestone log.
 The imported nineteen-patch backend and mapped-cache comparison used [OpenCrown 9ca8945c](https://github.com/runty/OpenCrown-PC/tree/9ca8945c10e913260b1b3e22a6c680f0396e05e6).
 For upcoming work also inspect the active mobile branch, currently
-[ce065bb](https://github.com/runty/OpenCrown-PC/commit/ce065bbb9e58337d64eedc3e580becf94fb26ba0)
+[0bde034](https://github.com/runty/OpenCrown-PC/commit/0bde034d0a3931357988ea04fd0613e7b542f96c)
 (`OpenCrown-town` / `codex/ios-town-performance`); the older main port checkout
 remains frozen at `9ca8945c`. The newer MOVBE-store patch/differential tests
 and read-only cursor feedback are available there for future Odin qualification. Backend changes still
@@ -760,3 +760,57 @@ distinguish total/primary/fallback/disconnected reads; explicit script-only mode
 makes future engineering runs deterministic without changing normal defaults.
 Mobile scenes, audible game output, physical controls and character-progress
 save/load remain open. See [current mobile status](../ios/game/README.md).
+
+### Isolated instruction candidate — 2026-11-15
+
+While the twenty-two-patch 68,656-PC re-lift continues, a separate static check
+lifts one original encoding per 452 decoded XED forms. Eight sampled forms
+produce fallback kind 257: MOVBE stores, register YMM VMINPS, XMM VPBLENDVB,
+XMM signed byte/word memory max, signed dword register max, and immediate XMM
+word left/arithmetic-right shifts. This is static presence/lowering evidence,
+not execution, complete operand coverage or correctness. Twelve other samples
+contain error branches/traps; these may represent intended architectural
+exceptions and are not classified as missing selectors. A corrected sidecar
+handles LLVM's `noundef` argument attribute without rewriting the original scan.
+
+This branch stages a separate twenty-five-patch candidate: exact OpenCrown
+MOVBE-store / packed-shift patches, plus four Odin-observed selectors/helpers.
+The active source, backend, corpus and installed game remain unchanged. Native
+differential tests, word-count boundaries/legacy regressions, aliases, store
+guards and the existing 44-routine suite must pass before adoption. Even after
+qualification, a new semantics identity requires freshly lifted game LLVM.
+Evidence: `isa-support-packed-simd/`, `instruction-candidate-backend/` under the
+external Odin build root. This candidate is not currently adopted in the running game.
+
+For the later playable mobile lifecycle, OpenCrown's input activity/overlay
+release and park/resume tests are relevant; Odin currently stops on loss of
+focus. Its transactional save checkpoints require quiescent guest writers and
+are more than Odin's existing per-file replacement/unmount sync. Reuse these
+patterns with Odin-specific guest/renderer tests after actual startup advances.
+
+The candidate now passes native qualification: **49,131,520 word comparisons
+and 974,720 return/read-only-input checks** across the prior 44-routine matrix,
+42 observed-operation routines and 138 word-shift/legacy routines. A second
+static scan of the same 452 encodings has no synchronous fallback in any sample:
+440 have no explicit stop and the same twelve retain conditional error/trap
+paths. This is not complete ISA/operand coverage or reachability proof.
+
+The physical iPad mini A20 Pro (iPadOS 27.2.1) separately passes the 42-routine
+observed suite and 138-routine word suite: **38,515,200 word comparisons and
+566,400 return/read-only-input checks**, zero failures, with matching host
+oracle/fixture/lifter/semantics hashes. Each owned app process is stopped and
+absence verified; other apps, the game profile and phone are untouched. The
+previous 44-routine matrix passes on this candidate natively; its physical
+result remains the separately qualified older twenty-two-patch backend.
+Float sticky status/#XM delivery and MMX x87 tag-state changes are excluded.
+This is synthetic CPU acceptance, not a new game boot. Both signed test apps
+build from the fixture hashes; their suite dimensions are checked explicitly.
+Evidence: `instruction-candidate-{regression,observed-tests-v2,word-tests}/`,
+`instruction-candidate-{observed,word}-ipad-{app,device}/` and
+`instruction-candidate-backend/{qualification-native,static-comparison}.json`.
+The earlier observed v1 report's broad coverage label is corrected in a sidecar
+and a coherent v2 rerun; its frozen report/source stay preserved.
+
+The live 68,656-PC twenty-two-patch re-lift remains unchanged. Wait for its
+actual completed checkpoint and review before choosing a later candidate
+migration; a semantics change always requires fresh game LLVM.

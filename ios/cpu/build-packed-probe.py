@@ -20,7 +20,13 @@ manifest = fixture / 'verification.json'
 report = json.loads(manifest.read_text())
 if not report['passed'] or report['failed'] or not report['shared_backend_and_runtime_unchanged']:
     p.error('Fixture has not passed host comparison')
-if (report['routines'], report['vectors']) != (44, 9280): p.error('Unexpected fixture dimensions')
+suite = report.get('suite', 'confirmed')
+dimensions = {'confirmed': (44, 9280, 26), 'observed': (42, 9280, 68), 'word-shifts': (138, 1280, 68)}
+if suite not in dimensions or (report['routines'], report['vectors'], report.get('output_word_count', 26)) != dimensions[suite]:
+    p.error('Unexpected fixture suite or dimensions')
+word_count = dimensions[suite][2]
+if report['word_checks'] != report['routines'] * report['vectors'] * word_count:
+    p.error('Fixture comparison count does not match its dimensions')
 pins = {Path(name): digest for name, digest in report['sources'].items()}
 for name, digest in report['generated_artifacts'].items():
     if Path(name).name != name: p.error('Invalid fixture artifact path')
@@ -68,6 +74,7 @@ project = {'name': 'OdinPackedCPU', 'options': {'deploymentTarget': {'iOS': '18.
             'UIApplicationSceneManifest': {'UIApplicationSupportsMultipleScenes': False},
             'UIFileSharingEnabled': True, 'LSSupportsOpeningDocumentsInPlace': True,
             'OSLRoutines': report['routines'], 'OSLVectors': report['vectors'],
+            'OSLWordCount': word_count, 'OSLLimitations': report.get('limitations', ''),
             'OSLOracleSHA': report['oracle_sha256'], 'OSLSemanticsSHA': pins[semantics],
             'OSLLifterSHA': pins[lifter], 'OSLFixtureSHA': sha(manifest),
             'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight']}}}}}

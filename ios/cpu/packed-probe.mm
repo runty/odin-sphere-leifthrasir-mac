@@ -29,7 +29,7 @@ extern "C" int osl_packed_simd_verify(uint64_t counts[4]);
         NSDictionary *info = NSBundle.mainBundle.infoDictionary;
         BOOL dimensions = counts[0] == [info[@"OSLRoutines"] unsignedLongLongValue] &&
                           counts[1] == [info[@"OSLVectors"] unsignedLongLongValue] &&
-                          counts[2] == counts[0] * counts[1] * 26;
+                          counts[2] == counts[0] * counts[1] * [info[@"OSLWordCount"] unsignedLongLongValue];
         struct utsname machine; uname(&machine);
         NSDictionary *report = @{
             @"passed": @(status == 0 && counts[3] == 0 && dimensions),
@@ -38,7 +38,7 @@ extern "C" int osl_packed_simd_verify(uint64_t counts[4]);
             @"return_and_readonly_input_checks": @(counts[0] * counts[1]),
             @"dimensions_match": @(dimensions), @"game_booted": @NO,
             @"scope": @"Synthetic AOT SIMD comparison; no game, graphics, audio, input or saves",
-            @"limitations": @"Float MXCSR sticky status and #XM delivery are excluded; integer MXCSR is checked in full",
+            @"limitations": info[@"OSLLimitations"] ?: @"missing qualification scope",
             @"machine": @(machine.machine), @"simulator": @(TARGET_OS_SIMULATOR),
             @"os": NSProcessInfo.processInfo.operatingSystemVersionString,
             @"timestamp": @([NSDate.date timeIntervalSince1970]),

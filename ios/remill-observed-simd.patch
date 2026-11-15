@@ -1,0 +1,46 @@
+diff --git a/lib/Arch/X86/Semantics/MMX.cpp b/lib/Arch/X86/Semantics/MMX.cpp
+--- a/lib/Arch/X86/Semantics/MMX.cpp
++++ b/lib/Arch/X86/Semantics/MMX.cpp
+@@ -2457,3 +2457,33 @@
+ IF_AVX(DEF_ISEL(VPBLENDVB_XMMdq_XMMdq_MEMdq_XMMdq) = PBLENDVB<VV128W, V128, MV128, V128>;)
+ IF_AVX(DEF_ISEL(VPBLENDVB_YMMqq_YMMqq_YMMqq_YMMqq) = PBLENDVB<VV256W, V256, V256, V256>;)
+ IF_AVX(DEF_ISEL(VPBLENDVB_YMMqq_YMMqq_MEMqq_YMMqq) = PBLENDVB<VV256W, V256, MV256, V256>;)
++
++namespace {
++template <typename D, typename S1, typename S2>
++DEF_SEM(OslPackedMaxS8, D dst, S1 src1, S2 src2) {
++  auto first = SReadV8(src1);
++  auto second = SReadV8(src2);
++  auto result = SClearV8(SReadV8(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    auto a = SExtractV8(first, i), b = SExtractV8(second, i);
++    result = SInsertV8(result, i, Select(SCmpGt(a, b), a, b));
++  }
++  SWriteV8(dst, result);
++  return memory;
++}
++template <typename D, typename S1, typename S2>
++DEF_SEM(OslPackedMaxS32, D dst, S1 src1, S2 src2) {
++  auto first = SReadV32(src1);
++  auto second = SReadV32(src2);
++  auto result = SClearV32(SReadV32(dst));
++  _Pragma("unroll") for (size_t i = 0; i < NumVectorElems(first); ++i) {
++    auto a = SExtractV32(first, i), b = SExtractV32(second, i);
++    result = SInsertV32(result, i, Select(SCmpGt(a, b), a, b));
++  }
++  SWriteV32(dst, result);
++  return memory;
++}
++}  // namespace
++IF_AVX(DEF_ISEL(VPMAXSB_XMMdq_XMMdq_MEMdq) = OslPackedMaxS8<VV128W, V128, MV128>;)
++IF_AVX(DEF_ISEL(VPMAXSD_XMMdq_XMMdq_XMMdq) = OslPackedMaxS32<VV128W, V128, V128>;)
++IF_AVX(DEF_ISEL(VPMAXSW_XMMdq_XMMdq_MEMdq) = PMAXSW<VV128W, V128, MV128>;)
+diff --git a/lib/Arch/X86/Semantics/SSE.cpp b/lib/Arch/X86/Semantics/SSE.cpp
+--- a/lib/Arch/X86/Semantics/SSE.cpp
++++ b/lib/Arch/X86/Semantics/SSE.cpp
+@@ -2983,3 +2983,5 @@
+ IF_AVX(DEF_ISEL(VMAXPS_XMMdq_XMMdq_XMMdq) = PackedMax128<VV128W>;)
+ IF_AVX(DEF_ISEL(VSQRTPS_XMMdq_XMMdq) = PackedSqrt128;)
+ 
++
++IF_AVX(DEF_ISEL(VMINPS_YMMqq_YMMqq_YMMqq) = PackedMinMax32<false, VV256W, V256>;)

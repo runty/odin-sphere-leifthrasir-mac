@@ -496,3 +496,31 @@ synthetic matrix with zero failures. Host/backend/oracle hashes match, and the
 owned app process is stopped and absent afterward. Evidence:
 `packed-simd-ipad-device/verification.json`. No game data/profile is packaged or
 modified by this app. The full game still needs a fresh corpus and replay.
+
+## Separate instruction candidate — 2026-11-15
+
+This candidate branch adds three patches to the prior twenty-two: exact
+OpenCrown MOVBE-store and packed-word-shift/byte-blend patches, plus four
+Odin-observed signed-max/register-min selectors and helpers. It defaults to
+**twenty-five patches**; `audit-backend.py --legacy-packed-simd` audits the
+preserved twenty-two-patch backend. Legacy twenty-/twenty-one flags remain.
+The active game branch and installed game are not migrated by creating this
+branch or by passing its tests.
+
+`cpu/test-observed-simd.py --suite observed` covers 42 routines / 9,280 vectors
+for max/min, all byte-blend forms and MOVBE stores at all three widths and four
+alignments. `--suite word-shifts` covers 138 routines / 1,280 vectors, including
+MMX/legacy regressions, immediate counts 0,1,7,15,16,17,31,255, low64 register/
+memory counts through UINT64_MAX, upper-count data and destination aliases.
+Both use the actual Odin checked-memory runtime, independent native x86/Rosetta
+oracles, full YMM0/1/2 plus R11/flags/MXCSR, return checks and output guards.
+Float sticky status and #XM delivery, and MMX x87 tag state, remain unclaimed.
+The prior confirmed matrix also passes: 49,131,520 total native word checks.
+
+Both new suites compile/sign and pass on the physical iPad mini A20 Pro:
+38,515,200 word checks and 566,400 return/input checks, zero failures, exact
+host/backend/oracle hash match and owned process cleanup. The generic probe
+builder accepts only the three known suite dimensions; the UIKit check reads
+the pinned comparison width and limits from bundle metadata. No game, graphics,
+audio, controls or save acceptance is inferred from synthetic CPU tests.
+See [candidate details](../docs/MACOS_PORT.md#isolated-instruction-candidate--2026-11-15).
