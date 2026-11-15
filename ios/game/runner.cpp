@@ -7,6 +7,7 @@
 #include "../services/memory.h"
 #include "../services/user.h"
 #include "../services/pad.h"
+#include "../services/scripted-pad.h"
 #include "../services/guest_storage.h"
 #include "../services/offline.h"
 #include "../services/eventflag.h"
@@ -69,6 +70,7 @@ struct Session {
     std::recursive_mutex services;
     DirectMemory direct_memory;
     Memory memory;
+    std::shared_ptr<ScriptedPad> scripted_pad;
     MobilePad pad;
     MobileStorage storage;
     OfflineServices offline;
@@ -81,7 +83,10 @@ struct Session {
     const MobileGpuServices *gpu=nullptr;
     unsigned gpu_service_calls=0, audio_service_calls=0;
     explicit Session(const MobileGpuServices *renderer=nullptr)
-        : gpu(renderer), stopping(renderer && renderer->stop_requested ? *renderer->stop_requested : local_stopping) {
+        : scripted_pad(ScriptedPad::load(std::getenv("OSL_INPUT_SCRIPT"),
+              renderer && renderer->frame_count ? std::function<uint64_t()>([renderer]{return renderer->frame_count(renderer->context);}) : std::function<uint64_t()>{})),
+          pad({},scripted_pad ? std::function<PadSample(unsigned)>([input=scripted_pad](unsigned slot){return input->sample(slot);}) : std::function<PadSample(unsigned)>{}),
+          gpu(renderer), stopping(renderer && renderer->stop_requested ? *renderer->stop_requested : local_stopping) {
         memory.external_pointer = DirectMemory::pointer;
         memory.stop_requested = &stopping;
         osl_aot_user_reset();
@@ -111,6 +116,7 @@ struct Session {
     std::map<uint16_t, unsigned> compatibility_modules;
     unsigned gesture_setup_calls = 0;
     bool save_dialog_initialized = false, common_dialog_initialized = false, live_streaming_initialized = false, error_dialog_initialized = false;
+    uint32_t save_dialog_mode=0,save_dialog_display_type=0;
     int32_t error_dialog_code = 0;
     osl::trophies::TrophyService trophies;
     const char *stage = "prepare", *missing_service = "";
@@ -460,7 +466,10 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
             return hostReturn(s, m, 0x80b80005u); // No completed selection exists.
         if (!session.save_dialog_initialized) return hostReturn(s, m, 0x80b80003u);
         if (!s.gpr.rdi.qword) return hostReturn(s, m, 0x80b8000du);
-        if (!guestPointer(*m, s.gpr.rdi.qword, 56)) return m;
+        auto parameter=guestPointer(*m,s.gpr.rdi.qword,60);
+        if(!parameter)return m;
+        std::memcpy(&session.save_dialog_mode,parameter+52,4);
+        std::memcpy(&session.save_dialog_display_type,parameter+56,4);
         missingService(session) = name;
         stopGuest(*m, "save dialog presenter unavailable", pc);
         return m;
@@ -1129,6 +1138,13 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"direct_backing_view_bytes\":" << DirectMemory::backingViewSize()
         << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
         << ",\"pad_backend\":\"GameController\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
+        << ",\"input_script_sha256\":\"" << (session->scripted_pad ? session->scripted_pad->digest() : "") << "\""
+        << ",\"input_script_events\":" << (session->scripted_pad ? session->scripted_pad->events() : 0)
+        << ",\"input_script_samples\":" << (session->scripted_pad ? session->scripted_pad->samples() : 0)
+        << ",\"input_script_active_samples\":" << (session->scripted_pad ? session->scripted_pad->activeSamples() : 0)
+        << ",\"input_script_last_frame\":" << (session->scripted_pad ? session->scripted_pad->lastFrame() : 0)
+        << ",\"input_script_read_samples\":" << session->pad.fallbackReads()
+        << ",\"input_script_active_read_samples\":" << session->pad.fallbackActiveReads()
         << ",\"local_storage_configured\":" << (session->storage.configured() ? "true" : "false")
         << ",\"save_backend_initialized\":" << (session->saves_initialized ? "true" : "false")
         << ",\"event_flags\":" << session->event_flags.count()
@@ -1139,6 +1155,8 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
         << ",\"network_connected\":false,\"psn_signed_in\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
+        << ",\"save_dialog_mode\":" << session->save_dialog_mode
+        << ",\"save_dialog_display_type\":" << session->save_dialog_display_type
         << ",\"gesture_setup_calls\":" << session->gesture_setup_calls
         << ",\"gpu_allocations_aligned\":" << (std::all_of(session->gpu_allocations.begin(), session->gpu_allocations.end(), [](const auto &p) { return reinterpret_cast<uint64_t>(p.get()) % 16384 == 0; }) ? "true" : "false")
         << ",\"flexible_reserved_bytes\":" << session->flexible_reserved_bytes
@@ -1173,6 +1191,8 @@ extern "C" const char *osl_mobile_game_report(const char *path) {
     static thread_local std::string report;
     try {
         report = bootstrap(path);
+    } catch (const InputScriptError &error) {
+        report=std::string("{\"input_script_rejected\":true,\"game_booted\":false,\"error\":\"")+error.what()+"\"}";
     } catch (const std::exception &) {
         report = "{\"error\":\"host bootstrap failure\",\"game_booted\":false}";
     }
@@ -1181,6 +1201,7 @@ extern "C" const char *osl_mobile_game_report(const char *path) {
 extern "C" const char *osl_mobile_game_report_with_gpu(const char *path,const MobileGpuServices *gpu) {
     static thread_local std::string report;
     try { report=bootstrap(path,gpu); }
+    catch (const InputScriptError &error) { report=std::string("{\"input_script_rejected\":true,\"game_booted\":false,\"error\":\"")+error.what()+"\"}"; }
     catch (const std::exception &) { report="{\"error\":\"host GPU bootstrap failure\",\"game_booted\":false}"; }
     return report.c_str();
 }

@@ -16,7 +16,9 @@ class MobilePad {
 public:
     // An injected source is used only by deterministic backend tests. The app
     // uses the default GameController source, without discovering/pairing UI.
-    explicit MobilePad(std::function<PadSample(unsigned)> source={});
+    // An explicit startup-test fallback supplies input only without a primary pad.
+    explicit MobilePad(std::function<PadSample(unsigned)> source={},
+                       std::function<PadSample(unsigned)> fallback={});
     ~MobilePad();
     int32_t initialize();
     int32_t open(int32_t user,int32_t type,int32_t index);
@@ -24,4 +26,6 @@ public:
     int32_t info(int32_t handle,ControllerInfo *out);
     int32_t read(int32_t handle,PadData *out);
     int32_t vibration(int32_t handle,const uint8_t *motors);
+    uint64_t fallbackReads() const;
+    uint64_t fallbackActiveReads() const;
 };

@@ -14,7 +14,10 @@ struct MobileGpuServices {
     std::atomic<bool> *stop_requested=nullptr;
     void *audio_context=nullptr;
     bool (*audio_call)(void *,const char *,const uint64_t[6],Memory &,uint64_t &,GuestWaitScope)=nullptr;
-    // Bounded engineering session. Frontends may request 100 ms to 60 s.
+    // Bounded engineering session. Frontends may request 100 ms to ten minutes.
     uint32_t execution_budget_ms=2000;
+    // Completed guest presentations, monotonic over a bounded session. Only
+    // explicitly enabled startup scripts consume this optional clock.
+    uint64_t (*frame_count)(void *)=nullptr;
 };
 extern "C" const char *osl_mobile_game_report_with_gpu(const char *,const MobileGpuServices *);

@@ -112,6 +112,7 @@ extern "C" const char *osl_guest_session_run(OslGuestSession *session,const char
                 return handled;
             },[](void *opaque){NativeGpu::finish(&static_cast<OslGuestSession *>(opaque)->gpu);},&session->stop};
         services.execution_budget_ms=session->budget_ms;
+        services.frame_count=[](void *){return oslgpu_presented_frames();};
         services.audio_context=&audio;services.audio_call=GuestAudio::call;
         const std::string guest=osl_mobile_game_report_with_gpu(path,&services);
         audio.finish();

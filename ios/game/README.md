@@ -1142,3 +1142,47 @@ or presented game frame is recorded. ASan and TSan each pass 4,342 imported
 service cases and four worker/exception cleanup cases. Evidence is
 `ios-rounding-fenv-check.log`, `ios-game-rounding/attempt-00001.log` and
 `rounding-fenv-qualified/{address,thread}/verification.json`.
+
+## Bounded startup input — 2026-11-15
+
+`OSL_INPUT_SCRIPT=/absolute/private/input.txt` loads one immutable input script
+for an explicitly scripted startup run. The format follows OpenCrown `9ca8945c`:
+`frame buttons`, comments after `#`, names joined by `+` or `|`, and `0` for
+release. Events persist until replaced; unsorted events are sorted stably and
+later duplicate-frame lines win. Numeric frames/masks are checked; unknown
+button bits, malformed lines, symlinks/nonregular files and files over 1 MiB
+reject. Empty files mean a connected idle test pad. No script remains the
+ordinary GameController path. A connected primary pad takes precedence over
+the scripted fallback; test input never replaces that pad's values.
+
+The optional renderer clock counts completed presentations from the session's
+baseline, not CPU speed or wall time. Script-only left-stick bits become axes
+and never reach guest button masks. Triggers and console pad conversion use the
+existing MobilePad implementation. The report includes exact input SHA-256,
+event/sample counts, and separate fallback read/active-read counts; controller
+information queries do not count as delivered button reads. `advance.py`
+fingerprints the file and checks that the guest confirms the same bytes.
+A script without a renderer clock rejects before guest execution.
+
+On the UIKit probe, a relative `OSL_INPUT_SCRIPT` path is under Documents;
+parent traversal rejects and the prior environment is restored at teardown.
+Copy the script through the app container, then launch with e.g.
+`OSL_INPUT_SCRIPT=Input/accept-notice.txt`. This developer harness is separate
+from production touch controls and hands-on controller acceptance.
+
+The adapter passes 130 checks normally and under ASan/UBSan, both SDK fixture
+compilations, and the unchanged 38 pad checks. Six real native bootstrap cases
+cover malformed/oversize/symlink/missing files, empty and unscripted runs;
+headless clock rejection and all 4,342 actual HLE service checks also pass.
+Evidence is `scripted-pad-contracts-final/`, `scripted-pad-regression-final/`
+and `scripted-startup/bootstrap-cases/` at the external build root.
+
+The actual guest receives a two-frame Cross press at frame 1,100: five active
+pad reads are delivered, with the exact script hash confirmed. It advances past
+the verified no-save notice and reaches the explicit `sceSaveDataDialogOpen`
+presenter gap (mode 2, display type 1) after 85.2 seconds, without a memory
+fault and with all 23 workers joined/cleaned up. The disposable profile stays
+empty. Evidence is `scripted-startup/native-verification.json`. This is input
+progress, not a completed save dialog or playable-game claim. The next adapter
+must marshal that dialog and present its actual choices; auto-accepting it
+without a presenter does not satisfy this milestone.

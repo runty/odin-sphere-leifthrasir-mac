@@ -49,6 +49,8 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic) BOOL testGateReported;
 @property(nonatomic,copy) NSString *snapshotPath;
 @property(nonatomic,copy) NSString *previousSnapshotPath;
+@property(nonatomic,copy) NSString *resolvedInputScriptPath;
+@property(nonatomic,copy) NSString *previousInputScriptPath;
 @end
 static OdinRendererSession *activeSession;
 @implementation OdinRendererSession
@@ -87,6 +89,10 @@ static OdinRendererSession *activeSession;
     if(self.snapshotPath) {
         if(self.previousSnapshotPath)setenv("OSL_FRAME_SNAPSHOT_PATH",self.previousSnapshotPath.fileSystemRepresentation,1);
         else unsetenv("OSL_FRAME_SNAPSHOT_PATH");
+    }
+    if(self.resolvedInputScriptPath) {
+        if(self.previousInputScriptPath)setenv("OSL_INPUT_SCRIPT",self.previousInputScriptPath.fileSystemRepresentation,1);
+        else unsetenv("OSL_INPUT_SCRIPT");
     }
     const bool faultsRestored=!self.faultsInstalled || osl_guest_session_faults_end(guestContext);
     const bool contextReleased=!guestContext || osl_guest_session_destroy(guestContext);
@@ -167,6 +173,21 @@ static OdinRendererSession *activeSession;
         const auto parsed=std::from_chars(value,end,budget);
         if(parsed.ec!=std::errc{} || parsed.ptr!=end || budget<100 || budget>600000){[self finish:@"OSL_GUEST_RUN_MS must be an integer from 100 to 600000"];return;}
         self.guestBudgetMs=budget;
+    }
+    // A portable developer script path is relative to this app's Documents,
+    // independent of its installation UUID. The script itself is loaded and
+    // checked by the same bounded C++ adapter used by native discovery.
+    if(self.image)if(const char *value=getenv("OSL_INPUT_SCRIPT")) {
+        NSString *path=[NSString stringWithUTF8String:value];
+        if(!path.length || (!path.isAbsolutePath && [path.pathComponents containsObject:@".."])) {
+            [self finish:@"Invalid input script path"];return;
+        }
+        if(!path.isAbsolutePath) {
+            self.previousInputScriptPath=path;
+            NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+            self.resolvedInputScriptPath=[documents stringByAppendingPathComponent:path];
+            setenv("OSL_INPUT_SCRIPT",self.resolvedInputScriptPath.fileSystemRepresentation,1);
+        }
     }
     // Explicit developer-only cancellation fixture. Normal launches do not stop
     // here; the bounded runner retains its own execution deadline/checkpoints.

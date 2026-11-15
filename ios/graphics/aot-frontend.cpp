@@ -72,6 +72,7 @@ int main(int argc,char **argv) {
     GuestAudio audio;
     MobileGpuServices services{&context,NativeGpu::call,NativeGpu::finish};
     services.execution_budget_ms=budget_ms;
+    services.frame_count=[](void *){return oslgpu_presented_frames();};
     services.audio_context=&audio;services.audio_call=GuestAudio::call;
     std::thread guest([&] {
         if(check_bridge) {

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 import time
@@ -351,7 +352,20 @@ for round in range(a.rounds):
     attempt = len(list(root.glob("attempt-*.json")))
     def runtime_inputs():
         app0=(root / "App0").resolve();marker=app0 / "eboot.bin"
+        script=None
+        if "OSL_INPUT_SCRIPT" in os.environ:
+            path=Path(os.environ["OSL_INPUT_SCRIPT"]).absolute()
+            descriptor=os.open(path,os.O_RDONLY|os.O_NONBLOCK|os.O_NOFOLLOW)
+            with os.fdopen(descriptor,'rb') as stream:
+                before=os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode) or before.st_size>1024*1024:
+                    raise RuntimeError('Input script requires a regular file of at most 1 MiB')
+                data=stream.read(1024*1024+1);after=os.fstat(stream.fileno())
+                if len(data)>1024*1024 or (before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                    raise RuntimeError('Input script changed while fingerprinting')
+            script={"path":str(path),"sha256":hashlib.sha256(data).hexdigest()}
         return {"app0":str(app0),"app0_eboot_sha256":hashlib.sha256(marker.read_bytes()).hexdigest() if marker.is_file() else None,
+                "input_script":script,
                 "asset_marker_only":True}
     state["runtime_inputs"]=runtime_inputs()
     # Replay only a watchdog-only stop, with identical inputs, CPU budget and
@@ -367,6 +381,9 @@ for round in range(a.rounds):
         check_sources()
         if runtime_inputs() != state["runtime_inputs"]:
             raise RuntimeError("Asset root changed during the startup attempt")
+        script=state["runtime_inputs"]["input_script"]
+        if script is not None and report.get("input_script_sha256")!=script["sha256"]:
+            raise RuntimeError("Guest did not confirm the exact input script snapshot")
         report["trace_count"] = len(entries)
         if replay == 2 or (a.stop_file and a.stop_file.exists()) or not deadline_only(report):
             break

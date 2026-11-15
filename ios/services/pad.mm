@@ -51,13 +51,17 @@ static uint8_t axis(float value) {
 struct MobilePad::Impl {
     std::mutex mutex;
     std::function<PadSample(unsigned)> source;
+    std::function<PadSample(unsigned)> fallback;
     bool initialized=false,opened[4]={},connected[4]={};
+    bool used_fallback[4]={};
+    uint64_t fallback_reads=0,fallback_active_reads=0;
     uint64_t identities[4]={};
     uint8_t counts[4]={};
     __strong GCController *controllers[4]={};
     __strong CHHapticEngine *engines[4][2]={};
     __strong id<CHHapticPatternPlayer> players[4][2]={};
-    explicit Impl(std::function<PadSample(unsigned)> input):source(std::move(input)) {}
+    explicit Impl(std::function<PadSample(unsigned)> input,std::function<PadSample(unsigned)> backup)
+        :source(std::move(input)),fallback(std::move(backup)) {}
     void stop(unsigned slot) {
         for (unsigned motor=0;motor<2;++motor) {
             [players[slot][motor] stopAtTime:0 error:nil]; players[slot][motor]=nil;
@@ -87,13 +91,18 @@ struct MobilePad::Impl {
             onMain(^{ refresh(); physical=sampleAppleController(controllers[slot]); });
             result=physical;
         }
-        if (result.connected && (!connected[slot] || identities[slot]!=result.identity)) ++counts[slot];
+        used_fallback[slot]=!result.connected && bool(fallback);
+        if (used_fallback[slot]) result=fallback(slot);
+        if (result.connected && (!connected[slot] || identities[slot]!=result.identity)) {
+            ++counts[slot];runtime_user_login(slot+1);
+        }
         connected[slot]=result.connected; identities[slot]=result.identity;
         return result;
     }
     bool handle(int32_t value) const { return value>=1 && value<=4 && opened[value-1]; }
 };
-MobilePad::MobilePad(std::function<PadSample(unsigned)> source):impl(std::make_unique<Impl>(std::move(source))) {}
+MobilePad::MobilePad(std::function<PadSample(unsigned)> source,std::function<PadSample(unsigned)> fallback)
+    :impl(std::make_unique<Impl>(std::move(source),std::move(fallback))) {}
 MobilePad::~MobilePad()=default;
 int32_t MobilePad::initialize() {
     std::lock_guard<std::mutex> lock(impl->mutex);
@@ -141,7 +150,18 @@ int32_t MobilePad::read(int32_t handle,PadData *out) {
     out->l2=std::lround(finiteClamp(sample.l2,0,1)*255);
     out->r2=std::lround(finiteClamp(sample.r2,0,1)*255);
     if (out->buttons&BTN_TOUCHPAD) { out->touch_count=1; out->touches[0].x=480; out->touches[0].y=471; }
+    if(impl->used_fallback[handle-1]) {
+        ++impl->fallback_reads;
+        if(out->buttons || out->left_x!=128 || out->left_y!=128 || out->right_x!=128 ||
+           out->right_y!=128 || out->l2 || out->r2)++impl->fallback_active_reads;
+    }
     return 0;
+}
+uint64_t MobilePad::fallbackReads() const {
+    std::lock_guard<std::mutex> lock(impl->mutex);return impl->fallback_reads;
+}
+uint64_t MobilePad::fallbackActiveReads() const {
+    std::lock_guard<std::mutex> lock(impl->mutex);return impl->fallback_active_reads;
 }
 int32_t MobilePad::vibration(int32_t handle,const uint8_t *motors) {
     std::lock_guard<std::mutex> lock(impl->mutex);
