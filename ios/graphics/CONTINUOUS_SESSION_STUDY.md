@@ -34,3 +34,10 @@ gate; a separate XCTest driver backgrounds and reactivates only the disposable
 sandbox. Building a test driver does not establish its runtime result. The
 current lifecycle intentionally cancels on background, so neither driver
 establishes suspend/resume or uninterrupted gameplay.
+
+The first physical-iPad background/activate driver reported an XCTest pass,
+but the final diagnostics belonged to a new default 2,000 ms process rather
+than the requested continuous session. It therefore did not verify lifecycle
+cleanup. The driver also supports attaching to an independently launched,
+supervised sandbox so its original PID and console can be checked before and
+after the background transition; a UI test pass alone remains insufficient.

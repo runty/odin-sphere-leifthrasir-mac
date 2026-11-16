@@ -6,10 +6,16 @@ final class OdinContinuousGameUITests: XCTestCase {
     func testBackgroundCancellationAndForegroundCleanup() throws {
         executionTimeAllowance = 180
         let app = XCUIApplication(bundleIdentifier: "com.wadscorp.odinsphere.sandbox69048")
-        app.launchEnvironment["OSL_AUDIO"] = "muted"
-        app.launchEnvironment["OSL_TOUCH_CONTROLS"] = "1"
-        app.launchEnvironment["OSL_GUEST_RUN_MS"] = "0"
-        app.launch()
+        // Attach mode lets an external supervised launch preserve its console
+        // and PID, so a termination/relaunch cannot look like clean recovery.
+        if ProcessInfo.processInfo.environment["OSL_ATTACH_EXISTING"] == "1" {
+            app.activate()
+        } else {
+            app.launchEnvironment["OSL_AUDIO"] = "muted"
+            app.launchEnvironment["OSL_TOUCH_CONTROLS"] = "1"
+            app.launchEnvironment["OSL_GUEST_RUN_MS"] = "0"
+            app.launch()
+        }
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         Thread.sleep(forTimeInterval: 15)
         let before = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
