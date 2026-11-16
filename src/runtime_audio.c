@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <SDL3/SDL.h>
+#include "runtime_audio_pull_stats.h"
 
 #define PORTS 25
 #define ERR_NOT_OPENED ((int32_t)0x80260001)
@@ -47,6 +48,8 @@ typedef struct {
     int stats;
     uint64_t stat_start_ns, stat_last_ns, stat_max_gap_ns; /* OSL_AUDIO_STATS */
     unsigned stat_starved, stat_buffers; int stat_min_queued;
+    OslAudioPullStats pull_stats;
+    int pull_stats_enabled;
 } Port;
 typedef struct { uint16_t output; uint8_t channel, reserved; int16_t volume; uint16_t reroute; uint64_t flag, reserved64[2]; } PortState;
 _Static_assert(sizeof(PortState)==32,"AudioOut port state layout");
@@ -182,6 +185,9 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
     if (id<0) { pthread_mutex_unlock(&table_lock); return ERR_PORT_FULL; }
     Port *p=&ports[id];
     memset(p,0,sizeof(*p));
+    atomic_init(&p->pull_stats.pulls, 0);
+    atomic_init(&p->pull_stats.requests_with_shortfall, 0);
+    atomic_init(&p->pull_stats.estimated_shortfall_bytes, 0);
     pthread_mutex_init(&p->lock,NULL);
     p->generation=++next_generation;
     p->used=1; p->type=type; p->channels=channels[format]; p->is_float=format>=3 && format!=6;
@@ -222,6 +228,14 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
             }
         }
         if (p->stream) {
+            if (getenv("OSL_AUDIO_PULL_STATS")) {
+                p->pull_stats_enabled=atomic_is_lock_free(&p->pull_stats.pulls) &&
+                    atomic_is_lock_free(&p->pull_stats.requests_with_shortfall) &&
+                    atomic_is_lock_free(&p->pull_stats.estimated_shortfall_bytes) &&
+                    SDL_SetAudioStreamGetCallback(p->stream,osl_audio_pull_observe,&p->pull_stats);
+                if (!p->pull_stats_enabled)
+                    fprintf(stderr,"Runtime: audio pull observation unavailable (%s)\n",SDL_GetError());
+            }
             SDL_AudioDeviceID output=SDL_GetAudioStreamDevice(p->stream);
             if (SDL_GetAudioDeviceFormat(output,&device,&device_frames))
                 printf("Runtime: audio output port %d: %d Hz, %d ch, %s, %d frames (%.2f ms)\n",
@@ -276,6 +290,10 @@ static ABI int32_t audio_close(int32_t handle) {
     if (p) {
         pthread_mutex_lock(&p->lock);
         if (p->stream) SDL_DestroyAudioStream(p->stream);
+        if (p->pull_stats_enabled) printf("Audio pulls port %d: %llu requests, %llu estimated shortfalls, %llu estimated input bytes missing (not hardware underruns)\n",
+            (int)(p-ports),(unsigned long long)atomic_load_explicit(&p->pull_stats.pulls,memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&p->pull_stats.requests_with_shortfall,memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&p->pull_stats.estimated_shortfall_bytes,memory_order_relaxed));
         if (p->dump) fclose(p->dump);
         if (p->guest_tap) fclose(p->guest_tap);
         if (p->converted_tap) fclose(p->converted_tap);
