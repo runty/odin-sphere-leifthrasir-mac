@@ -12,6 +12,7 @@ p.add_argument('--baseline-source',type=Path,required=True)
 p.add_argument('--verification',type=Path,required=True)
 p.add_argument('--team',required=True)
 p.add_argument('--sdk',choices=('iphoneos','iphonesimulator'),default='iphoneos')
+p.add_argument('--check-inputs-only',action='store_true',help='Validate qualified content/roles without building or creating the output')
 a=p.parse_args();root=a.root.resolve();baseline=a.baseline_source.resolve();repo=Path(__file__).resolve().parents[2]
 if len(root.parts)<3 or root.parts[1]!='Volumes' or not Path('/Volumes',root.parts[2]).is_mount() or root.exists():p.error('Use a new external directory on a mounted disk')
 if not re.fullmatch('[A-Z0-9]{10}',a.team):p.error('Invalid team')
@@ -20,15 +21,21 @@ proof=json.loads(a.verification.read_text());assert proof['passed']
 for key in ('baseline-arm64','fixed-arm64'):
  row=proof['native_results'][key];assert row['cases']==8 and row['other_failures']==0 and row['unresolved_faults']==(6 if key.startswith('baseline') else 0)
 fixture=repo/'ios/graphics/page-granularity-test.cpp';ui=repo/'ios/graphics/page-probe.mm';paths=[fixture,ui,Path(__file__),a.verification]
-for source in (baseline,repo):
+fixture_pins=[(n,h) for n,h in proof['sources'].items() if n.endswith('/ios/graphics/page-granularity-test.cpp')]
+assert len(fixture_pins)==1 and fixture_pins[0][1]==sha(fixture)
+qualified_fixed=Path(fixture_pins[0][0]).parents[2]
+for role,source in [('baseline',baseline),('fixed',repo)]:
  for name in ('gpu/shadps4/video_core/buffer_cache/region_definitions.h','gpu/shadps4/video_core/page_manager.h','gpu/shadps4/common/signal_context.cpp','gpu/shadps4/common/arch.h'):
   path=source/name;paths.append(path)
   # The preserved baseline tree is byte-identical to the original old-policy
   # source used in the host proof, even if its path differs after integration.
-  matching=[h for n,h in proof['sources'].items() if n.endswith('/'+name)]
-  assert sha(path) in matching,(str(path),'does not match qualified policy inputs')
-assert proof['sources'][str(fixture)]==sha(fixture)
-inputs={str(path):sha(path) for path in paths};root.mkdir();objects=root/'Objects';objects.mkdir();source=root/'Source';source.mkdir()
+  matching=[h for n,h in proof['sources'].items() if n.endswith('/'+name) and
+            Path(n).is_relative_to(qualified_fixed)==(role=='fixed')]
+  assert len(matching)==1 and sha(path)==matching[0],(str(path),'does not match qualified '+role+' policy inputs')
+inputs={str(path):sha(path) for path in paths}
+if a.check_inputs_only:
+ print(json.dumps({'passed':True,'scope':'qualified input content and baseline/fixed roles only','output_created':False}));raise SystemExit(0)
+root.mkdir();objects=root/'Objects';objects.mkdir();source=root/'Source';source.mkdir()
 def check():
  for name,digest in inputs.items():assert sha(Path(name))==digest,('Source changed',name)
 def run(name,command):
