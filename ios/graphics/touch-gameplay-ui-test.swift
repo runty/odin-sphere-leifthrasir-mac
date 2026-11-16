@@ -24,11 +24,13 @@ final class OdinTouchGameplayUITests: XCTestCase {
         }
         // Discrete confirmation attempts mirror the scripted startup route.
         // Scene and save-dialog progress are reviewed from captured evidence.
-        for _ in 0..<110 {
+        let navigationDeadline = Date().addingTimeInterval(450)
+        while Date() < navigationDeadline {
             guard app.state == .runningForeground else { XCTFail("Sandbox left foreground"); return }
             cross.press(forDuration: 0.25)
             Thread.sleep(forTimeInterval: 4)
         }
+        Thread.sleep(forTimeInterval: 20)
         capture("before-stick")
         for _ in 0..<2 {
             guard app.state == .runningForeground else { XCTFail("Sandbox left foreground"); return }
@@ -37,7 +39,7 @@ final class OdinTouchGameplayUITests: XCTestCase {
         capture("after-stick")
         // Allow the guest's own bounded stop and cleanup; do not count this
         // XCTest assertion as proof that the original guest stayed alive.
-        Thread.sleep(forTimeInterval: 100)
+        Thread.sleep(forTimeInterval: 130)
         capture("after-bounded-session")
     }
 }
