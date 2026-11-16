@@ -172,6 +172,7 @@ print(d['archive_sha256'])
 PYGUEST
 )
     cp "$source_dir/ios/graphics/renderer-session.mm" "$build_dir/Source/renderer_session.mm"
+    cp "$source_dir/ios/graphics/idle-timer-lease.h" "$build_dir/Source/idle-timer-lease.h"
     cp "$source_dir/ios/graphics/touch-overlay.mm" "$build_dir/Source/touch_overlay.mm"
     mkdir -p "$build_dir/Source/ios/services" "$build_dir/Source/src"
     cp "$source_dir/ios/services/touch-controls.h" "$source_dir/ios/services/pad.h" "$build_dir/Source/ios/services/"
@@ -185,7 +186,7 @@ PYGUEST
     renderer_dependency+=$'\n      - framework: Source/libodin-gpu-guest.a\n        embed: false'
     renderer_enabled=1
 else
-    rm -f "$build_dir/Source/renderer_session.mm" "$build_dir/Source/touch_overlay.mm" "$build_dir/Source/oslgpu.h" "$build_dir/Source/clock.h" "$build_dir/Source/guest-session.h" "$build_dir/Source/libodin-gpu-guest.a"
+    rm -f "$build_dir/Source/renderer_session.mm" "$build_dir/Source/idle-timer-lease.h" "$build_dir/Source/touch_overlay.mm" "$build_dir/Source/oslgpu.h" "$build_dir/Source/clock.h" "$build_dir/Source/guest-session.h" "$build_dir/Source/libodin-gpu-guest.a"
 fi
 revision=$(git -C "$source_dir" rev-parse HEAD)
 if [[ -n $(git -C "$source_dir" status --porcelain) ]]; then revision="$revision-dirty"; fi

@@ -7,6 +7,8 @@
 #include "oslgpu.h"
 #include "clock.h"
 #include "guest-session.h"
+#include "idle-timer-lease.h"
+#include <memory>
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +30,7 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
     std::thread guestThread;
     OslGuestSession *guestContext;
     UIBackgroundTaskIdentifier backgroundTask;
+    std::unique_ptr<OslIdleTimerLease> idleTimer;
 }
 @property(nonatomic,strong) UIWindowScene *scene;
 @property(nonatomic,strong) UIWindow *originalWindow;
@@ -77,6 +80,7 @@ static OdinRendererSession *activeSession;
 }
 - (void)finish:(NSString *)error {
     if(self.finished)return;
+    if(idleTimer) { idleTimer->release(); idleTimer.reset(); }
     osl_touch_deactivate();
     self.pendingFinish=YES;
     if(error && !self.pendingError)self.pendingError=error;
@@ -264,6 +268,7 @@ static OdinRendererSession *activeSession;
     OslGpuConfig config{"Odin Sphere Bounded Startup",self.image?"CUSA05083":"ODIN_IOS_RENDERER_CHECK",self.profile.fileSystemRepresentation,settings.fileSystemRepresentation,self.sdk,0,960,540};
     if(oslgpu_init(&config)!=0){[self finish:@"Renderer initialization failed"];return;}
     self.initialized=YES;
+    if(self.image) idleTimer=std::make_unique<OslIdleTimerLease>((id<OslIdleTimerTarget>)UIApplication.sharedApplication);
     UIWindow *renderWindow=self.scene.keyWindow;
     if(wantsTouch && (!renderWindow || renderWindow==self.originalWindow || renderWindow.windowScene!=self.scene || !osl_touch_attach(renderWindow))){[self finish:@"Cannot attach touch controls to renderer window"];return;}
     if(!self.image){
