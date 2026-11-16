@@ -496,3 +496,11 @@ synthetic matrix with zero failures. Host/backend/oracle hashes match, and the
 owned app process is stopped and absent afterward. Evidence:
 `packed-simd-ipad-device/verification.json`. No game data/profile is packaged or
 modified by this app. The full game still needs a fresh corpus and replay.
+
+For an isolated audio-adapter study, `ios/graphics/build-guest-session.py` can
+reuse a frozen game checkpoint with `--checkpoint-source-root <original
+worktree>`. The builder verifies the original checkpoint's full source
+inventory, permits only `src/runtime_audio.c` to differ in the candidate, and
+records both audio hashes in the boundary manifest. Omitting the option requires
+all checkpoint sources to match the candidate. This builds a boundary, not an
+app or proof of device audio quality.

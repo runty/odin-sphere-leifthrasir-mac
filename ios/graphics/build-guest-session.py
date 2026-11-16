@@ -5,9 +5,30 @@ from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 for name in ('root','game','remill','renderer','dependencies','headers'):p.add_argument('--'+name,type=Path,required=True)
 p.add_argument('--sdk',choices=('iphoneos','iphonesimulator'),default='iphoneos')
+p.add_argument('--checkpoint-source-root',type=Path,help='Frozen checkpoint source when testing an isolated audio-only change')
 a=p.parse_args();repo=Path(__file__).resolve().parents[2];root=a.root.resolve();game=a.game.resolve()
 if len(root.parts)<3 or root.parts[1]!='Volumes' or not Path('/Volumes',root.parts[2]).is_mount():p.error('Use a mounted external build directory')
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def check_checkpoint_sources(inputs, checkpoint_repo, candidate_repo, allow_audio_override):
+    # The old game/native runner must still match its complete source inventory.
+    # Only the separately rebuilt boundary audio implementation may differ.
+    overrides={}
+    for name,wanted in inputs.items():
+        original=checkpoint_repo/name;candidate=candidate_repo/name
+        if not original.is_file() or digest(original)!=wanted:
+            raise RuntimeError('Checkpoint source changed: '+name)
+        if not candidate.is_file():raise RuntimeError('Candidate source missing: '+name)
+        current=digest(candidate)
+        if current!=wanted:
+            if not allow_audio_override or name!='src/runtime_audio.c':
+                raise RuntimeError('Candidate differs outside audio override: '+name)
+            overrides[name]={'checkpoint_sha256':wanted,'candidate_sha256':current}
+    return overrides
+
+checkpoint_repo=a.checkpoint_source_root.resolve() if a.checkpoint_source_root else repo
+if a.checkpoint_source_root and (len(checkpoint_repo.parts)<3 or checkpoint_repo.parts[:3]!=root.parts[:3] or not checkpoint_repo.is_dir()):
+    p.error('Checkpoint source must be an existing directory on the same mounted build volume')
 state_path=game/'build-state.json';state_bytes=state_path.read_bytes();state=json.loads(state_bytes)
 renderer_path=a.renderer/('inputs-'+a.sdk+'.json');renderer_bytes=renderer_path.read_bytes();renderer=json.loads(renderer_bytes)
 deps_path=a.dependencies/('inputs-'+a.sdk+'.json');deps_bytes=deps_path.read_bytes();deps=json.loads(deps_bytes);prefix=Path(deps['prefix'])
@@ -20,12 +41,14 @@ sources={name:digest(repo/name) for name in ('ios/game/execution-budget.h','ios/
 layout_hash=digest(game/'image-layout.h');abi_hash=digest(a.remill/'remill/include/remill/Arch/X86/Runtime/State.h')
 def current():
  if state_path.read_bytes()!=state_bytes or renderer_path.read_bytes()!=renderer_bytes or deps_path.read_bytes()!=deps_bytes:raise RuntimeError('Input checkpoint changed during build')
- for inputs in (state['sources'],renderer['sources'],sources):
+ check_checkpoint_sources(state['sources'],checkpoint_repo,repo,a.checkpoint_source_root is not None)
+ for inputs in (renderer['sources'],sources):
   for name,wanted in inputs.items():
    if digest(repo/name)!=wanted:raise RuntimeError('Source changed: '+name)
  if digest(game/'image-layout.h')!=layout_hash or digest(a.remill/'remill/include/remill/Arch/X86/Runtime/State.h')!=abi_hash:raise RuntimeError('Layout/ABI headers changed')
  for name,wanted in state['headers'].items():
   if digest(game/name)!=wanted:raise RuntimeError('Frozen header changed: '+name)
+overrides=check_checkpoint_sources(state['sources'],checkpoint_repo,repo,a.checkpoint_source_root is not None)
 current();root.mkdir(parents=True,exist_ok=True)
 sdk=subprocess.check_output(['xcrun','--sdk',a.sdk,'--show-sdk-path'],text=True).strip();target='arm64-apple-ios27.2'+('-simulator' if a.sdk=='iphonesimulator' else '')
 obj=root/('guest-session-'+a.sdk+'.o')
@@ -50,5 +73,6 @@ subprocess.run(['xcrun','ar','rcs',str(temporary),str(obj),str(audio)],check=Tru
 manifest={'platform':a.sdk,'corpus_sha256':state['corpus_sha256'],'trace_inputs':backend,'sources':sources,'image_layout_sha256':layout_hash,
  'state_header_sha256':abi_hash,'renderer_manifest_sha256':digest(renderer_path),'dependency_manifest_sha256':digest(deps_path),
  'archive':str(archive),'archive_sha256':digest(archive),'object_platform':wanted,'builder_sha256':digest(Path(__file__)),
+ 'checkpoint_source_root':str(checkpoint_repo),'checkpoint_source_overrides':overrides,
  'device_executed':False,'game_frames':False}
 (root/('inputs-'+a.sdk+'.json')).write_text(json.dumps(manifest,indent=2)+'\n');print(json.dumps({'archive':str(archive),'platform':wanted,'game_frames':False}))
