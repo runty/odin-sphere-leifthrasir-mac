@@ -1,5 +1,13 @@
 /* Paused dummy output makes the actual post-refill queue observable. */
+#include <SDL3/SDL.h>
+static bool fail_next_put;
+static bool injected_put(SDL_AudioStream *stream,const void *data,int length) {
+    if (fail_next_put) { fail_next_put=false; return false; }
+    return SDL_PutAudioStreamData(stream,data,length);
+}
+#define SDL_PutAudioStreamData injected_put
 #include "../../src/runtime_audio.c"
+#undef SDL_PutAudioStreamData
 #include <assert.h>
 #include <limits.h>
 uintptr_t runtime_lookup(const RuntimeExport *table,size_t count,const char *name) {
@@ -23,6 +31,11 @@ int main(void) {
         assert(after_refill==(initial<2048 ? initial+2048 : initial));
         assert(p->window_min==after_refill);
     }
+    assert(SDL_ClearAudioStream(p->stream));
+    p->window_count=1;p->window_min=INT_MAX;fail_next_put=true;
+    assert(runtime_audio_output_copy(handle,input,sizeof(input),&format,0,NULL,NULL)==512);
+    assert(!fail_next_put && p->window_min==0);
+    assert(SDL_GetAudioStreamQueued(p->stream)==sizeof(input));
     assert(audio_close(handle)==0);runtime_audio_end_session();
-    puts("REFILL_ACCOUNTING: empty, partial and full pre-queues agree with actual SDL stream");
+    puts("REFILL_ACCOUNTING: queue observations and failed-refill accounting passed");
 }
