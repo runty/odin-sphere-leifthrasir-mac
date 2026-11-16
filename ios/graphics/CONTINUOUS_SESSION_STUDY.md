@@ -51,3 +51,8 @@ build root. Continuous background lifecycle is therefore **not qualified**.
 OpenCrown drains and suspends Metal before backgrounding; Odin's independent
 Vulkan presenter and worker queues need a separately verified quiescence
 mechanism, including in-flight and queued frames, before this can be fixed.
+An additional guard that checks the application is still backgrounded before
+`activate()` is insufficient: the tracked negative control stayed backgrounded
+until activation, then the original process lost the Vulkan device and a new
+one appeared. Its XCTest still passed. Always compare the original PID and
+console with the final report; `guarded/verification.json` records this retry.

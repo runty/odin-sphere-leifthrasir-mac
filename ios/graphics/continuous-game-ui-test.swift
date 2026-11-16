@@ -27,6 +27,12 @@ final class OdinContinuousGameUITests: XCTestCase {
         expectation(for: background, evaluatedWith: app)
         waitForExpectations(timeout: 20)
         Thread.sleep(forTimeInterval: 5)
+        // activate() may start a fresh default-budget process after a crash.
+        // Do not let that replacement satisfy the foreground assertion.
+        guard app.state == .runningBackground || app.state == .runningBackgroundSuspended else {
+            XCTFail("Sandbox exited while backgrounded; do not count a later relaunch as recovery")
+            return
+        }
         app.activate()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         Thread.sleep(forTimeInterval: 35)
