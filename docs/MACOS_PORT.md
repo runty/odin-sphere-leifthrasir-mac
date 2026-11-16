@@ -858,3 +858,16 @@ and display captures; no new sound-quality result yet. Evidence:
 `packed-simd-discovery/checkpoint-owner-68810-silent-02/`,
 `owner-68810-silent-02-visual-review.json`, `silent-audio-pcm-comparison/`,
 `observed-owner-batches/after-silent-68810/`, `audio-quantum-integration/`.
+
+The 68,811 host-muted comparison completes 535.466 seconds / 4,618 presentations,
+44 joins, no fault, cleanup and unchanged saves; it reaches missing local-clock
+RTC service 0x60056000. Viewed captures show the Data 1 load confirmation with
+YES selected. Source PCM gaps persist, so the buffer preference is not a full
+fix. Checked RTC implementation 5d205d1 reuses Crown's local date calculation:
+158 checks per CPU/sanitizer mode, both SDK compiles, 4,378 integrated service
+and four worker-cleanup checks pass. Only guest_clock.h/runner.cpp change among
+captured inputs; CPU/backend/audio runtime remain unchanged. Host-muted RTC
+replay is active; actual service use is still pending. Latest evidence:
+`packed-simd-discovery/checkpoint-owner-68811-muted-01/`,
+`owner-68811-muted-01-visual-review.json`, `audio-quantum-muted-comparison/`,
+`rtc-local-clock/`.

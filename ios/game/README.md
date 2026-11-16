@@ -7,7 +7,28 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest completed **silent 68,810-entry** replay (`13ee700d`): 337.345
+Latest completed **host-muted 68,811-entry** replay: 535.466 seconds /
+4,618 presentations, explicit missing host service
+`sceRtcGetCurrentClockLocalTime` (`0x60056000`). All 44 joins, no fault,
+cleanup and unchanged saves; 11,063 valid / 879 active scripted reads. Fifteen
+PNGs decode; viewed frames 4,250/4,500 show the Data 1 load confirmation with
+YES selected. No loaded character, physical input or iPad pixels are accepted.
+CoreAudio 256 frames and zero host gain are verified; PCM gaps persist, so the
+buffer preference alone is not an established fix. Evidence:
+`packed-simd-discovery/checkpoint-owner-68811-muted-01/`,
+`owner-68811-muted-01-visual-review.json`, `audio-quantum-muted-comparison/`.
+
+RTC source `5d205d1` reuses Crown's portable local clock with a checked 16-byte
+calendar/microsecond result, and actual call/success counters. Tests pass 158
+checks on each CPU and under ASan/UBSan, both SDK fixture compiles, 4,378 full
+dispatch/return-stack/service checks and four worker-cleanup checks. Exact
+transition `rtc-local-clock/verified.json` changes only the clock header and
+runner; CPU/backend/audio runtime and all 68,811 raw entries remain unchanged.
+`odin-packed-simd-owner-68811-rtc-01` is running host-muted with bounded captures
+and direct RTC-use counters. No new runtime result or actual RTC-use acceptance
+is claimed yet. See `rtc-local-clock/` for reference, unit and integration proof.
+
+Previous **silent 68,810-entry** replay (`13ee700d`): 337.345
 seconds / 4,532 presentations, explicit missing block `0x10736894`, all
 44 joins, no memory fault, cleanup and unchanged original/copied saves.
 All 10,180 valid pad reads are scripted, 743 active. Fifteen real PNGs decode;
