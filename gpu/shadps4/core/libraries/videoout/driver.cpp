@@ -133,6 +133,7 @@ int VideoOutDriver::Open(const ServiceThreadParams* params) {
     if (main_port.is_open) {
         return ORBIS_VIDEO_OUT_ERROR_RESOURCE_BUSY;
     }
+    idle_redraw.on_open();
     main_port.is_open = true;
     liverpool->SetVoPort(&main_port);
     return 1;
@@ -142,6 +143,9 @@ void VideoOutDriver::Close(s32 handle) {
     std::scoped_lock lock{mutex,main_port.vo_mutex,main_port.port_mutex,main_port.events_mutex};
 
     // Mark as closed
+    // Publish the suppression before closing the port: the vblank thread must
+    // not begin an automatic blank redraw for a closed game session.
+    idle_redraw.on_close();
     main_port.is_open = false;
     main_port.flip_rate = 0;
     main_port.prev_index = -1;
@@ -738,7 +742,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
                     DrawLastFrame();
                 } else if (timer.GetTotalWait().count() < 0) { // Dont draw too fast
                     if (!main_port.is_open) {
-                        DrawBlankFrame();
+                        if (idle_redraw.allow_closed_redraw()) DrawBlankFrame();
                     } else if (ImGui::Core::MustKeepDrawing()) {
                         DrawLastFrame();
                     }

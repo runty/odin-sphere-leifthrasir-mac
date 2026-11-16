@@ -14,6 +14,7 @@
 #include <mutex>
 #include <queue>
 #include <atomic>
+#include "core/libraries/videoout/idle_redraw_policy.h"
 
 namespace Vulkan {
 struct Frame;
@@ -129,6 +130,7 @@ private:
 
     std::mutex mutex;
     VideoOutPort main_port{};
+    OslIdleRedrawPolicy idle_redraw;
     std::jthread present_thread;
     std::queue<Request> requests;
 };
