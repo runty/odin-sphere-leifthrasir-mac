@@ -50,6 +50,8 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic) BOOL idleTimerPrevious;
 @property(nonatomic) BOOL idleTimerApplied;
 @property(nonatomic) BOOL idleTimerRestored;
+@property(nonatomic) BOOL landscapeHintOwned;
+@property(nonatomic) BOOL landscapeHintRestored;
 @property(nonatomic) BOOL finished;
 @property(nonatomic) BOOL pendingFinish;
 @property(nonatomic) BOOL workerRunning;
@@ -108,6 +110,7 @@ static OdinRendererSession *activeSession;
     osl_touch_detach();
     const uint64_t presented=oslgpu_presented_frames();
     const int stopped=oslgpu_shutdown_main_thread();
+    if(self.landscapeHintOwned) self.landscapeHintRestored=SDL_ResetHint(SDL_HINT_ORIENTATIONS);
     if(self.snapshotPath) {
         if(self.previousSnapshotPath)setenv("OSL_FRAME_SNAPSHOT_PATH",self.previousSnapshotPath.fileSystemRepresentation,1);
         else unsetenv("OSL_FRAME_SNAPSHOT_PATH");
@@ -148,6 +151,7 @@ static OdinRendererSession *activeSession;
         report[@"frame_snapshot_exists"]=@([NSFileManager.defaultManager fileExistsAtPath:self.snapshotPath]);
         report[@"frame_snapshot_source"]=self.snapshotSource;
     }
+    if(self.image) report[@"landscape_hint"]=@{@"owned":@(self.landscapeHintOwned),@"restored":@(self.landscapeHintRestored)};
     if(self.idleTimerAcquired) report[@"idle_timer"]=@{@"previous_disabled":@(self.idleTimerPrevious),
         @"disabled_after_acquire":@(self.idleTimerApplied),@"restored":@(self.idleTimerRestored)};
     if(self.pendingError)report[@"error"]=self.pendingError;
@@ -273,6 +277,10 @@ static OdinRendererSession *activeSession;
         setenv("OSL_FRAME_SNAPSHOT_PATH",self.snapshotPath.fileSystemRepresentation,1);
         setenv("OSL_FRAME_SNAPSHOT_SOURCE",self.snapshotSource.UTF8String,1);
     }
+    // Match the game's wide display and OpenCrown's UIKit/SDL orientation
+    // policy, while respecting an explicit host/environment override.
+    if(self.image && !SDL_GetHint(SDL_HINT_ORIENTATIONS))
+        self.landscapeHintOwned=SDL_SetHint(SDL_HINT_ORIENTATIONS,"LandscapeLeft LandscapeRight");
     SDL_SetMainReady();oslgpu_register_kernel();
     NSString *settings=[self.profile stringByAppendingPathComponent:@"osl.ini"];
     OslGpuConfig config{"Odin Sphere Bounded Startup",self.image?"CUSA05083":"ODIN_IOS_RENDERER_CHECK",self.profile.fileSystemRepresentation,settings.fileSystemRepresentation,self.sdk,0,960,540};
