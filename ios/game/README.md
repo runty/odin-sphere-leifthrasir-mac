@@ -7,7 +7,21 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest completed native replay: **68,811 entries**, corpus `0041fe3d`,
+New 68,894-entry replay has a terminal builder receipt. Its raw guest report
+records 591.175 seconds, missing translated block `0x10466169`, no memory fault,
+50/50 joined workers and one successful RTC call. The independent checkpoint
+reviewer is still verifying source/raw hashes and cleanup; no new checkpoint or
+scene acceptance is claimed until that receipt exists.
+
+Isolated SSE NaN candidate `c7c65cd` reuses Crown `a3e07c2` with Odin's actual
+checked runtime and longjmp recovery. The unchanged width baseline reproduces
+14,656 result mismatches in each native/sanitized run. Fixed runs each pass
+2,163,456 checks and match 14,155,776 bytes; an independent integer policy
+cross-checks the unmodified Rosetta oracle. This is result/access qualification,
+not full CPU, MXCSR traps/status, game or performance acceptance. No active
+backend/corpus change. Evidence: `sse-nan-review-odin/`.
+
+Prior completed native replay: **68,811 entries**, corpus `0041fe3d`,
 577.363 seconds / 5,989 presentations. It passes the former load/fault-loop
 point and reaches missing translated block `0x103f15cf`, original owner
 `0x103f1430..0x103f18c4`. All **50 workers join**, no memory fault, renderer
