@@ -45,8 +45,8 @@
 
 namespace VideoCore {
 
-constexpr size_t PM_PAGE_SIZE = 4_KB;
-constexpr size_t PM_PAGE_BITS = 12;
+constexpr size_t PM_PAGE_SIZE = TRACKER_BYTES_PER_PAGE;
+constexpr size_t PM_PAGE_BITS = TRACKER_PAGE_BITS;
 
 /// Page states of the 40-bit address space, allocated per 16 MiB of addresses on first use (a
 /// dense table is 512 MiB). Chunks are published with a compare-exchange: callers hold only the
