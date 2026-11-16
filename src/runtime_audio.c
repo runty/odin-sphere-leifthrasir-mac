@@ -37,6 +37,7 @@ typedef struct {
     SDL_AudioStream *stream;
     uint64_t next_deadline_ns; /* next return of sceAudioOutOutput */
     int64_t adjust_ns; int window_min, window_count; /* queue level control */
+    int experimental_queue_buffers; /* 0 preserves the established policy */
     uint64_t last_output_us;
     uint64_t generation;
     pthread_mutex_t lock;
@@ -190,6 +191,25 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
             } else printf("Runtime: host playback muted for diagnostics\n");
         }
         if (p->stream) {
+            /* Opt-in study only. Populate the stream before the device starts,
+             * so a larger target actually exists rather than waiting for an
+             * underrun. The default retains the established two-buffer path. */
+            const char *queue=getenv("OSL_AUDIO_QUEUE_BUFFERS");
+            if (queue && *queue) {
+                char *end=NULL; long requested=strtol(queue,&end,10);
+                if (end && !*end && requested>=2 && requested<=16) {
+                    static const unsigned char silence[2048*8*4];
+                    size_t bytes=(size_t)p->frames*(size_t)(p->downmix?2:p->channels)*(size_t)p->sample_bytes;
+                    p->experimental_queue_buffers=(int)requested;
+                    for (int i=0;i<p->experimental_queue_buffers;++i)
+                        if (!SDL_PutAudioStreamData(p->stream,silence,(int)bytes)) {
+                            fprintf(stderr,"Runtime: experimental audio prefill failed (%s); using timer sink\n",SDL_GetError());
+                            SDL_DestroyAudioStream(p->stream);p->stream=NULL;break;
+                        }
+                }
+            }
+        }
+        if (p->stream) {
             SDL_AudioDeviceID output=SDL_GetAudioStreamDevice(p->stream);
             if (SDL_GetAudioDeviceFormat(output,&device,&device_frames))
                 printf("Runtime: audio output port %d: %d Hz, %d ch, %s, %d frames (%.2f ms)\n",
@@ -294,11 +314,18 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
         if (p->stream) {
             /* The device drains the queue in quanta (21 ms on PipeWire), so the level
                is a sawtooth: its minimum over ~32 buffers is what gets controlled. */
-            int low=2*(int)bytes, queued=SDL_GetAudioStreamQueued(p->stream);
+            int low=(p->experimental_queue_buffers ? p->experimental_queue_buffers : 2)*(int)bytes;
+            int queued=SDL_GetAudioStreamQueued(p->stream);
             if (queued<(int)bytes) {
                 static const unsigned char silence[2048*8*4];
-                SDL_PutAudioStreamData(p->stream,silence,low-queued<(int)bytes ? low-queued : (int)bytes);
-                queued=low;
+                if (p->experimental_queue_buffers) {
+                    /* Refill after starvation in whole blocks. The returned
+                     * data still receives exactly its original guest period. */
+                    while (queued<low && SDL_PutAudioStreamData(p->stream,silence,(int)bytes)) queued+=(int)bytes;
+                } else {
+                    SDL_PutAudioStreamData(p->stream,silence,low-queued<(int)bytes ? low-queued : (int)bytes);
+                    queued=low;
+                }
             }
             if (!p->window_count || queued<p->window_min) p->window_min=queued;
             if (++p->window_count==32) {
