@@ -7,81 +7,71 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest completed **host-muted 68,811-entry** replay: 535.466 seconds /
-4,618 presentations, explicit missing host service
-`sceRtcGetCurrentClockLocalTime` (`0x60056000`). All 44 joins, no fault,
-cleanup and unchanged saves; 11,063 valid / 879 active scripted reads. Fifteen
-PNGs decode; viewed frames 4,250/4,500 show the Data 1 load confirmation with
-YES selected. No loaded character, physical input or iPad pixels are accepted.
-CoreAudio 256 frames and zero host gain are verified; PCM gaps persist, so the
-buffer preference alone is not an established fix. Evidence:
-`packed-simd-discovery/checkpoint-owner-68811-muted-01/`,
-`owner-68811-muted-01-visual-review.json`, `audio-quantum-muted-comparison/`.
+Latest completed native replay: **68,811 entries**, corpus `0041fe3d`,
+577.363 seconds / 5,989 presentations. It passes the former load/fault-loop
+point and reaches missing translated block `0x103f15cf`, original owner
+`0x103f1430..0x103f18c4`. All **50 workers join**, no memory fault, renderer
+cleanup and original/disposable save hashes pass. The real RTC service records
+one call / one success. All 13,071 valid reads are scripted, 1,015 active;
+physical controls are not accepted. Twenty PNGs decode: viewed frame 4,750 shows
+YES load confirmation and frame 5,250 is black. No playable character is accepted.
+Evidence: `packed-simd-discovery/checkpoint-owner-68811-pages-02/` and the separate
+`owner-68811-pages-02-visual-review.json`; frozen automated visual flags remain
+unchanged. The post-deadline observer finds the guest already absent and sends
+no signals. No FPS/audio-quality improvement is claimed.
 
-RTC source `5d205d1` reuses Crown's portable local clock with a checked 16-byte
-calendar/microsecond result, and actual call/success counters. Tests pass 158
-checks on each CPU and under ASan/UBSan, both SDK fixture compiles, 4,378 full
-dispatch/return-stack/service checks and four worker-cleanup checks. Exact
-transition `rtc-local-clock/verified.json` changes only the clock header and
-runner; CPU/backend/audio runtime and all 68,811 raw entries remain unchanged.
-The first RTC replay exceeds the 615-second outer watchdog without a final
-report. Its preserved frame 4,250 visibly says **DATA 1 has been loaded**; this
-is partial save-menu evidence, not character gameplay, RTC-counter or cleanup
-acceptance. All 481 transition sources, raw/header hashes and original/copied
-save hashes verify after termination. Archive:
-`packed-simd-discovery/interrupted-owner-68811-rtc-timeout-01/`.
+The page fix `2a4b97f` makes native Apple arm64 tracker masks, dirty ranges,
+watchers and PageManager table/locks consistently use 16 KiB; Rosetta stays
+4 KiB. Old policy leaves six of eight real host subpage faults unresolved with
+EINVAL; the fix resolves all eight. Both x86 controls resolve all eight and
+both mobile SDK fixtures compile. The full rebuilt renderer passes 109 actual
+bridge checks. Its iPad-only diagnostic additionally reproduces six old-policy
+faults and resolves all eight fixed-policy probes on physical iPad19,1 /
+iPadOS 27.2.1. Sixteen raw cases and source/executable/report hashes verify.
+Only the diagnostic PID is stopped (SIGKILL after SIGTERM remains listed);
+all three existing game-profile files remain exact. This is actual page-policy
+proof, not full renderer/cache-coherence or mobile gameplay acceptance.
+`page-policy-ipad-probe/physical-verification.json` retains the evidence.
+See [policy details](../graphics/page-granularity.md).
 
-The sampled RTC replay (`owner-68811-rtc-sampled-04`) reaches its bounded
-660-second process watchdog without a final guest report. A separate reviewer
-verifies all sources/raw/header and original/copied save hashes, retaining a
-partial result without publishing a build-state. Viewed frames 4,500/4,750 show
-the load list and YES confirmation; character gameplay and RTC counters remain
-unverified. Its post-deadline sample shows a worker repeatedly faulting inside
-bulk memcpy/memmove's GPU signal handler while the other CPUs wait on the shared
-memory lock. This is fault-loop evidence, not proof of a mutex ownership bug.
-Evidence: `reviewed-owner-68811-rtc-sampled-04/`,
-`owner-68811-rtc-sampled-04-postdeadline-review.json`.
+The new original owner is byte-qualified with Crown's unchanged CFG validator.
+The refreshed inventory has 28 valid observed components and no merged overlaps;
+partial/local tables remain explicitly incomplete. **83 blocks / 307 original
+instructions** pass independent XED/Zydis first-block decoding and publish with
+all old raw hashes intact: **68,894 available**, execution of the new blocks
+unverified. Evidence: `all-owner-cfg-after-packed-pages-68811/`,
+`observed-owner-batches/after-pages-68811-v2/`. First preparation stops on an old
+host-service report; private factory `95d80f5` now excludes non-code history while
+retaining its strict current clean-missing-block/worker gates. Actual mixed-stop
+regression and all 14 archived worker-count checks pass. Failed first phase and
+all original templates/reports remain untouched.
 
-The renderer used 4 KiB tracking on native Apple arm64, whose protection calls
-require 16 KiB alignment. Real protected-mapping probes reproduce six unresolved
-subpage faults out of eight with EINVAL. Source `2a4b97f` makes native Apple arm64
-tracker masks, watcher/table/lock addressing and dirty ranges consistently use
-16 KiB; x86/Rosetta stays 4 KiB. The new policy resolves all eight native probes,
-both old/new x86 controls resolve all eight, and both mobile SDK fixtures compile.
-The rebuilt full renderer passes 109 actual checked-bridge cases.
-These tests do not substitute for real cache-coherence/gameplay acceptance.
+`odin-packed-simd-owner-68894`, builder **43344**, is now rebuilding/replaying
+that same twenty-two-patch CPU backend, runtime `3217a61a`, native page fix,
+zero-gain CoreAudio, script/disposable save, bounded images and 600-second ceiling.
+Exact replay inputs and publication are pinned; no further outcome yet. The
+installed iPad game remains its older 60,361-entry engineering build. Mac
+production `0757088`, its deferred 30-minute/separate-account checks, normal
+saves and the phone are untouched.
 
-`odin-packed-simd-owner-68811-pages-02`, builder 17262, is now rebuilding and
-replaying the unchanged 68,811 raw entries and twenty-two-patch CPU backend,
-with zero-gain CoreAudio, the same script/disposable save and bounded images.
-Source transition `native-page-tracking/verified.json` pins all 481 inputs:
-only the two page-policy files additionally change over the RTC transition.
-First wrapper 01 rejects a renamed manifest field before starting a child;
-corrected 02 passes exact read-only preflight. No new game result yet.
-The preserved pre-fix source is `source-before-native-pages` at `e5588a7`.
-See [page policy details](../graphics/page-granularity.md).
+Earlier RTC-only run `owner-68811-rtc-01` times out without a final report;
+one image says DATA 1 has been loaded, not playable progress. Sampled retry 04
+also reaches its process watchdog, with a bulk-memmove/GPU-fault loop in the
+post-deadline stacks. Partial evidence remains in
+`interrupted-owner-68811-rtc-timeout-01/` and
+`reviewed-owner-68811-rtc-sampled-04/`. Earlier sampler-wrapper failure and its
+six real-child lifecycle checks are retained separately. Profiled pauses exclude
+those runs from pacing acceptance; the postdeadline-review sidecar corrects the
+observer's mislabeled time field without rewriting a frozen receipt.
 
-The earlier sampler-wrapper timeout and its title-only images remain preserved
-in `interrupted-rtc-sampled-03/`. Corrected wrapper 04 isolates sampling failures;
-six real-child lifecycle checks pass. Four actual samples complete, but profiled
-pauses exclude that run from FPS/audio-quality acceptance. An observer receipt's
-`started_utc` was recorded after sampling; its separate erratum directs readers
-to the actual sample header for start time. Frozen reports remain unchanged.
-
-Read-only Crown reuse audit confirms four original VMULSS memory forms across
-two numeric routines observed in the audio sample; current IR reads F32 at
-0/4/8/12 while only the first feeds each multiply. Other sampled loops correctly
-use packed vector transfers. Isolated `codex/ios-scalar-width-candidate` at
-`08b87ee` reuses Crown `6970470`'s nine-selector patch and fixture, adapted to
-Odin's actual `3217a61a` runtime and longjmp recovery. Twenty real native operand-end
-probes and twenty one-byte-overrun controls pass. Each baseline/fixed native and
-ASan/UBSan run evaluates 67,904 checks, including 160 boundary cases; all 18
-oversized-access negative controls disappear, with all 442,368 result bytes
-unchanged between baseline/fixed per mode. **The strict native oracle still
-fails with 160 existing NaN-selection differences in every configuration.**
-Full failures/nonzero exit are retained; width-only qualification is separate.
-No game/backend adoption, speedup or popping fix is claimed. Evidence:
-`audio-hot-scalar-audit/`, `scalar-fp-width-review-25/`.
+Isolated scalar-width candidate `08b87ee` reuses Crown `6970470` with actual Odin
+runtime/longjmp recovery. Native operand-end and overrun probes pass; all 18
+baseline excess-read controls disappear, and 442,368 result bytes per mode stay
+identical. **Strict native oracle remains failed with 160 existing NaN differences**
+in every baseline/fixed native/sanitized run (67,904 checks each). Width-only
+qualification is separate. No active-backend adoption, speedup or popping fix is
+claimed. Crown's later matched-phone series also establishes no headroom gain;
+it cannot stand in for an Odin measurement. Evidence: `scalar-fp-width-review-25/`.
 
 Previous **silent 68,810-entry** replay (`13ee700d`): 337.345
 seconds / 4,532 presentations, explicit missing block `0x10736894`, all

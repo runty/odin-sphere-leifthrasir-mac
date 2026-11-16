@@ -28,8 +28,28 @@ python3 ios/graphics/test-page-granularity.py \
 
 The reference command ran from the isolated page candidate before integration;
 the preserved `source-before-native-pages` worktree at `e5588a7` has identical
-old-policy inputs for the negative control. Both iPhoneOS/Simulator fixtures and signal-context sources compile.
+old-policy inputs for the negative control. Both iPhoneOS/Simulator fixtures and
+signal-context sources compile.
 Evidence pins all input hashes in `page-granularity-tests/verification.json`.
 This is policy/host-fault verification, not full renderer/cache-coherence,
-character gameplay, audio quality or physical-device acceptance. Full renderer
-and same-backend, muted guest replay remain required.
+character gameplay, audio quality or physical-device gameplay acceptance.
+The rebuilt renderer passes 109 checked-bridge cases. The same-backend muted
+native replay completes 577.363 seconds / 5,989 presentations, all 50 joins,
+no fault and full cleanup, reaching the later missing-code stop `0x103f15cf`.
+The actual local RTC call succeeds. Post-load captures are still black, so
+character gameplay and complete rendering remain unverified.
+
+A separately packaged iPad-only probe runs the exact qualified old/new fixture
+translation units with distinct namespaces. Physical iPad19,1 / iPadOS 27.2.1
+confirms 16 KiB pages, six unresolved baseline faults and zero fixed faults over
+16 real cases. Report, raw rows, source and executable hashes verify. No game,
+renderer or audio initializes. The existing game's three profile hashes stay
+exact. Only this diagnostic PID is terminated; SIGKILL is needed after SIGTERM
+remains listed, so no normal game-unload acceptance is implied. Evidence:
+`page-policy-ipad-probe/physical-verification.json`.
+
+`build-page-probe.py` packages this standalone test without installing/launching.
+`--check-inputs-only` verifies qualified content and baseline/fixed roles across
+preserved worktree paths; using the fixed policy as the baseline is rejected.
+This avoids relying on the original verification's temporary source directory.
+Full renderer/cache-coherence and mobile gameplay acceptance remain open.
