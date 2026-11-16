@@ -57,6 +57,8 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic,copy) NSString *snapshotSource;
 @property(nonatomic,copy) NSString *resolvedInputScriptPath;
 @property(nonatomic,copy) NSString *previousInputScriptPath;
+@property(nonatomic,copy) NSString *resolvedAudioTapPath;
+@property(nonatomic,copy) NSString *previousAudioTapPath;
 @end
 static OdinRendererSession *activeSession;
 @implementation OdinRendererSession
@@ -103,6 +105,10 @@ static OdinRendererSession *activeSession;
     if(self.resolvedInputScriptPath) {
         if(self.previousInputScriptPath)setenv("OSL_INPUT_SCRIPT",self.previousInputScriptPath.fileSystemRepresentation,1);
         else unsetenv("OSL_INPUT_SCRIPT");
+    }
+    if(self.resolvedAudioTapPath) {
+        if(self.previousAudioTapPath)setenv("OSL_AUDIO_TAP",self.previousAudioTapPath.fileSystemRepresentation,1);
+        else unsetenv("OSL_AUDIO_TAP");
     }
     const bool faultsRestored=!self.faultsInstalled || osl_guest_session_faults_end(guestContext);
     const bool contextReleased=!guestContext || osl_guest_session_destroy(guestContext);
@@ -203,6 +209,24 @@ static OdinRendererSession *activeSession;
             NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
             self.resolvedInputScriptPath=[documents stringByAppendingPathComponent:path];
             setenv("OSL_INPUT_SCRIPT",self.resolvedInputScriptPath.fileSystemRepresentation,1);
+        }
+    }
+    // Diagnostic tap prefixes may use a portable path in this app's Documents.
+    // Capture remains gated by the audio adapter to muted/none mode.
+    if(self.image)if(const char *value=getenv("OSL_AUDIO_TAP")) {
+        NSString *path=[NSString stringWithUTF8String:value];
+        if(!path.length || (!path.isAbsolutePath && [path.pathComponents containsObject:@".."])) {
+            [self finish:@"Invalid audio tap path"];return;
+        }
+        if(!path.isAbsolutePath) {
+            NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+            NSString *resolved=[documents stringByAppendingPathComponent:path];
+            NSError *error=nil;
+            if(!documents.length || ![NSFileManager.defaultManager createDirectoryAtPath:resolved.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:&error] || setenv("OSL_AUDIO_TAP",resolved.fileSystemRepresentation,1)!=0) {
+                [self finish:@"Cannot prepare audio tap path"];return;
+            }
+            self.previousAudioTapPath=path;
+            self.resolvedAudioTapPath=resolved;
         }
     }
     // Explicit developer-only cancellation fixture. Normal launches do not stop

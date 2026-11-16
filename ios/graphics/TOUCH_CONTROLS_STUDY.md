@@ -49,3 +49,10 @@ resulting `.xctestrun` only on an explicitly selected authorized destination.
 The branch has not been adopted; touch input during the actual game, multitouch
 on device, accessibility, controller reconnect, performance and full gameplay
 remain unverified. Do not use the phone until authorized.
+
+The experimental guest report also counts `touch_pad_reads` and
+`touch_pad_active_reads`: the former counts actual pad reads with the overlay
+connected, the latter the subset with a virtual button, quantized stick or
+trigger active. They do not count controller-info queries, and injected primary
+sources do not include the overlay. These counters establish sampled virtual
+input, not that a particular game action occurred or that controls feel good.

@@ -66,6 +66,7 @@ int main(int argc,char **argv) {
     require(pad.fallbackReads()==3 && pad.fallbackActiveReads()==2);
     auto reads=pad.readStats();
     require(reads.total==4 && reads.primary==1 && reads.fallback==3 && reads.disconnected==0);
+    require(reads.touch==0 && reads.touch_active==0);
     ControllerInfo info{};require(pad.info(1,&info)==0 && info.connected);
     require(pad.fallbackReads()==3 && pad.fallbackActiveReads()==2); // Info does not deliver buttons.
     require(pad.readStats().total==4);
@@ -86,6 +87,7 @@ int main(int argc,char **argv) {
     clock=102;require(exclusive_pad.read(1,&data)==0 && !data.buttons);
     reads=exclusive_pad.readStats();
     require(reads.total==2 && reads.primary==0 && reads.fallback==2 && reads.disconnected==0);
+    require(reads.touch==0 && reads.touch_active==0);
     require(exclusive_pad.fallbackActiveReads()==1);
     require(exclusive_pad.info(1,&info)==0 && exclusive_pad.readStats().total==2);
     rejects([&]{ScriptedPad empty("",{});},"frame clock");

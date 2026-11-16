@@ -9,6 +9,11 @@ before pacing or the SDL queue. Cancellation or a queue failure may mean a
 captured converted block was never submitted. Float and signed-16 formats are labelled separately.
 On iOS, input has already passed through the guest-memory snapshot bridge;
 the files do **not** prove what the mixer wrote before that copy.
+The iOS engineering renderer resolves a relative prefix under its Documents
+directory, creates parent directories, and restores the original environment
+after the guest has joined. Relative paths containing `..` are rejected.
+Absolute paths remain subject to the app sandbox. These files can be large;
+choose bounded block counts and use a disposable profile.
 
 `OSL_AUDIO_TAP_SKIP` skips a number of non-null submissions per port (default
 0, maximum 10,000,000). `OSL_AUDIO_TAP_BLOCKS` limits recorded non-null

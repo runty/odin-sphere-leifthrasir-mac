@@ -1196,6 +1196,8 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"pad_read_calls\":" << pad_reads.total
         << ",\"pad_primary_reads\":" << pad_reads.primary
         << ",\"pad_disconnected_reads\":" << pad_reads.disconnected
+        << ",\"touch_pad_reads\":" << pad_reads.touch
+        << ",\"touch_pad_active_reads\":" << pad_reads.touch_active
         << ",\"input_script_sha256\":\"" << (session->scripted_pad ? session->scripted_pad->digest() : "") << "\""
         << ",\"input_script_events\":" << (session->scripted_pad ? session->scripted_pad->events() : 0)
         << ",\"input_script_samples\":" << (session->scripted_pad ? session->scripted_pad->samples() : 0)

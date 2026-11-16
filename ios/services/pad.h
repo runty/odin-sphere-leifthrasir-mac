@@ -12,6 +12,9 @@ struct PadSample {
 };
 struct PadReadStats {
     uint64_t total=0, primary=0, fallback=0, disconnected=0;
+    // Subset of primary reads containing a connected virtual overlay, and
+    // of those, reads with a button, non-neutral stick or trigger.
+    uint64_t touch=0, touch_active=0;
 };
 class MobilePad {
     struct Impl;

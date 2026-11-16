@@ -66,6 +66,7 @@ int main() {
             require(guarded[0]==0x7b && guarded[7]==0x7b && guarded[sizeof(guarded)-8]==0x7b && guarded[sizeof(guarded)-1]==0x7b);
             const auto reads=pad.readStats();
             require(reads.total==7 && reads.primary==4 && reads.fallback==0 && reads.disconnected==3);
+            require(reads.touch==0 && reads.touch_active==0);
             GCController *controller=[GCController controllerWithExtendedGamepad];
             require(controller.isSnapshot && controller.extendedGamepad!=nil);
             GCExtendedGamepad *gamepad=controller.extendedGamepad;

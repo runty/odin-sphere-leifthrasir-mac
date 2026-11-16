@@ -58,8 +58,10 @@ struct MobilePad::Impl {
     std::function<PadSample(unsigned)> fallback;
     bool initialized=false,opened[4]={},connected[4]={};
     bool used_fallback[4]={};
+    bool touch_connected[4]={},touch_active[4]={};
     uint64_t fallback_reads=0,fallback_active_reads=0;
     uint64_t total_reads=0,primary_reads=0,disconnected_reads=0;
+    uint64_t touch_reads=0,touch_active_reads=0;
     uint64_t identities[4]={};
     uint8_t counts[4]={};
     __strong GCController *controllers[4]={};
@@ -90,6 +92,7 @@ struct MobilePad::Impl {
     }
     PadSample sample(unsigned slot) {
         PadSample result;
+        touch_connected[slot]=touch_active[slot]=false;
         if (source) result=source(slot);
         else {
             __block PadSample physical;
@@ -97,6 +100,8 @@ struct MobilePad::Impl {
             result=physical;
             if(slot==0) {
                 PadSample touch;osl_touch_snapshot(&touch);
+                touch_connected[slot]=touch.connected;
+                touch_active[slot]=touch.connected && (touch.buttons || axis(touch.left_x)!=128 || axis(touch.left_y)!=128 || axis(touch.right_x)!=128 || axis(touch.right_y)!=128 || std::lround(finiteClamp(touch.l2,0,1)*255) || std::lround(finiteClamp(touch.r2,0,1)*255));
                 result=osl_merge_touch(result,touch);
             }
         }
@@ -148,6 +153,10 @@ int32_t MobilePad::read(int32_t handle,PadData *out) {
     if (!out) return invalid;
     auto sample=impl->sample(handle-1);
     ++impl->total_reads;
+    if(impl->touch_connected[handle-1]) {
+        ++impl->touch_reads;
+        if(impl->touch_active[handle-1])++impl->touch_active_reads;
+    }
     std::memset(out,0,sizeof(*out));
     out->left_x=out->left_y=out->right_x=out->right_y=128; out->orientation[3]=1;
     struct timespec now; clock_gettime(CLOCK_MONOTONIC,&now);
@@ -172,7 +181,7 @@ uint64_t MobilePad::fallbackReads() const {
 }
 PadReadStats MobilePad::readStats() const {
     std::lock_guard<std::mutex> lock(impl->mutex);
-    return {impl->total_reads,impl->primary_reads,impl->fallback_reads,impl->disconnected_reads};
+    return {impl->total_reads,impl->primary_reads,impl->fallback_reads,impl->disconnected_reads,impl->touch_reads,impl->touch_active_reads};
 }
 uint32_t MobilePad::dialogButtons() {
     std::lock_guard<std::mutex> lock(impl->mutex);
