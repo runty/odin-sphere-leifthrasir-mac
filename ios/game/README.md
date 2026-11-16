@@ -7,12 +7,51 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest native execution uses **68,656 entries**, corpus `4e7130e0`: 227.293
-seconds / 3,288 presentations, 43 joined workers, no memory fault, renderer
-cleanup and unchanged original/copied player saves. It stops explicitly at
-unsupported `VPUNPCKLDQ xmm0,xmm0,[rip+...]`, PC `0x106f0c48`. The requested
-frame-4,000 capture is not reached; there is no fresh image from this attempt.
-Evidence: `inrange-jbe-discovery/checkpoint-68656/`.
+Latest native execution uses **68,656 entries**, corpus `eb947934`, freshly
+lifted with the twenty-two-patch backend: **132.145 seconds / 3,544
+presentations**, 43 joined workers, no memory fault, renderer cleanup and
+unchanged original/copied player saves. It passes the previous VPUNPCKLDQ
+fallback and stops at an uncompiled eboot import trampoline, `0x107d5370`.
+Its GOT resolves to the already translated libc `modf` export at `0x10cc9410`.
+The requested frame 4,000 is not reached; there is no fresh image from this
+attempt. Evidence: `packed-simd-discovery/checkpoint-first/`.
+
+The explicit script-only test produces **7,442 valid pad reads**, all scripted
+fallbacks, **582 active reads**, zero primary/disconnected reads, and consistent
+counter sums. This proves scripted pad delivery in this run, not physical
+controls, a particular menu route or recognizable scenes. The 199-event file
+hash is `27578c60`; changed inputs/backend/trace contents rule out a same-input
+performance comparison with the older startup.
+
+All 207 declared eboot JUMP_SLOT imports match original 16-byte PLT stubs:
+RIP-relative indirect jump, matching GOT relocation and lazy ordinal/resolver.
+Fifteen first blocks are missing, including the observed demand. Their original
+readonly bytes, prepared image, loader binding and six-byte XED/Zydis boundary
+are checked independently. Actual guarded arm64 execution with the production
+checked runtime passes **60 cases**: 45 dynamically selected GOT dispatches
+with State/stack/read-only-slot preservation, plus 15 missing-GOT memory faults.
+The fixture records destination dispatch; it does not execute those destinations
+or prove other modules' PLT formats/lazy tails.
+
+The frozen v2 publisher adds all 15 with old raw hashes intact: **68,671
+available entries**. An isolated, byte-faithful checkpoint copy verifies an
+interruption after durable ledger publication: the actual production recovery
+prefix restores all missing raw traces from validated staging and refuses a
+corrupted staged copy. Original cache/checkpoint hashes remain unchanged.
+Earlier phase/source snapshots and failed harness logs are preserved.
+Reports: `plt-recovery-after-packed-simd-v2/`,
+`plt-publication-interruption-test-v2/`. Private tooling:
+`ps4/odin-ios-plt-batch.py` and `test-odin-ios-plt-publication.py` in the pipeline.
+
+A controlled **68,671-entry replay is running** on the same twenty-two-patch
+backend/core code `03cd549`, using the same script-only input and copied profile.
+It reuses that backend's verified cache; no cross-semantics LLVM/object reuse
+occurs. One 600-second ceiling, post-checkpoint freeze and a unique actual-game
+capture at presentation **3,300** are configured. Launchd
+`odin-packed-simd-after-plt-01`, `packed-simd-discovery/after-plt-01.log`;
+read-only reviewer `odin-packed-simd-after-plt-review`. No result or capture is
+claimed before it is written. The separately CPU-qualified twenty-five-patch
+candidate remains unadopted, and the installed iPad game remains unchanged.
 
 Two original local relative tables in owner `0x106e28d0..0x106e37a8` expose
 four and six cases. Their original/prepared bytes, readonly mapping, signed

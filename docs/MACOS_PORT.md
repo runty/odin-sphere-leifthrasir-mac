@@ -760,3 +760,26 @@ distinguish total/primary/fallback/disconnected reads; explicit script-only mode
 makes future engineering runs deterministic without changing normal defaults.
 Mobile scenes, audible game output, physical controls and character-progress
 save/load remain open. See [current mobile status](../ios/game/README.md).
+
+### Fresh native checkpoint and eboot import recovery — 2026-11-15
+
+The twenty-two-patch fresh 68,656-entry corpus (`eb947934`) passes the prior
+VPUNPCKLDQ stop and reaches uncompiled PLT `0x107d5370` after 132.145 seconds /
+3,544 presentations. All 43 workers join, memory fault is zero, renderer cleanup
+and original/copied save hashes pass. Explicit script-only delivery is now
+observed: 7,442 valid fallback pad reads, 582 active reads, no primary or
+disconnected reads. Changed inputs prevent timing comparison. Frame 4,000 is
+not reached, so no fresh image is claimed. Destination libc `modf` is already
+translated. This is progress beyond the old instruction stop, not game acceptance.
+
+Fifteen missing declared eboot PLT first blocks are qualified against original
+ELF metadata, readonly bytes, prepared GOT bindings and independent six-byte
+decoding. Production-runtime guarded jump/fault fixtures pass 60 cases. An
+isolated archived-data copy proves interruption recovery through the actual
+consumer prefix and corrupted-staging refusal, with original hashes preserved.
+Frozen v2 publication adds 15: 68,671 available. A controlled same-backend replay
+is running with a fresh frame-3,300 request and checkpoint freeze. Native
+checkpoint evidence is `packed-simd-discovery/checkpoint-first/`; PLT evidence
+is `plt-recovery-after-packed-simd-v2/` and
+`plt-publication-interruption-test-v2/`. The 25-patch candidate and physical
+game update remain separate; recognizable scenes and mobile gameplay stay open.
