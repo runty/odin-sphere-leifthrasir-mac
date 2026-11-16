@@ -1047,13 +1047,25 @@ for GPU completion and handle format/row order explicitly. Verify actual pixels
 and inspect the resulting image before calling a scene recognizable. The
 existing command-capture path remains a separate diagnostic.
 
-## One-shot pixel readback — 2026-11-15
+## Bounded pixel readback — 2026-11-15
 
 `OSL_FRAME_SNAPSHOT_PATH=/absolute/private/frame.png` requests one SDR PNG
 from the Vulkan presenter. `OSL_FRAME_SNAPSHOT_AT` selects a fresh game-frame
 number (1–1,000,000; default 1,000). Both are developer diagnostics; absent a
 path, no transfer buffer, copy or fence wait is added. Invalid requests disable
 capture. HDR/non-8-bit or over-4096-side images reject rather than reinterpret.
+
+For a late startup transition, optionally set both `OSL_FRAME_SNAPSHOT_EVERY`
+and `OSL_FRAME_SNAPSHOT_COUNT`. The interval is 1–1,000,000 eligible frames;
+the count is 2–64 and the final requested frame must remain at or below
+1,000,000. Partial, invalid or overflowing requests disable capture. A sequence
+writes `<path>.frame-<number>.png`; the ordinary one-shot writes the exact
+original path. For example, `AT=3000`, `EVERY=120`, `COUNT=16` captures frames
+3,000 through 4,800, including both endpoints. Each copy uses the same completed
+GPU fence and retires its readback allocation before presenting. Diagnostics
+add waits and must not be used as uninstrumented performance evidence.
+This follows OpenCrown's practice of retaining more than one actual rendered
+image for startup acceptance, using Odin's own presenter and synchronization.
 
 The presenter copies its still-owned frame in transfer-source layout, submits
 with that frame's ready-semaphore wait, waits for its presentation fence and
@@ -1069,10 +1081,11 @@ PNG under `Documents/RendererDiagnostics`, reports `frame_snapshot_name` and
 It remains separate from `game_frames`/playability acceptance. No screenshot
 permission or desktop window is needed for this renderer readback.
 
-`test-frame-snapshot.py --root NEW_EXTERNAL_DIRECTORY` passes 32 checks both
+`test-frame-snapshot.py --root NEW_EXTERNAL_DIRECTORY` passes 85 checks both
 normally and under ASan/UBSan, including invalid dimensions/byte counts/path
-and frame bounds. An independent PNG decoder verifies exact channels, alpha
-and top-to-bottom order for RGBA and BGRA outputs. Those are host encoding/
+and frame bounds, bounded sequence schedules, unique output paths and exact
+one-shot compatibility. An independent PNG decoder verifies exact channels,
+alpha and top-to-bottom order for six RGBA/BGRA/sequence outputs. Those are host encoding/
 configuration checks; they do not replace actual GPU execution.
 
 The real native 9,585-entry run then captures a 960×540 frame with 817 RGB

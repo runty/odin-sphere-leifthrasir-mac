@@ -204,7 +204,9 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
       texture_cache{rasterizer->GetTextureCache()} {
     const char* snapshot_path = std::getenv("OSL_FRAME_SNAPSHOT_PATH");
     snapshot = OslFrameSnapshot::Parse(snapshot_path, std::getenv("OSL_FRAME_SNAPSHOT_AT"),
-                                      std::getenv("OSL_FRAME_SNAPSHOT_SOURCE"));
+                                      std::getenv("OSL_FRAME_SNAPSHOT_SOURCE"),
+                                      std::getenv("OSL_FRAME_SNAPSHOT_EVERY"),
+                                      std::getenv("OSL_FRAME_SNAPSHOT_COUNT"));
     if (snapshot_path && !snapshot) std::printf("Frame snapshot: invalid request; disabled\n");
     const u32 num_images = swapchain.GetImageCount();
     const vk::Device device = instance.GetDevice();
@@ -695,7 +697,8 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     const auto cmdbuf = scheduler.CommandBuffer();
     const bool display_snapshot = snapshot && snapshot->source==OslFrameSnapshot::Source::Display;
     const bool capture = snapshot && (display_snapshot || (!is_reusing_frame && is_game_frame)) &&
-                         ++snapshot_frames == snapshot->frame;
+                         snapshot->Captures(++snapshot_frames);
+    const std::string capture_path = capture ? snapshot->PathAt(snapshot_frames) : std::string{};
     std::unique_ptr<FrameReadback> readback;
 
     if (EmulatorSettings.IsVkHostMarkersEnabled()) {
@@ -869,10 +872,10 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
             std::memcpy(pixels.data(), readback->mapping.pMappedData, pixels.size());
             // The displayed swapchain is opaque; guest alpha is not display opacity.
             for (size_t i = 3; i < pixels.size(); i += 4) pixels[i] = 255;
-            const bool written = OslPng::WriteRgba(snapshot->path.c_str(), readback->width, readback->height,
+            const bool written = OslPng::WriteRgba(capture_path.c_str(), readback->width, readback->height,
                                                   pixels.data(), pixels.size(), readback->bgra);
             std::printf("Frame snapshot: %s %s (%ux%u, %s, %s, opaque display alpha)\n",
-                        written ? "wrote" : "cannot write", snapshot->path.c_str(),
+                        written ? "wrote" : "cannot write", capture_path.c_str(),
                         readback->width, readback->height, readback->bgra ? "BGRA8" : "RGBA8",
                         display_snapshot ? "display with overlay" : "game before overlay");
         } else {
