@@ -17,6 +17,8 @@ time zones against real wall time, layout, range boundaries, state preservation
 and invalid pointers. Both mobile SDKs compile the fixture. The full runner's
 service checks also exercise RTC dispatch and the return stack; these checks
 do not substitute for a new real-game save transition.
+The guest report separately counts RTC calls and successful results, so a
+replay can establish that the previously missing service was actually reached.
 
 ## CoreAudio output period and quiet diagnosis
 

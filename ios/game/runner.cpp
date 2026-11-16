@@ -90,6 +90,7 @@ struct Session {
 #endif
     const MobileGpuServices *gpu=nullptr;
     unsigned gpu_service_calls=0, audio_service_calls=0;
+    unsigned rtc_local_clock_calls=0, rtc_local_clock_successes=0;
     explicit Session(const MobileGpuServices *renderer=nullptr)
         : scripted_pad(ScriptedPad::load(std::getenv("OSL_INPUT_SCRIPT"),
               renderer && renderer->frame_count ? std::function<uint64_t()>([renderer]{return renderer->frame_count(renderer->context);}) : std::function<uint64_t()>{})),
@@ -312,7 +313,13 @@ static Memory *hostService(State &s, uint64_t pc, Memory *m) {
     const auto &import = imports[(pc - hle_base) / 0x1000];
     const char *name = import.symbol;
     uint64_t clock_result=0;
-    if(GuestClock::call(name,s,*m,clock_result))return m->fault.empty() ? hostReturn(s,m,clock_result) : m;
+    if(GuestClock::call(name,s,*m,clock_result)) {
+        if(!std::strcmp(name,"sceRtcGetCurrentClockLocalTime")) {
+            ++session.rtc_local_clock_calls;
+            if(m->fault.empty() && !clock_result)++session.rtc_local_clock_successes;
+        }
+        return m->fault.empty() ? hostReturn(s,m,clock_result) : m;
+    }
     uint64_t system_result=0;
     if(session.crash.call(name,s,system_result))return hostReturn(s,m,system_result);
     if (GuestSystem::call(name,s,*m,system_result))
@@ -1203,6 +1210,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"condition_variables\":" << session->conditions.count()
         << ",\"gpu_adapter_enabled\":" << (session->gpu ? "true" : "false")
         << ",\"gpu_service_calls\":" << session->gpu_service_calls << ",\"audio_service_calls\":" << session->audio_service_calls
+        << ",\"rtc_local_clock_calls\":" << session->rtc_local_clock_calls << ",\"rtc_local_clock_successes\":" << session->rtc_local_clock_successes
         << ",\"np_title_configured\":" << (session->offline.title_configured ? "true" : "false")
         << ",\"network_connected\":false,\"psn_signed_in\":false"
         << ",\"save_dialog_initialized\":" << (session->save_dialog_initialized ? "true" : "false")
@@ -1665,6 +1673,7 @@ static bool serviceChecks() {
     require(session.stack[0x4c0]==0xab && session.stack[0x4d1]==0xab);
     require(call("sceRtcGetCurrentClockLocalTime",0)==0x80b50002u && session.memory.fault.empty());
     call("sceRtcGetCurrentClockLocalTime",0x20000ff1);require(!session.memory.fault.empty());
+    require(session.rtc_local_clock_calls==3 && session.rtc_local_clock_successes==1);
     session.workers.reset();session.memory.fault={};
     active = nullptr;
     std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
