@@ -46,6 +46,10 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic) uint32_t sdk;
 @property(nonatomic) uint32_t guestBudgetMs;
 @property(nonatomic) BOOL initialized;
+@property(nonatomic) BOOL idleTimerAcquired;
+@property(nonatomic) BOOL idleTimerPrevious;
+@property(nonatomic) BOOL idleTimerApplied;
+@property(nonatomic) BOOL idleTimerRestored;
 @property(nonatomic) BOOL finished;
 @property(nonatomic) BOOL pendingFinish;
 @property(nonatomic) BOOL workerRunning;
@@ -80,7 +84,11 @@ static OdinRendererSession *activeSession;
 }
 - (void)finish:(NSString *)error {
     if(self.finished)return;
-    if(idleTimer) { idleTimer->release(); idleTimer.reset(); }
+    if(idleTimer) {
+        idleTimer->release();
+        self.idleTimerRestored=UIApplication.sharedApplication.idleTimerDisabled==self.idleTimerPrevious;
+        idleTimer.reset();
+    }
     osl_touch_deactivate();
     self.pendingFinish=YES;
     if(error && !self.pendingError)self.pendingError=error;
@@ -140,6 +148,8 @@ static OdinRendererSession *activeSession;
         report[@"frame_snapshot_exists"]=@([NSFileManager.defaultManager fileExistsAtPath:self.snapshotPath]);
         report[@"frame_snapshot_source"]=self.snapshotSource;
     }
+    if(self.idleTimerAcquired) report[@"idle_timer"]=@{@"previous_disabled":@(self.idleTimerPrevious),
+        @"disabled_after_acquire":@(self.idleTimerApplied),@"restored":@(self.idleTimerRestored)};
     if(self.pendingError)report[@"error"]=self.pendingError;
     [self persist:report];
     void (^completion)(NSDictionary *)=self.completion;self.completion=nil;
@@ -268,7 +278,12 @@ static OdinRendererSession *activeSession;
     OslGpuConfig config{"Odin Sphere Bounded Startup",self.image?"CUSA05083":"ODIN_IOS_RENDERER_CHECK",self.profile.fileSystemRepresentation,settings.fileSystemRepresentation,self.sdk,0,960,540};
     if(oslgpu_init(&config)!=0){[self finish:@"Renderer initialization failed"];return;}
     self.initialized=YES;
-    if(self.image) idleTimer=std::make_unique<OslIdleTimerLease>((id<OslIdleTimerTarget>)UIApplication.sharedApplication);
+    if(self.image) {
+        self.idleTimerPrevious=UIApplication.sharedApplication.idleTimerDisabled;
+        idleTimer=std::make_unique<OslIdleTimerLease>((id<OslIdleTimerTarget>)UIApplication.sharedApplication);
+        self.idleTimerAcquired=YES;
+        self.idleTimerApplied=UIApplication.sharedApplication.idleTimerDisabled;
+    }
     UIWindow *renderWindow=self.scene.keyWindow;
     if(wantsTouch && (!renderWindow || renderWindow==self.originalWindow || renderWindow.windowScene!=self.scene || !osl_touch_attach(renderWindow))){[self finish:@"Cannot attach touch controls to renderer window"];return;}
     if(!self.image){
