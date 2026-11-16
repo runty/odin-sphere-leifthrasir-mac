@@ -777,8 +777,22 @@ ELF metadata, readonly bytes, prepared GOT bindings and independent six-byte
 decoding. Production-runtime guarded jump/fault fixtures pass 60 cases. An
 isolated archived-data copy proves interruption recovery through the actual
 consumer prefix and corrupted-staging refusal, with original hashes preserved.
-Frozen v2 publication adds 15: 68,671 available. A controlled same-backend replay
-is running with a fresh frame-3,300 request and checkpoint freeze. Native
+Frozen v2 publication adds 15: 68,671 available. Subsequent actual replays reach
+`0x107368a1` (68,671 entries), `0x106b9cbf` (68,672) and `0x106b9ccc`
+(68,677). The last runs 182.839 seconds / 3,841 presentations with 43 joins,
+no fault, cleanup and unchanged player/copied saves. Its visually inspected
+display-frame-2,500 PNG is black, as is the earlier 68,672 game PNG. Three
+timed captures show identical clear-compute/depth-only passes, no recorded
+color target/sampled image. Converted PCM has 448,896 nonzero samples beginning
+around 167 seconds; this is not audible-device or recognizable-scene acceptance.
+Explicit missing-block roots refresh the unchanged OpenCrown CFG validator
+inventory; interrupted worker PCs are excluded as anchors. Three further
+original blocks independently qualify and publish, preserving old raw hashes:
+68,680 available. A controlled same-backend replay requests later display
+frame 3,500 and draw/audio diagnostics; no next result is claimed yet. Latest
+frozen evidence is `packed-simd-discovery/checkpoint-owner-68677/` and adjacent
+`owner-68677-diagnostics-review.json`; new availability is in
+`observed-owner-batches/after-owner-68677/`. First native
 checkpoint evidence is `packed-simd-discovery/checkpoint-first/`; PLT evidence
 is `plt-recovery-after-packed-simd-v2/` and
 `plt-publication-interruption-test-v2/`. The 25-patch candidate and physical

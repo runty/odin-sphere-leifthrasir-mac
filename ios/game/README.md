@@ -43,15 +43,34 @@ Reports: `plt-recovery-after-packed-simd-v2/`,
 `plt-publication-interruption-test-v2/`. Private tooling:
 `ps4/odin-ios-plt-batch.py` and `test-odin-ios-plt-publication.py` in the pipeline.
 
-A controlled **68,671-entry replay is running** on the same twenty-two-patch
-backend/core code `03cd549`, using the same script-only input and copied profile.
-It reuses that backend's verified cache; no cross-semantics LLVM/object reuse
-occurs. One 600-second ceiling, post-checkpoint freeze and a unique actual-game
-capture at presentation **3,300** are configured. Launchd
-`odin-packed-simd-after-plt-01`, `packed-simd-discovery/after-plt-01.log`;
-read-only reviewer `odin-packed-simd-after-plt-review`. No result or capture is
-claimed before it is written. The separately CPU-qualified twenty-five-patch
-candidate remains unadopted, and the installed iPad game remains unchanged.
+Subsequent same-backend replays reach `0x107368a1` at 68,671 entries and
+`0x106b9cbf` at 68,672. The latter completes 99.391 seconds / 3,121
+presentations; its fresh game-frame-2,500 PNG is visually inspected and black.
+Five original blocks independently qualify and publish, preserving old hashes.
+
+The **68,677-entry replay** (`ce7ddb48`) reaches `0x106b9ccc` after
+182.839 seconds / 3,841 presentations: 43 joins, no memory fault, cleanup and
+unchanged original/copied saves. All 8,577 valid pad reads are scripted, 614
+active. Its fresh **display** frame 2,500 is also visually inspected and black.
+Three timed draw captures record identical clear-compute/depth-only passes,
+with no color target or sampled image recorded. This suggests incomplete scene
+initialization but does not exclude GPU faults. Converted stereo PCM is no
+longer all zero: 448,896 of 17,370,624 samples are nonzero, beginning around
+167 seconds; no audible-device or source-content acceptance is claimed.
+Evidence: `packed-simd-discovery/checkpoint-owner-68677/` and
+`owner-68677-diagnostics-review.json`, `owner-68677-audio-window-review.json`.
+
+A fresh unchanged-OpenCrown-validator inventory adds explicit missing-block
+roots and excludes interrupted-worker PCs as anchors. Three original blocks
+qualify through independent XED/Zydis boundaries and publish: **68,680
+available**, execution pending. Reports: `all-owner-cfg-after-packed-68677/`,
+`observed-owner-batches/after-owner-68677/`. No full owner/guard proof is claimed.
+A controlled replay is running under `odin-packed-simd-owner-68680`, core
+`03cd549`, the same twenty-two-patch backend, script and copied profile. It
+requests a later display frame 3,500, timed draw captures and converted PCM,
+with a 600-second ceiling and post-checkpoint freeze. No cross-semantics
+LLVM/object reuse occurs. The twenty-five-patch candidate remains unadopted;
+the installed iPad game is unchanged and recognizable mobile scenes remain open.
 
 Two original local relative tables in owner `0x106e28d0..0x106e37a8` expose
 four and six cases. Their original/prepared bytes, readonly mapping, signed
