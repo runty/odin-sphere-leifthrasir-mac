@@ -41,3 +41,13 @@ than the requested continuous session. It therefore did not verify lifecycle
 cleanup. The driver also supports attaching to an independently launched,
 supervised sandbox so its original PID and console can be checked before and
 after the background transition; a UI test pass alone remains insufficient.
+On physical iPad mini A20 Pro, the tracked retry showed the continuous guest
+joined while inactive and renderer teardown was deferred. Presentation then
+continued, Vulkan reported device loss in the frame-fence wait, and the
+original process exited 23. XCTest activated a new default-budget process.
+Both iPad profiles and the Mac save remained unchanged. The tracked evidence
+is `mobile-continuous-69136/device/attach/verification.json` under the Odin
+build root. Continuous background lifecycle is therefore **not qualified**.
+OpenCrown drains and suspends Metal before backgrounding; Odin's independent
+Vulkan presenter and worker queues need a separately verified quiescence
+mechanism, including in-flight and queued frames, before this can be fixed.
