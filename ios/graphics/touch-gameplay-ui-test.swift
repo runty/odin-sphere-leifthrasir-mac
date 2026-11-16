@@ -1,12 +1,20 @@
 import XCTest
 
-// The externally launched, muted sandbox owns its copied save, PID and console.
-// UI results alone cannot prove guest input, scene progress or clean shutdown.
+// Launch only after the test runner is ready: runner startup itself backgrounds
+// an already-running guest. UI results alone do not prove input or cleanup.
 final class OdinTouchGameplayUITests: XCTestCase {
-    func testTouchNavigationInExistingSandbox() throws {
+    func testTouchNavigationInSandbox() throws {
         executionTimeAllowance = 900
         let app = XCUIApplication(bundleIdentifier: "com.wadscorp.odinsphere.sandbox69048")
-        app.activate()
+        app.launchEnvironment["OSL_AUDIO"] = "muted"
+        app.launchEnvironment["OSL_AUDIO_STATS"] = "1"
+        app.launchEnvironment["OSL_TOUCH_CONTROLS"] = "1"
+        app.launchEnvironment["OSL_GUEST_RUN_MS"] = "600000"
+        app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "5000"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "200"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "16"
+        app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         Thread.sleep(forTimeInterval: 12)
         let width = app.frame.width, height = app.frame.height
