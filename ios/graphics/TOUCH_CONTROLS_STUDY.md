@@ -49,3 +49,11 @@ resulting `.xctestrun` only on an explicitly selected authorized destination.
 The branch has not been adopted; touch input during the actual game, multitouch
 on device, accessibility, controller reconnect, performance and full gameplay
 remain unverified. Do not use the phone until authorized.
+
+`touch-game-ui-test.swift` is a separate, prepared XCUITest for the disposable
+`com.wadscorp.odinsphere.sandbox69048` app. It launches a 45-second muted guest
+with the overlay explicitly enabled, sends a button press and stick drag, and
+keeps screenshots for manual review after the bounded session. It requires the
+combined candidate to be built and installed into that sandbox first. A test
+pass alone only means gestures were dispatched and the app remained available;
+it does not prove the guest consumed them or reached a playable scene.
