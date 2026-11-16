@@ -38,8 +38,8 @@ int main(int argc,char **argv){
     uint32_t sdk=0;require(osl_guest_session_sdk(argv[1],&sdk));
     struct sigaction custom{},old_segv{},old_bus{};custom.sa_handler=previous;sigemptyset(&custom.sa_mask);
     require(!sigaction(SIGSEGV,&custom,&old_segv) && !sigaction(SIGBUS,&custom,&old_bus));
-    for(uint32_t invalid:{0U,99U,600001U,UINT32_MAX})require(!osl_guest_session_create_with_budget(invalid));
-    for(uint32_t valid:{100U,60001U,600000U}){auto *bounded=osl_guest_session_create_with_budget(valid);require(bounded && osl_guest_session_destroy(bounded));}
+    for(uint32_t invalid:{99U,600001U,UINT32_MAX})require(!osl_guest_session_create_with_budget(invalid));
+    for(uint32_t valid:{0U,100U,60001U,600000U}){auto *bounded=osl_guest_session_create_with_budget(valid);require(bounded && osl_guest_session_destroy(bounded));}
     auto *guest=mode=="extended" ? osl_guest_session_create_with_budget(5000) : osl_guest_session_create();
     auto *other=osl_guest_session_create();require(guest && other);
     require(osl_guest_session_faults_begin(guest));require(!osl_guest_session_faults_begin(guest) && !osl_guest_session_faults_begin(other));

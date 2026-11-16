@@ -176,7 +176,7 @@ static OdinRendererSession *activeSession;
     if(self.image)if(const char *value=getenv("OSL_GUEST_RUN_MS")) {
         uint32_t budget=0;const char *end=value+std::strlen(value);
         const auto parsed=std::from_chars(value,end,budget);
-        if(parsed.ec!=std::errc{} || parsed.ptr!=end || budget<100 || budget>600000){[self finish:@"OSL_GUEST_RUN_MS must be an integer from 100 to 600000"];return;}
+        if(parsed.ec!=std::errc{} || parsed.ptr!=end || (budget==0 && std::strcmp(value,"0")) || (budget!=0 && (budget<100 || budget>600000))){[self finish:@"OSL_GUEST_RUN_MS must be 0 or an integer from 100 to 600000"];return;}
         self.guestBudgetMs=budget;
     }
     // A portable developer script path is relative to this app's Documents,

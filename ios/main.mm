@@ -93,14 +93,17 @@ extern "C" NSDictionary *osl_mobile_memory_report();
         game=@{@"game_booted":@NO,@"status":@"renderer session owns optional guest startup"};
         dispatch_semaphore_t rendererDone=dispatch_semaphore_create(0);
         __block NSDictionary *rendererResult=nil;
+        NSString *guestImage=[[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
+        if(![NSFileManager.defaultManager fileExistsAtPath:guestImage])guestImage=nil;
         dispatch_async(dispatch_get_main_queue(), ^{
-            NSString *guestImage=[[documents stringByAppendingPathComponent:@"Guest"] stringByAppendingPathComponent:@"image.bin"];
-            if(![NSFileManager.defaultManager fileExistsAtPath:guestImage])guestImage=nil;
             osl_mobile_renderer_begin(self.view.window.windowScene,[documents stringByAppendingPathComponent:@"RendererDiagnostics"],guestImage,^(NSDictionary *result){rendererResult=result;dispatch_semaphore_signal(rendererDone);});
         });
         // Maximum bounded guest duration is ten minutes; leave time for owned
         // worker joins, GPU retirement and main-thread window restoration.
-        if(dispatch_semaphore_wait(rendererDone,dispatch_time(DISPATCH_TIME_NOW,615*NSEC_PER_SEC))!=0)
+        const char *runBudget=getenv("OSL_GUEST_RUN_MS");
+        const bool continuous=guestImage && runBudget && !strcmp(runBudget,"0");
+        const dispatch_time_t waitUntil=continuous ? DISPATCH_TIME_FOREVER : dispatch_time(DISPATCH_TIME_NOW,615*NSEC_PER_SEC);
+        if(dispatch_semaphore_wait(rendererDone,waitUntil)!=0)
             renderer=@{@"passed":@NO,@"error":@"Renderer session exceeded diagnostic deadline",@"game_frames":@NO};
         else {renderer=rendererResult;if([renderer[@"guest_requested"] boolValue])game=renderer[@"guest_session"][@"guest"]?:@{@"error":@"GPU guest did not return a report"};else game=@{@"game_booted":@NO,@"status":@"private prepared image has not been copied into Guest"};}
 #endif

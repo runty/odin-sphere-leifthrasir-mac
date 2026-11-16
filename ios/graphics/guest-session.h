@@ -8,7 +8,7 @@ typedef struct OslGuestSession OslGuestSession;
  * metadata to initialize the renderer. No guest execution or renderer calls. */
 int osl_guest_session_sdk(const char *image,uint32_t *sdk);
 OslGuestSession *osl_guest_session_create(void);
-/* Engineering deadline, 100..600000 ms; invalid budgets return null. The
+/* Engineering deadline, 100..600000 ms, or 0 for cancellable continuous mode; invalid budgets return null. The
  * default factory retains 2000 ms. Configure before handing ownership to a worker. */
 OslGuestSession *osl_guest_session_create_with_budget(uint32_t milliseconds);
 /* Main-thread signal ownership brackets renderer initialization through shutdown. */

@@ -1,6 +1,7 @@
 #include "../services/guest_audio.h"
 // UIKit-facing ownership boundary; all guest pointers use the shared adapter.
 #include "guest-session.h"
+#include "../game/execution-budget.h"
 #include "guest-gpu.h"
 #include "save-message-presenter.h"
 #include "image-layout.h"
@@ -77,7 +78,7 @@ extern "C" OslGuestSession *osl_guest_session_create() {
     return osl_guest_session_create_with_budget(2000);
 }
 extern "C" OslGuestSession *osl_guest_session_create_with_budget(uint32_t milliseconds) {
-    if(milliseconds<100 || milliseconds>600000)return nullptr;
+    if(!osl_execution_budget_valid(milliseconds,true))return nullptr;
     try{return new OslGuestSession(milliseconds);}catch(...){return nullptr;}
 }
 extern "C" int osl_guest_session_faults_begin(OslGuestSession *session) {

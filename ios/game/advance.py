@@ -154,7 +154,7 @@ def lift(pc, code, output):
 
 
 repo = source.parents[1]
-source_paths = (source / "advance.py", source / "runner.cpp", source / "libc-bulk.h", source / "trace_lookup.h", source / "build_inputs.py", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
+source_paths = (source / "advance.py", source / "runner.cpp", source / "execution-budget.h", source / "libc-bulk.h", source / "trace_lookup.h", source / "build_inputs.py", source / "guard_ir.py",source / "trace_preparation.py",source / "discovery_targets.py",source / "trace_candidates.py",
                 source / "function_bounds.py",source / "unwind_reader.py",source / "build-function-bounds.py",repo / "scripts/ps4_module.py",
                 source.parent / "cpu/runtime.h", source.parent / "cpu/runtime.cpp", *service_inputs(repo))
 gpu_env = None

@@ -3,6 +3,7 @@
 #include "image-layout.h"
 #include "traces.h"
 #include "trace_lookup.h"
+#include "execution-budget.h"
 #include "libc-bulk.h"
 #include "trophies/trophy_service.h"
 #include "../services/memory.h"
@@ -133,7 +134,7 @@ struct Session {
     osl::trophies::TrophyService trophies;
     const char *stage = "prepare", *missing_service = "";
     unsigned completed_modules = 0;
-    std::atomic<unsigned> calls{0};
+    std::atomic<uint64_t> calls{0};
     uint64_t dispatch_limit=100000;
     uint64_t heap_api = 0, next_allocation = 0x30000000;
     uint64_t image_address = image_base, stack_address = 0x20000000;
@@ -1007,8 +1008,8 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
     if (!GuestTraces::valid(std::begin(traces),std::end(traces)))
         throw std::runtime_error("Translated trace table is not strictly increasing");
     if (gpu && (!gpu->call || !gpu->finish)) throw std::runtime_error("Invalid native GPU service table");
-    if (gpu && (gpu->execution_budget_ms<100 || gpu->execution_budget_ms>600000))
-        throw std::runtime_error("Guest execution budget must be 100 to 600000 milliseconds");
+    if (gpu && !osl_execution_budget_valid(gpu->execution_budget_ms,gpu->stop_requested!=nullptr))
+        throw std::runtime_error("Guest execution budget must be 100 to 600000 milliseconds, or zero with cancellation");
     auto owner = std::make_unique<Session>(gpu);
     Session *session = owner.get();
     session->memory.dispatcher = gameDispatch;
@@ -1083,9 +1084,10 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
     session->memory.recovery = &recovery;
     const auto guest_started = std::chrono::steady_clock::now();
     const uint32_t budget_ms=gpu ? gpu->execution_budget_ms : 2000;
-    session->memory.deadline = guest_started + std::chrono::milliseconds(budget_ms);
-    session->memory.checkpoint_limit=std::max<uint64_t>(1000000,uint64_t(budget_ms)*500);
-    session->dispatch_limit=std::max<uint64_t>(100000,uint64_t(budget_ms)*50);
+    const auto limits=osl_execution_budget(budget_ms,guest_started);
+    session->memory.deadline=limits.deadline;
+    session->memory.checkpoint_limit=limits.checkpoints;
+    session->dispatch_limit=limits.dispatches;
     if (setjmp(recovery) == 0) {
         for (const auto &module : modules) {
             session->stage =
