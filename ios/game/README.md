@@ -31,34 +31,57 @@ acceptance. All 481 transition sources, raw/header hashes and original/copied
 save hashes verify after termination. Archive:
 `packed-simd-discovery/interrupted-owner-68811-rtc-timeout-01/`.
 
-Same-binary, zero-gain replay `odin-owner-68811-rtc-sampled-04` is now running
-under the unchanged 600-second guest budget and a bounded 660-second outer
-watchdog. No rebuild/source/backend change. Direct wrapper 02 exits before the
-guest because it omitted explicit Vulkan paths; corrected wrappers verify and
-supply the same driver/loader. Wrapper 03 later disappears without a final
-receipt at its first sample timeout; its finally block removes the launchd job.
-That cause is inferred from timing/code, since exception stderr was not retained.
-Its preserved images show only the title menu, and no cleanup is accepted.
+The sampled RTC replay (`owner-68811-rtc-sampled-04`) reaches its bounded
+660-second process watchdog without a final guest report. A separate reviewer
+verifies all sources/raw/header and original/copied save hashes, retaining a
+partial result without publishing a build-state. Viewed frames 4,500/4,750 show
+the load list and YES confirmation; character gameplay and RTC counters remain
+unverified. Its post-deadline sample shows a worker repeatedly faulting inside
+bulk memcpy/memmove's GPU signal handler while the other CPUs wait on the shared
+memory lock. This is fault-loop evidence, not proof of a mutex ownership bug.
+Evidence: `reviewed-owner-68811-rtc-sampled-04/`,
+`owner-68811-rtc-sampled-04-postdeadline-review.json`.
 
-Wrapper 04 catches sampling failures, records each event and keeps waiting for
-the actual guest. Exact exception-handler fault-injection checks keep a real
-disposable child alive after sampler success, nonzero exit and timeout (six
-checks). Samples allow up to 60 seconds for symbolication. A separate reviewer
-will preserve a completed or partial result without publishing a build-state.
-Evidence: `interrupted-rtc-sampled-03/`, `rtc-sampler-isolation-04.json`.
-The first actual sample succeeds after 30.7 seconds of collection/symbolication;
-the guest remains live. Only three samples per listed thread and a coincident
-long audio gap exclude this profiled run from pacing/quality acceptance.
-Actual RTC calls/successes remain pending until a completed report.
+The renderer used 4 KiB tracking on native Apple arm64, whose protection calls
+require 16 KiB alignment. Real protected-mapping probes reproduce six unresolved
+subpage faults out of eight with EINVAL. Source `2a4b97f` makes native Apple arm64
+tracker masks, watcher/table/lock addressing and dirty ranges consistently use
+16 KiB; x86/Rosetta stays 4 KiB. The new policy resolves all eight native probes,
+both old/new x86 controls resolve all eight, and both mobile SDK fixtures compile.
+The rebuilt full renderer passes 109 actual checked-bridge cases.
+These tests do not substitute for real cache-coherence/gameplay acceptance.
 
-Read-only reuse review of Crown's scalar-width finding identifies four original
-VMULSS memory forms in two numeric routines seen in the native audio profile.
-Existing Odin IR issues four F32 reads at offsets 0/4/8/12, with only the first
-feeding each scalar multiply. Other sampled routines use legitimate packed
-vector transfers. `audio-hot-scalar-audit/` pins original XED decoding, current
-IR, source and Crown reference. This is an isolated-backend candidate, not a
-proven popping cause or measured speedup; no CPU locking/semantics change.
-See `rtc-local-clock/` for the RTC reference, unit and integration proof.
+`odin-packed-simd-owner-68811-pages-02`, builder 17262, is now rebuilding and
+replaying the unchanged 68,811 raw entries and twenty-two-patch CPU backend,
+with zero-gain CoreAudio, the same script/disposable save and bounded images.
+Source transition `native-page-tracking/verified.json` pins all 481 inputs:
+only the two page-policy files additionally change over the RTC transition.
+First wrapper 01 rejects a renamed manifest field before starting a child;
+corrected 02 passes exact read-only preflight. No new game result yet.
+The preserved pre-fix source is `source-before-native-pages` at `e5588a7`.
+See [page policy details](../graphics/page-granularity.md).
+
+The earlier sampler-wrapper timeout and its title-only images remain preserved
+in `interrupted-rtc-sampled-03/`. Corrected wrapper 04 isolates sampling failures;
+six real-child lifecycle checks pass. Four actual samples complete, but profiled
+pauses exclude that run from FPS/audio-quality acceptance. An observer receipt's
+`started_utc` was recorded after sampling; its separate erratum directs readers
+to the actual sample header for start time. Frozen reports remain unchanged.
+
+Read-only Crown reuse audit confirms four original VMULSS memory forms across
+two numeric routines observed in the audio sample; current IR reads F32 at
+0/4/8/12 while only the first feeds each multiply. Other sampled loops correctly
+use packed vector transfers. Isolated `codex/ios-scalar-width-candidate` at
+`08b87ee` reuses Crown `6970470`'s nine-selector patch and fixture, adapted to
+Odin's actual `3217a61a` runtime and longjmp recovery. Twenty real native operand-end
+probes and twenty one-byte-overrun controls pass. Each baseline/fixed native and
+ASan/UBSan run evaluates 67,904 checks, including 160 boundary cases; all 18
+oversized-access negative controls disappear, with all 442,368 result bytes
+unchanged between baseline/fixed per mode. **The strict native oracle still
+fails with 160 existing NaN-selection differences in every configuration.**
+Full failures/nonzero exit are retained; width-only qualification is separate.
+No game/backend adoption, speedup or popping fix is claimed. Evidence:
+`audio-hot-scalar-audit/`, `scalar-fp-width-review-25/`.
 
 Previous **silent 68,810-entry** replay (`13ee700d`): 337.345
 seconds / 4,532 presentations, explicit missing block `0x10736894`, all

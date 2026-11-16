@@ -22,13 +22,13 @@ IsWriteError, with bounded signal recovery instead of an infinite fault loop.
 
 ```sh
 python3 ios/graphics/test-page-granularity.py \
-  --baseline-source /Volumes/office/Build/OdinSphere/source \
+  --baseline-source /Volumes/office/Build/OdinSphere/source-before-native-pages \
   --output /Volumes/office/Build/OdinSphere/page-granularity-tests
 ```
 
 The reference command ran from the isolated page candidate before integration;
-the baseline argument must name an unchanged old-policy tree for its negative
-control. Both iPhoneOS/Simulator fixtures and signal-context sources compile.
+the preserved `source-before-native-pages` worktree at `e5588a7` has identical
+old-policy inputs for the negative control. Both iPhoneOS/Simulator fixtures and signal-context sources compile.
 Evidence pins all input hashes in `page-granularity-tests/verification.json`.
 This is policy/host-fault verification, not full renderer/cache-coherence,
 character gameplay, audio quality or physical-device acceptance. Full renderer
