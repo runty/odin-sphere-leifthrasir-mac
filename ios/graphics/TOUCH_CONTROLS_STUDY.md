@@ -36,8 +36,16 @@ used and injected script input remains isolated. UIKit adapter, renderer and
 pad sources compile for iPhoneOS and Simulator. A separate no-game UIKit fixture
 ran on iPad mini A20 Pro: it attached the overlay, rendered a visually inspected
 landscape layout, and observed neutral state before attachment and after
-deactivation and detach. Its capture did not inject actual UIKit touches or
-run inside the SDL game window. Physical touch interaction, portrait layout,
-accessibility, controller reconnect, performance and full gameplay remain
-unverified. Verify a touch-enabled isolated iPad game build before adopting
-it; do not use the phone until authorized.
+deactivation and detach. A separate XCUITest then injected a face-button press
+and a stick drag into a UIKit fixture on that physical iPad, with the resulting
+button and axis state checked in the app. The same test passed on a separately
+created iPad mini simulator in portrait. These are automated events, not a
+human ergonomics test, and neither fixture runs inside the SDL game window.
+
+Build the reproducible standalone test with `ios/graphics/build-touch-ui-test.py
+--root <new external directory> --sdk iphoneos --team <development team>` (or
+`--sdk iphonesimulator` without a team). It does not contact devices. Run the
+resulting `.xctestrun` only on an explicitly selected authorized destination.
+The branch has not been adopted; touch input during the actual game, multitouch
+on device, accessibility, controller reconnect, performance and full gameplay
+remain unverified. Do not use the phone until authorized.

@@ -1,0 +1,48 @@
+name: OdinTouchUITest
+options:
+  deploymentTarget:
+    iOS: '18.0'
+targets:
+  OdinTouchUITest:
+    type: application
+    platform: iOS
+    sources: [Source]
+    info:
+      path: Info.plist
+      properties:
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+    dependencies:
+      - sdk: UIKit.framework
+      - sdk: Foundation.framework
+      - sdk: QuartzCore.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.touchuitest
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: '1,2'
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+        CLANG_ENABLE_OBJC_ARC: YES
+  OdinTouchUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: OdinTouchUITest
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wadscorp.odinsphere.touchuitest.tests
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: OdinTouchUITest
+schemes:
+  OdinTouchUITest:
+    build:
+      targets:
+        OdinTouchUITest: all
+        OdinTouchUITests: [test]
+    test:
+      targets:
+        - OdinTouchUITests
