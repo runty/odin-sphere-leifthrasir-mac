@@ -67,7 +67,7 @@ claimed. Original/copied saves remain unchanged. Evidence:
 Silent control `odin-packed-simd-owner-68810-silent-02` completed with explicit
 `OSL_AUDIO=none`, the same core/backend/runtime/script, PCM dumps and bounded
 snapshots. Audible engineering playback stays disabled during investigation.
-An isolated, unadopted audio candidate `6346f40` reuses Crown's 256-frame Apple
+Initially isolated audio candidate `6346f40` reuses Crown's 256-frame Apple
 SDL hint and adds `OSL_AUDIO=muted` for zero host gain with real device pacing.
 Zero-PCM CoreAudio tests verify baseline 1,024 / candidate 256 / explicit
 1,024 override and muted 256 with zero gain; both SDK runtime compiles pass.
@@ -75,7 +75,13 @@ This is configuration/mute verification, not proof that game pops are fixed.
 Offline use of the exact host downmix on the timer-sink eight-channel PCM
 confirms source gaps persist without device output: `silent-audio-pcm-comparison/`.
 The buffer preference alone cannot establish a fix.
-Evidence: `audio-quantum-muted-tests/`. The current control remains on dcd37af.
+Evidence: `audio-quantum-muted-tests/`. After the clean timer checkpoint and
+block publication it is integrated as `9bf8939`; the exact transition changes
+only `src/runtime_audio.c` among 481 captured sources. Current controlled replay
+`odin-packed-simd-owner-68811-muted-01` uses real CoreAudio at zero host gain,
+with converted PCM retained and a 256-frame default. Source/backend/runtime
+checks and bounded capture/cleanup review are attached. No new audio-quality
+result is claimed; playback stays muted. See `audio-quantum-integration/`.
 
 The initial fresh native execution uses **68,656 entries**, corpus `eb947934`, freshly
 lifted with the twenty-two-patch backend: **132.145 seconds / 3,544

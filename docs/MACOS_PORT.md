@@ -837,10 +837,24 @@ is silenced and terminated after retaining partial images/PCM/log/binary;
 original/copied saves remain unchanged. No clean checkpoint or cleanup is
 claimed. Evidence: `packed-simd-discovery/interrupted-owner-68810-noise/`.
 
-Silent timer control `odin-packed-simd-owner-68810-silent-02` retains PCM and
-display captures on unchanged core dcd37af. Separate unadopted audio candidate
+Silent timer control `odin-packed-simd-owner-68810-silent-02` completes with PCM and
+display captures on unchanged core dcd37af. Initially separate audio candidate
 6346f40 reuses Crown's 256-frame Apple SDL preference and adds verified host
 gain zero for real-device pacing tests. Zero-PCM hardware checks verify baseline
 1,024 / candidate 256 / explicit override and mute; both SDK runtime compiles
 pass. Game audio quality remains unverified. No further audible engineering
 playback is needed during this investigation; installed apps/devices are unchanged.
+
+The timer control completes 337.345 seconds / 4,532 presentations with 44 joins,
+no fault, cleanup and unchanged saves; missing `0x10736894`. Fifteen PNGs
+decode; visual review verifies startup/title/copied Data 1 metadata, not loaded
+character progress. Exact offline downmix confirms source gaps persist without
+device output, so smaller device buffers alone are not an established fix. One
+further original five-instruction block qualifies/publishes: 68,811 available.
+After this clean checkpoint/publication, audio candidate merges as 9bf8939,
+changing only runtime_audio.c among captured inputs. Host-muted real-CoreAudio
+comparison `odin-packed-simd-owner-68811-muted-01` is running with retained PCM
+and display captures; no new sound-quality result yet. Evidence:
+`packed-simd-discovery/checkpoint-owner-68810-silent-02/`,
+`owner-68810-silent-02-visual-review.json`, `silent-audio-pcm-comparison/`,
+`observed-owner-batches/after-silent-68810/`, `audio-quantum-integration/`.
