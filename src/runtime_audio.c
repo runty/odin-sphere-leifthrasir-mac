@@ -41,6 +41,8 @@ typedef struct {
     uint64_t generation;
     pthread_mutex_t lock;
     FILE *dump;                     /* OSL_AUDIO_DUMP: raw converted PCM per port */
+    FILE *guest_tap, *converted_tap; /* optional bounded, paired diagnostic files */
+    uint64_t tap_skip, tap_left;
     int stats;
     uint64_t stat_start_ns, stat_last_ns, stat_max_gap_ns; /* OSL_AUDIO_STATS */
     unsigned stat_starved, stat_buffers; int stat_min_queued;
@@ -54,6 +56,16 @@ static _Atomic int initialized;
 static int sdl_ready=-1;
 static _Atomic size_t buffers_out, ports_opened;
 static uint64_t next_generation; /* table_lock */
+
+/* This opt-in capture is for muted diagnostics, not a real-time audio path.
+ * A block means one non-NULL guest submission, before volume/remapping. */
+static uint64_t tap_number(const char *name, uint64_t fallback, uint64_t limit) {
+    const char *s=getenv(name); char *end=NULL;
+    if (!s || !*s) return fallback;
+    if (*s<'0' || *s>'9') return fallback;
+    unsigned long long value=strtoull(s,&end,10);
+    return *end || value>limit ? fallback : (uint64_t)value;
+}
 
 static uint64_t now_ns(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000000000u+(uint64_t)t.tv_nsec; }
 static void sleep_until(uint64_t deadline) {
@@ -207,6 +219,30 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
         snprintf(path,sizeof(path),"%s.port%d.%dch.%s",dump,id,p->downmix ? 2 : p->channels,p->is_float ? "f32" : "s16");
         p->dump=fopen(path,"wb");
     }
+    const char *tap=getenv("OSL_AUDIO_TAP");
+    const char *tap_mode=getenv("OSL_AUDIO");
+    if (tap && *tap && (!tap_mode || (strcmp(tap_mode,"muted") && strcmp(tap_mode,"none")))) {
+        fprintf(stderr,"Runtime: paired audio diagnostic tap requires muted or none audio\n");
+        tap=NULL;
+    }
+    if (tap && *tap) {
+        char guest[4096], converted[4096];
+        int a=snprintf(guest,sizeof(guest),"%s.port%d.gen%llu.guest.%dch.%s",tap,id,(unsigned long long)p->generation,p->channels,p->is_float ? "f32" : "s16");
+        int b=snprintf(converted,sizeof(converted),"%s.port%d.gen%llu.converted.%dch.%s",tap,id,(unsigned long long)p->generation,p->downmix ? 2 : p->channels,p->is_float ? "f32" : "s16");
+        p->tap_skip=tap_number("OSL_AUDIO_TAP_SKIP",0,10000000);
+        p->tap_left=tap_number("OSL_AUDIO_TAP_BLOCKS",4096,32768);
+        if (a>0 && (size_t)a<sizeof(guest) && b>0 && (size_t)b<sizeof(converted) && p->tap_left) {
+            p->guest_tap=fopen(guest,"wb"); p->converted_tap=fopen(converted,"wb");
+        }
+        if (!p->tap_left) {
+            /* Explicit zero disables this port's capture. */
+        } else if (!p->guest_tap || !p->converted_tap) {
+            if (p->guest_tap) fclose(p->guest_tap);
+            if (p->converted_tap) fclose(p->converted_tap);
+            p->guest_tap=p->converted_tap=NULL; p->tap_left=0;
+            fprintf(stderr,"Runtime: paired audio diagnostic tap unavailable for port %d\n",id);
+        } else printf("Runtime: audio tap port %d: skip %llu, capture %llu blocks of %d frames; guest before volume/remap, converted before pacing/queue\n",id,(unsigned long long)p->tap_skip,(unsigned long long)p->tap_left,p->frames);
+    }
     ++ports_opened;
     printf("Runtime: audio port %d opened (type %d, %d ch, %s, %u frames%s)\n",id,type,p->channels,p->is_float ? "float" : "s16",length,
            p->downmix ? ", downmixed to stereo" : "");
@@ -221,6 +257,8 @@ static ABI int32_t audio_close(int32_t handle) {
         pthread_mutex_lock(&p->lock);
         if (p->stream) SDL_DestroyAudioStream(p->stream);
         if (p->dump) fclose(p->dump);
+        if (p->guest_tap) fclose(p->guest_tap);
+        if (p->converted_tap) fclose(p->converted_tap);
         p->dump=NULL;
         p->stream=NULL; p->used=0;
         pthread_mutex_unlock(&p->lock);
@@ -246,6 +284,22 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
         return OSL_AUDIO_INTERRUPTED;
     }
     if (data) {
+        int tapping=p->guest_tap && p->converted_tap && !p->tap_skip && p->tap_left;
+        if (p->tap_skip) --p->tap_skip;
+        /* Snapshot once so the captured input is exactly what conversion reads,
+         * even when a guest writes the source concurrently. This opt-in path
+         * changes diagnostic timing and is not an audio-quality measurement. */
+        void *tap_copy=NULL;
+        const void *source=data;
+        if (tapping) {
+            tap_copy=malloc(bytes);
+            if (tap_copy) { memcpy(tap_copy,data,bytes); source=tap_copy; }
+            else {
+                fprintf(stderr,"Runtime: paired audio diagnostic tap allocation failed on port %d\n",(int)(p-ports));
+                fclose(p->guest_tap); fclose(p->converted_tap);
+                p->guest_tap=p->converted_tap=NULL; p->tap_left=0; tapping=0;
+            }
+        }
         /* Apply per-channel volume and map PS4 8ch (L R C LFE SL SR BL BR) to SDL 7.1 order. */
         unsigned char converted[2048*8*4];
         static const int remap[8]={0,1,2,3,6,7,4,5};
@@ -253,10 +307,26 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
             int target=p->channels==8 && !p->std_layout ? remap[c] : c;
             size_t from=f*(size_t)p->channels+(size_t)c, to=f*(size_t)p->channels+(size_t)target;
             float gain=(float)p->volume[c]/VOLUME_0DB;
-            if (p->is_float) { float v; memcpy(&v,(const char *)data+from*4,4); v*=gain; memcpy(converted+to*4,&v,4); }
-            else { int16_t v; memcpy(&v,(const char *)data+from*2,2); v=(int16_t)((float)v*gain); memcpy(converted+to*2,&v,2); }
+            if (p->is_float) { float v; memcpy(&v,(const char *)source+from*4,4); v*=gain; memcpy(converted+to*4,&v,4); }
+            else { int16_t v; memcpy(&v,(const char *)source+from*2,2); v=(int16_t)((float)v*gain); memcpy(converted+to*2,&v,2); }
         }
         if (p->downmix) bytes=downmix_stereo(converted,(size_t)p->frames,p->is_float);
+        if (tapping) {
+            size_t guest_bytes=samples*(size_t)p->sample_bytes;
+            if (fwrite(source,1,guest_bytes,p->guest_tap)!=guest_bytes || fwrite(converted,1,bytes,p->converted_tap)!=bytes) {
+                fprintf(stderr,"Runtime: paired audio diagnostic tap write failed on port %d\n",(int)(p-ports));
+                fclose(p->guest_tap); fclose(p->converted_tap);
+                p->guest_tap=p->converted_tap=NULL; p->tap_left=0;
+            } else if (!--p->tap_left) {
+                int guest_error=fclose(p->guest_tap);
+                int converted_error=fclose(p->converted_tap);
+                p->guest_tap=p->converted_tap=NULL;
+                if (guest_error || converted_error)
+                    fprintf(stderr,"Runtime: paired audio diagnostic tap flush failed on port %d\n",(int)(p-ports));
+                else printf("Runtime: paired audio diagnostic tap completed on port %d generation %llu\n",(int)(p-ports),(unsigned long long)p->generation);
+            }
+        }
+        free(tap_copy);
         if (p->dump) fwrite(converted,1,bytes,p->dump);
         if (p->stats) {
             uint64_t now=now_ns();
