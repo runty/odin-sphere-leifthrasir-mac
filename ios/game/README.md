@@ -24,9 +24,41 @@ checks on each CPU and under ASan/UBSan, both SDK fixture compiles, 4,378 full
 dispatch/return-stack/service checks and four worker-cleanup checks. Exact
 transition `rtc-local-clock/verified.json` changes only the clock header and
 runner; CPU/backend/audio runtime and all 68,811 raw entries remain unchanged.
-`odin-packed-simd-owner-68811-rtc-01` is running host-muted with bounded captures
-and direct RTC-use counters. No new runtime result or actual RTC-use acceptance
-is claimed yet. See `rtc-local-clock/` for reference, unit and integration proof.
+The first RTC replay exceeds the 615-second outer watchdog without a final
+report. Its preserved frame 4,250 visibly says **DATA 1 has been loaded**; this
+is partial save-menu evidence, not character gameplay, RTC-counter or cleanup
+acceptance. All 481 transition sources, raw/header hashes and original/copied
+save hashes verify after termination. Archive:
+`packed-simd-discovery/interrupted-owner-68811-rtc-timeout-01/`.
+
+Same-binary, zero-gain replay `odin-owner-68811-rtc-sampled-04` is now running
+under the unchanged 600-second guest budget and a bounded 660-second outer
+watchdog. No rebuild/source/backend change. Direct wrapper 02 exits before the
+guest because it omitted explicit Vulkan paths; corrected wrappers verify and
+supply the same driver/loader. Wrapper 03 later disappears without a final
+receipt at its first sample timeout; its finally block removes the launchd job.
+That cause is inferred from timing/code, since exception stderr was not retained.
+Its preserved images show only the title menu, and no cleanup is accepted.
+
+Wrapper 04 catches sampling failures, records each event and keeps waiting for
+the actual guest. Exact exception-handler fault-injection checks keep a real
+disposable child alive after sampler success, nonzero exit and timeout (six
+checks). Samples allow up to 60 seconds for symbolication. A separate reviewer
+will preserve a completed or partial result without publishing a build-state.
+Evidence: `interrupted-rtc-sampled-03/`, `rtc-sampler-isolation-04.json`.
+The first actual sample succeeds after 30.7 seconds of collection/symbolication;
+the guest remains live. Only three samples per listed thread and a coincident
+long audio gap exclude this profiled run from pacing/quality acceptance.
+Actual RTC calls/successes remain pending until a completed report.
+
+Read-only reuse review of Crown's scalar-width finding identifies four original
+VMULSS memory forms in two numeric routines seen in the native audio profile.
+Existing Odin IR issues four F32 reads at offsets 0/4/8/12, with only the first
+feeding each scalar multiply. Other sampled routines use legitimate packed
+vector transfers. `audio-hot-scalar-audit/` pins original XED decoding, current
+IR, source and Crown reference. This is an isolated-backend candidate, not a
+proven popping cause or measured speedup; no CPU locking/semantics change.
+See `rtc-local-clock/` for the RTC reference, unit and integration proof.
 
 Previous **silent 68,810-entry** replay (`13ee700d`): 337.345
 seconds / 4,532 presentations, explicit missing block `0x10736894`, all
