@@ -1,0 +1,206 @@
+--- a/lib/Arch/X86/Semantics/BINARY.cpp
++++ b/lib/Arch/X86/Semantics/BINARY.cpp
+@@ -18,6 +18,67 @@
+ 
+ namespace {
+ 
++// SSE/AVX arithmetic uses the first NaN operand, quieted, unlike the
++// host ARM signaling-NaN priority. Keep this local to binary SSE arithmetic:
++// x87, min/max, comparisons and conversions have separate rules. This fixes
++// result bits only; it does not implement MXCSR exception/trap bookkeeping.
++template <typename T, typename U>
++ALWAYS_INLINE static T X86SSEBinaryResult(T lhs, T rhs, T result,
++                                       U absolute_mask, U exponent, U quiet,
++                                       U indefinite) {
++  static_assert(sizeof(T) == sizeof(U), "Matching FP and integer widths");
++  U left, right, bits;
++  __builtin_memcpy(&left, &lhs, sizeof(left));
++  __builtin_memcpy(&right, &rhs, sizeof(right));
++  __builtin_memcpy(&bits, &result, sizeof(bits));
++  if ((left & absolute_mask) > exponent) {
++    bits = left | quiet;
++  } else if ((right & absolute_mask) > exponent) {
++    bits = right | quiet;
++  } else if ((bits & absolute_mask) > exponent) {
++    // Invalid arithmetic without a NaN source returns negative indefinite.
++    bits = indefinite;
++  }
++  __builtin_memcpy(&result, &bits, sizeof(result));
++  return result;
++}
++
++ALWAYS_INLINE static float32_t X86SSEBinaryResult(float32_t lhs, float32_t rhs,
++                                               float32_t result) {
++  return X86SSEBinaryResult(lhs, rhs, result, uint32_t(0x7fffffff),
++                            uint32_t(0x7f800000), uint32_t(0x00400000),
++                            uint32_t(0xffc00000));
++}
++
++ALWAYS_INLINE static float64_t X86SSEBinaryResult(float64_t lhs, float64_t rhs,
++                                               float64_t result) {
++  return X86SSEBinaryResult(lhs, rhs, result, uint64_t(0x7fffffffffffffff),
++                            uint64_t(0x7ff0000000000000),
++                            uint64_t(0x0008000000000000),
++                            uint64_t(0xfff8000000000000));
++}
++
++#define MAKE_X86_SSE_BINARY(op) \
++  template <typename T> \
++  ALWAYS_INLINE static T X86SSE##op(T lhs, T rhs) { \
++    return X86SSEBinaryResult(lhs, rhs, F##op(lhs, rhs)); \
++  } \
++  template <typename T> \
++  ALWAYS_INLINE static T X86SSE##op##Vector(const T &lhs, const T &rhs) { \
++    T result{}; \
++    _Pragma("unroll") for (auto i = 0UL; i < NumVectorElems(lhs); ++i) { \
++      result.elems[i] = X86SSE##op(lhs.elems[i], rhs.elems[i]); \
++    } \
++    return result; \
++  }
++
++MAKE_X86_SSE_BINARY(Add)
++MAKE_X86_SSE_BINARY(Sub)
++MAKE_X86_SSE_BINARY(Mul)
++MAKE_X86_SSE_BINARY(Div)
++#undef MAKE_X86_SSE_BINARY
++
++
+ template <typename Tag, typename T>
+ ALWAYS_INLINE static void WriteFlagsIncDec(State &state, T lhs, T rhs, T res) {
+   FLAG_PF = ParityFlag(res);
+@@ -45,13 +106,13 @@
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(ADDPS, D dst, S1 src1, S2 src2) {
+-  FWriteV32(dst, FAddV32(FReadV32(src1), FReadV32(src2)));
++  FWriteV32(dst, X86SSEAddVector(FReadV32(src1), FReadV32(src2)));
+   return memory;
+ }
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(ADDPD, D dst, S1 src1, S2 src2) {
+-  FWriteV64(dst, FAddV64(FReadV64(src1), FReadV64(src2)));
++  FWriteV64(dst, X86SSEAddVector(FReadV64(src1), FReadV64(src2)));
+   return memory;
+ }
+ 
+@@ -59,7 +120,7 @@
+ DEF_SEM(ADDSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
+-  auto sum = FAdd(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
++  auto sum = X86SSEAdd(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, sum);
+   FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+   return memory;
+@@ -69,7 +130,7 @@
+ DEF_SEM(ADDSD, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV64(src1);
+   auto rhs = FReadV64(src2);
+-  auto sum = FAdd(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
++  auto sum = X86SSEAdd(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
+   auto res = FInsertV64(lhs, 0, sum);
+   FWriteV64(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+   return memory;
+@@ -134,13 +195,13 @@
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(SUBPS, D dst, S1 src1, S2 src2) {
+-  FWriteV32(dst, FSubV32(FReadV32(src1), FReadV32(src2)));
++  FWriteV32(dst, X86SSESubVector(FReadV32(src1), FReadV32(src2)));
+   return memory;
+ }
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(SUBPD, D dst, S1 src1, S2 src2) {
+-  FWriteV64(dst, FSubV64(FReadV64(src1), FReadV64(src2)));
++  FWriteV64(dst, X86SSESubVector(FReadV64(src1), FReadV64(src2)));
+   return memory;
+ }
+ 
+@@ -148,7 +209,7 @@
+ DEF_SEM(SUBSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
+-  auto sum = FSub(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
++  auto sum = X86SSESub(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, sum);
+   FWriteV32(dst, res);
+   return memory;
+@@ -158,7 +219,7 @@
+ DEF_SEM(SUBSD, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV64(src1);
+   auto rhs = FReadV64(src2);
+-  auto sum = FSub(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
++  auto sum = X86SSESub(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
+   auto res = FInsertV64(lhs, 0, sum);
+   FWriteV64(dst, res);
+   return memory;
+@@ -336,13 +397,13 @@
+ 
+                             template <typename D, typename S1, typename S2>
+                             DEF_SEM(MULPS, D dst, S1 src1, S2 src2) {
+-  FWriteV32(dst, FMulV32(FReadV32(src1), FReadV32(src2)));
++  FWriteV32(dst, X86SSEMulVector(FReadV32(src1), FReadV32(src2)));
+   return memory;
+ }
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(MULPD, D dst, S1 src1, S2 src2) {
+-  FWriteV64(dst, FMulV64(FReadV64(src1), FReadV64(src2)));
++  FWriteV64(dst, X86SSEMulVector(FReadV64(src1), FReadV64(src2)));
+   return memory;
+ }
+ 
+@@ -350,7 +411,7 @@
+ DEF_SEM(MULSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
+-  auto mul = FMul(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
++  auto mul = X86SSEMul(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, mul);
+   FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+   return memory;
+@@ -360,7 +421,7 @@
+ DEF_SEM(MULSD, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV64(src1);
+   auto rhs = FReadV64(src2);
+-  auto mul = FMul(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
++  auto mul = X86SSEMul(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
+   auto res = FInsertV64(lhs, 0, mul);
+   FWriteV64(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+   return memory;
+@@ -536,13 +597,13 @@
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(DIVPS, D dst, S1 src1, S2 src2) {
+-  FWriteV32(dst, FDivV32(FReadV32(src1), FReadV32(src2)));
++  FWriteV32(dst, X86SSEDivVector(FReadV32(src1), FReadV32(src2)));
+   return memory;
+ }
+ 
+ template <typename D, typename S1, typename S2>
+ DEF_SEM(DIVPD, D dst, const S1 src1, const S2 src2) {
+-  FWriteV64(dst, FDivV64(FReadV64(src1), FReadV64(src2)));
++  FWriteV64(dst, X86SSEDivVector(FReadV64(src1), FReadV64(src2)));
+   return memory;
+ }
+ 
+@@ -550,7 +611,7 @@
+ DEF_SEM(DIVSS, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV32(src1);
+   auto rhs = FReadV32(src2);
+-  auto quot = FDiv(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
++  auto quot = X86SSEDiv(FExtractV32(lhs, 0), FExtractV32(rhs, 0));
+   auto res = FInsertV32(lhs, 0, quot);
+   FWriteV32(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+   return memory;
+@@ -560,7 +621,7 @@
+ DEF_SEM(DIVSD, D dst, S1 src1, S2 src2) {
+   auto lhs = FReadV64(src1);
+   auto rhs = FReadV64(src2);
+-  auto quot = FDiv(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
++  auto quot = X86SSEDiv(FExtractV64(lhs, 0), FExtractV64(rhs, 0));
+   auto res = FInsertV64(lhs, 0, quot);
+   FWriteV64(dst, res);  // SSE: Writes to XMM, AVX: Zero-extends XMM.
+   return memory;
