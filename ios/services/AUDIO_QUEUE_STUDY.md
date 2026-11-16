@@ -17,3 +17,12 @@ Simulator runtime-object compiles also pass. These synthetic, short trials do
 not establish game sound quality, long-run latency, device behavior or the
 cause of the observed guest PCM gaps. No phone or iPad was contacted. Exact
 inputs, logs and checksums are in `/Volumes/office/Build/OdinSphere/audio-queue-study-v1/verification.json`.
+
+On the separate integration branch, the existing headroom change is combined
+with the opt-in paired audio tap and touch telemetry. The 128-case muted dummy
+prefill test, standalone tap test, and a new simultaneous queue-and-tap sample
+test pass with ASan/UBSan. A 160-submission delayed dummy run and iPhoneOS and
+Simulator runtime compiles also pass. Evidence is under
+`/Volumes/office/Build/OdinSphere/audio-queue-integration-v1/`. These checks
+do not establish iPad behavior or audible quality. The eight-buffer setting is
+still a diagnostic option, not a shipping default.
