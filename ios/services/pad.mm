@@ -1,4 +1,5 @@
 #include "pad-apple.h"
+#include "touch-controls.h"
 #include "user.h"
 #import <Foundation/Foundation.h>
 #import <GameController/GameController.h>
@@ -9,6 +10,9 @@
 #include <mutex>
 #include <time.h>
 extern "C" void runtime_user_login(int);
+// Native harnesses link this neutral weak fallback; the engineering app's
+// overlay supplies the strong definition. Script-only tests use neither.
+extern "C" __attribute__((weak,noinline)) void osl_touch_snapshot(PadSample *out) { if(out)*out={}; }
 static constexpr int32_t invalid=static_cast<int32_t>(0x80920001u),
     invalid_handle=static_cast<int32_t>(0x80920003u), already_open=static_cast<int32_t>(0x80920004u),
     not_initialized=static_cast<int32_t>(0x80920005u), user_not_login=static_cast<int32_t>(0x809b0081u);
@@ -91,6 +95,10 @@ struct MobilePad::Impl {
             __block PadSample physical;
             onMain(^{ refresh(); physical=sampleAppleController(controllers[slot]); });
             result=physical;
+            if(slot==0) {
+                PadSample touch;osl_touch_snapshot(&touch);
+                result=osl_merge_touch(result,touch);
+            }
         }
         used_fallback[slot]=!result.connected && bool(fallback);
         if (used_fallback[slot]) result=fallback(slot);

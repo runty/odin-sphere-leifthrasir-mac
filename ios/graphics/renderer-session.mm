@@ -13,6 +13,10 @@
 #include <string>
 #include <thread>
 
+extern "C" bool osl_touch_attach(UIWindow *window);
+extern "C" void osl_touch_deactivate(void);
+extern "C" void osl_touch_detach(void);
+
 extern "C" uint64_t runtime_process_time_counter(){return MobileClock::processCounter();}
 extern "C" uint64_t runtime_process_time_us(){return MobileClock::processTime();}
 extern "C" uint64_t runtime_tsc_frequency(){return MobileClock::frequency;}
@@ -71,6 +75,7 @@ static OdinRendererSession *activeSession;
 }
 - (void)finish:(NSString *)error {
     if(self.finished)return;
+    osl_touch_deactivate();
     self.pendingFinish=YES;
     if(error && !self.pendingError)self.pendingError=error;
     [self.displayLink invalidate];self.displayLink=nil;
@@ -86,6 +91,7 @@ static OdinRendererSession *activeSession;
     if(self.inactiveObserver)[NSNotificationCenter.defaultCenter removeObserver:self.inactiveObserver];
     if(self.activeObserver)[NSNotificationCenter.defaultCenter removeObserver:self.activeObserver];
     self.inactiveObserver=nil;self.activeObserver=nil;
+    osl_touch_detach();
     const uint64_t presented=oslgpu_presented_frames();
     const int stopped=oslgpu_shutdown_main_thread();
     if(self.snapshotPath) {
@@ -171,6 +177,11 @@ static OdinRendererSession *activeSession;
     backgroundTask=UIBackgroundTaskInvalid;
     self.originalWindow=self.scene.keyWindow;
     self.guestBudgetMs=2000;
+    const char *touch=getenv("OSL_TOUCH_CONTROLS");
+    const bool wantsTouch=self.image && touch && !std::strcmp(touch,"1");
+    if(wantsTouch && (getenv("OSL_INPUT_SCRIPT") || (getenv("OSL_INPUT_MODE") && !std::strcmp(getenv("OSL_INPUT_MODE"),"script-only")))) {
+        [self finish:@"Touch controls cannot be combined with scripted input"];return;
+    }
     // Developer-only bounded startup runs. Validate before acquiring signals,
     // initializing SDL or starting a worker; normal launches retain two seconds.
     if(self.image)if(const char *value=getenv("OSL_GUEST_RUN_MS")) {
@@ -229,6 +240,8 @@ static OdinRendererSession *activeSession;
     OslGpuConfig config{"Odin Sphere Bounded Startup",self.image?"CUSA05083":"ODIN_IOS_RENDERER_CHECK",self.profile.fileSystemRepresentation,settings.fileSystemRepresentation,self.sdk,0,960,540};
     if(oslgpu_init(&config)!=0){[self finish:@"Renderer initialization failed"];return;}
     self.initialized=YES;
+    UIWindow *renderWindow=self.scene.keyWindow;
+    if(wantsTouch && (!renderWindow || renderWindow==self.originalWindow || renderWindow.windowScene!=self.scene || !osl_touch_attach(renderWindow))){[self finish:@"Cannot attach touch controls to renderer window"];return;}
     if(!self.image){
         using Open=int32_t(*)(int32_t,int32_t,int32_t,const void *);using Close=int32_t(*)(int32_t);
         auto open=reinterpret_cast<Open>(oslgpu_resolve("Up36PTk687E#libSceVideoOut"));
