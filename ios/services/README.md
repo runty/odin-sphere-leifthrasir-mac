@@ -1,5 +1,28 @@
 # Portable startup services
 
+## CoreAudio output period and quiet diagnosis
+
+On Apple platforms the SDL output requests 256 device frames, matching Odin's
+guest output period and reusing OpenCrown's CoreAudio setting. An explicit
+`SDL_AUDIO_DEVICE_SAMPLE_FRAMES` environment value retains precedence. This
+preference does not guarantee that every audio driver honors the request;
+the actual device rate, channels and frame count are logged after opening.
+
+`OSL_AUDIO=none` uses the existing paced timer sink. For a device-pacing test
+without audible output, `OSL_AUDIO=muted` opens the real SDL stream and sets
+its host gain to zero before resuming. Guest volume and converted PCM dumps
+are unchanged. If setting zero gain fails, the stream is destroyed before
+resume and output uses the timer sink; the failure is explicit in the log.
+
+`test-audio-quantum.c` compiles the actual implementation and submits only
+digital silence through real CoreAudio. Its first argument is the expected
+device frame count; an optional `muted` argument checks zero stream gain.
+The optional `OSL_AUDIO_IMPLEMENTATION` string macro selects an archived
+baseline. Baseline 1,024, candidate 256, explicit 1,024 override and muted
+256 checks pass on the development Mac. Both mobile SDKs compile the changed
+runtime. These checks do not qualify game sound or prove the reported pops
+are fixed; retained game PCM and an eventual audible check remain necessary.
+
 The startup runner now reuses the existing TrophyService, store, metadata and
 archive code instead of inventing trophy results. Its six imported functions
 validate guest pointers and copy scalar/flag outputs through aligned host

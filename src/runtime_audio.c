@@ -74,6 +74,11 @@ static void sleep_until(uint64_t deadline) {
 static int sdl_audio(void) {
     if (sdl_ready<0) {
         const char *mode=getenv("OSL_AUDIO");
+#ifdef __APPLE__
+        /* Match Odin's 256-frame guest output period, as in OpenCrown's
+         * CoreAudio adapter. The explicit SDL environment hint still wins. */
+        SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES,"256");
+#endif
         sdl_ready = (!mode || strcmp(mode,"none")) && SDL_InitSubSystem(SDL_INIT_AUDIO);
         printf("Runtime: audio backend %s\n", sdl_ready ? SDL_GetCurrentAudioDriver() : "timer (silent)");
     }
@@ -175,6 +180,15 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
                    && device.channels==2;
         SDL_AudioSpec spec={p->is_float ? SDL_AUDIO_F32 : SDL_AUDIO_S16, p->downmix ? 2 : p->channels, 48000};
         p->stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,NULL,NULL);
+        const char *mode=getenv("OSL_AUDIO");
+        if (p->stream && mode && !strcmp(mode,"muted")) {
+            /* Keep device pacing and the unmodified PCM dump for diagnosis,
+             * but never resume an audible stream if muting fails. */
+            if (!SDL_SetAudioStreamGain(p->stream,0.0f)) {
+                fprintf(stderr,"Runtime: cannot mute diagnostic audio (%s); using timer sink\n",SDL_GetError());
+                SDL_DestroyAudioStream(p->stream);p->stream=NULL;
+            } else printf("Runtime: host playback muted for diagnostics\n");
+        }
         if (p->stream) {
             SDL_AudioDeviceID output=SDL_GetAudioStreamDevice(p->stream);
             if (SDL_GetAudioDeviceFormat(output,&device,&device_frames))
