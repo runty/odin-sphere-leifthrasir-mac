@@ -788,8 +788,8 @@ around 167 seconds; this is not audible-device or recognizable-scene acceptance.
 Explicit missing-block roots refresh the unchanged OpenCrown CFG validator
 inventory; interrupted worker PCs are excluded as anchors. Three further
 original blocks independently qualify and publish, preserving old raw hashes:
-68,680 available. A controlled same-backend replay requests later display
-frame 3,500 and draw/audio diagnostics; no next result is claimed yet. Latest
+68,680 available. The controlled same-backend replay requested later display
+frame 3,500 and draw/audio diagnostics; its result is recorded below. Prior
 frozen evidence is `packed-simd-discovery/checkpoint-owner-68677/` and adjacent
 `owner-68677-diagnostics-review.json`; new availability is in
 `observed-owner-batches/after-owner-68677/`. First native
@@ -797,3 +797,13 @@ checkpoint evidence is `packed-simd-discovery/checkpoint-first/`; PLT evidence
 is `plt-recovery-after-packed-simd-v2/` and
 `plt-publication-interruption-test-v2/`. The 25-patch candidate and physical
 game update remain separate; recognizable scenes and mobile gameplay stay open.
+
+The 68,680 replay then reaches `0x106e585f` in a different owner after
+196.426 seconds / 3,849 presentations, with all 43 joins, no fault, cleanup
+and unchanged saves. Display frame 3,500 is visibly black; timed draws remain
+clear/depth-only. Converted PCM contains 286,592 nonzero samples, without
+audible-device acceptance. One further original five-instruction block qualifies
+and publishes: 68,681 available. Next bounded replay requests frame 4,000
+and later timed draw captures. Latest evidence:
+`packed-simd-discovery/checkpoint-owner-68680/`,
+`owner-68680-diagnostics-review.json`, `observed-owner-batches/after-owner-68680/`.

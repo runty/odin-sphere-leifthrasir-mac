@@ -7,7 +7,7 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest native execution uses **68,656 entries**, corpus `eb947934`, freshly
+The initial fresh native execution uses **68,656 entries**, corpus `eb947934`, freshly
 lifted with the twenty-two-patch backend: **132.145 seconds / 3,544
 presentations**, 43 joined workers, no memory fault, renderer cleanup and
 unchanged original/copied player saves. It passes the previous VPUNPCKLDQ
@@ -65,12 +65,26 @@ roots and excludes interrupted-worker PCs as anchors. Three original blocks
 qualify through independent XED/Zydis boundaries and publish: **68,680
 available**, execution pending. Reports: `all-owner-cfg-after-packed-68677/`,
 `observed-owner-batches/after-owner-68677/`. No full owner/guard proof is claimed.
-A controlled replay is running under `odin-packed-simd-owner-68680`, core
+That controlled replay used `odin-packed-simd-owner-68680`, core
 `03cd549`, the same twenty-two-patch backend, script and copied profile. It
-requests a later display frame 3,500, timed draw captures and converted PCM,
+requested a later display frame 3,500, timed draw captures and converted PCM,
 with a 600-second ceiling and post-checkpoint freeze. No cross-semantics
 LLVM/object reuse occurs. The twenty-five-patch candidate remains unadopted;
 the installed iPad game is unchanged and recognizable mobile scenes remain open.
+
+That **68,680-entry replay** (`3a5d6f00`) clears the earlier routine and
+reaches `0x106e585f` after 196.426 seconds / 3,849 presentations: 43 joins,
+no fault, cleanup and unchanged save sets, 8,903 valid / 655 active scripted
+reads. Its visually inspected display frame 3,500 remains black, and timed
+draw captures remain clear-compute/depth-only. Converted PCM has 286,592
+nonzero samples over 195.925 seconds, without audible-device acceptance.
+Evidence: `packed-simd-discovery/checkpoint-owner-68680/` and
+`owner-68680-diagnostics-review.json`. A new explicit-root inventory and one
+original five-instruction block qualify/publish with old raw hashes preserved:
+**68,681 available**; `all-owner-cfg-after-packed-68680/`,
+`observed-owner-batches/after-owner-68680/`. The next bounded replay,
+`odin-packed-simd-owner-68681`, requests display frame 4,000 and later timed
+draw captures through 540 seconds. Its execution remains unverified.
 
 Two original local relative tables in owner `0x106e28d0..0x106e37a8` expose
 four and six cases. Their original/prepared bytes, readonly mapping, signed
