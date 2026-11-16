@@ -26,3 +26,11 @@ OpenCrown `a3e07c2` separates diagnostic deadlines from normal play and uses an
 explicit guest stop request (`ios/app.mm`, `ios/game/runtime.cpp`). Odin's
 separate checked runtime and lifecycle require their own qualification. Evidence
 and exact source/test hashes live under `/Volumes/office/Build/OdinSphere/continuous-session-study-v1/`.
+
+The separate mobile-integration branch combines this study with opt-in touch,
+audio headroom, and paired audio diagnostics. Its native boundary fixture
+adds a zero-budget guest cancelled after the real GPU buffer-registration
+gate; a separate XCTest driver backgrounds and reactivates only the disposable
+sandbox. Building a test driver does not establish its runtime result. The
+current lifecycle intentionally cancels on background, so neither driver
+establishes suspend/resume or uninterrupted gameplay.

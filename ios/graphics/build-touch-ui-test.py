@@ -11,6 +11,7 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--root',type=Path,required=True,help='New directory on a mounted external build volume')
 parser.add_argument('--sdk',choices=('iphoneos','iphonesimulator'),required=True)
 parser.add_argument('--team',help='Development team, required only for iPhoneOS signing')
+parser.add_argument('--continuous-game',action='store_true',help='Build the sandbox background/foreground driver instead of fixture gestures')
 args=parser.parse_args()
 root=args.root.resolve();repo=Path(__file__).resolve().parents[2]
 if len(root.parts)<3 or root.parts[1]!='Volumes' or not Path('/Volumes',root.parts[2]).is_mount():parser.error('Use a mounted external build volume')
@@ -23,6 +24,9 @@ files={'ios/graphics/touch-ui-test-fixture.mm':'Source/touch-ui-test-fixture.mm'
        'src/runtime_pad_types.h':'Source/src/runtime_pad_types.h',
        'ios/graphics/touch-ui-test.swift':'UITests/TouchUITests.swift',
        'ios/graphics/touch-ui-test-project.yml':'project.yml'}
+if args.continuous_game:
+ del files['ios/graphics/touch-ui-test.swift']
+ files['ios/graphics/continuous-game-ui-test.swift']='UITests/ContinuousGameUITests.swift'
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 root.mkdir(parents=True)
 for src,dst in files.items():

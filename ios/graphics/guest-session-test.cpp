@@ -34,13 +34,13 @@ int main(int argc,char **argv){
         std::printf("OSL_GUEST_VALIDATE:{\"checks\":%u,\"accepted\":%s}\n",checks,valid?"true":"false");return 0;
     }
     if(argc!=4)return 3;
-    const std::string mode=argv[3];require(mode=="normal" || mode=="extended" || mode=="pre-stop" || mode=="live-stop" || mode=="bridge");
+    const std::string mode=argv[3];require(mode=="normal" || mode=="extended" || mode=="pre-stop" || mode=="live-stop" || mode=="continuous-stop" || mode=="bridge");
     uint32_t sdk=0;require(osl_guest_session_sdk(argv[1],&sdk));
     struct sigaction custom{},old_segv{},old_bus{};custom.sa_handler=previous;sigemptyset(&custom.sa_mask);
     require(!sigaction(SIGSEGV,&custom,&old_segv) && !sigaction(SIGBUS,&custom,&old_bus));
     for(uint32_t invalid:{99U,600001U,UINT32_MAX})require(!osl_guest_session_create_with_budget(invalid));
     for(uint32_t valid:{0U,100U,60001U,600000U}){auto *bounded=osl_guest_session_create_with_budget(valid);require(bounded && osl_guest_session_destroy(bounded));}
-    auto *guest=mode=="extended" ? osl_guest_session_create_with_budget(5000) : osl_guest_session_create();
+    auto *guest=mode=="extended" ? osl_guest_session_create_with_budget(5000) : mode=="continuous-stop" ? osl_guest_session_create_with_budget(0) : osl_guest_session_create();
     auto *other=osl_guest_session_create();require(guest && other);
     require(osl_guest_session_faults_begin(guest));require(!osl_guest_session_faults_begin(guest) && !osl_guest_session_faults_begin(other));
     require(!osl_guest_session_destroy(guest));
@@ -50,7 +50,7 @@ int main(int argc,char **argv){
     oslgpu_register_kernel();const std::string profile=argv[2],settings=profile+"/osl.ini";
     OslGpuConfig config{"Odin guest ownership check","CUSA05083",profile.c_str(),settings.c_str(),sdk,0,960,540};
     require(oslgpu_init(&config)==0);
-    if(mode=="live-stop")require(osl_guest_session_test_gate_after_buffers(guest));
+    if(mode=="live-stop" || mode=="continuous-stop")require(osl_guest_session_test_gate_after_buffers(guest));
     if(mode=="pre-stop")osl_guest_session_request_stop(guest);
     std::atomic<bool> done{false};std::string report;
     std::thread worker([&]{
@@ -61,13 +61,13 @@ int main(int argc,char **argv){
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);bool stopped=false;
     while(!done && std::chrono::steady_clock::now()<deadline){
         require(oslgpu_poll_main_thread()==1);
-        if(mode=="live-stop" && !stopped && osl_guest_session_gpu_calls(guest)>=7){
+        if((mode=="live-stop" || mode=="continuous-stop") && !stopped && osl_guest_session_gpu_calls(guest)>=7){
             require(!osl_guest_session_destroy(guest) && !osl_guest_session_faults_end(guest));
             osl_guest_session_request_stop(guest);stopped=true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    require(done);worker.join();require(mode!="live-stop" || stopped);
+    require(done);worker.join();require((mode!="live-stop" && mode!="continuous-stop") || stopped);
     std::printf("OSL_GUEST_SESSION:%s\n",report.c_str());
     if(mode!="bridge")require(std::strstr(osl_guest_session_run(guest,argv[1]),"Invalid or reused")!=nullptr);
     require(oslgpu_shutdown_main_thread()==0 && !SDL_WasInit(SDL_INIT_VIDEO|SDL_INIT_GAMEPAD));

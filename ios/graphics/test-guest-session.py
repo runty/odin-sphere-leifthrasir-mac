@@ -57,7 +57,7 @@ def run(label,args,prefix):
  if len(records)!=1:raise RuntimeError('Missing '+prefix)
  return records[0],r.stdout
 reports={}
-for mode in ('bridge','normal','extended','pre-stop','live-stop'):
+for mode in ('bridge','normal','extended','pre-stop','live-stop','continuous-stop'):
  profile=out/(mode+'-profile');profile.mkdir()
  result,stdout=run(mode,[root/'image.bin',profile,mode],'OSL_GUEST_SESSION:')
  ownership=[json.loads(s.removeprefix('OSL_GUEST_OWNERSHIP:')) for s in stdout.splitlines() if s.startswith('OSL_GUEST_OWNERSHIP:')];assert len(ownership)==1
@@ -65,7 +65,7 @@ for mode in ('bridge','normal','extended','pre-stop','live-stop'):
   assert result['bridge_checks']>=109 and result['game_frames'] is False
   reports[mode]={'bridge_checks':result['bridge_checks'],'ownership':ownership[0]};continue
  guest=result['guest'];cleanup=result['cleanup'];assert cleanup['passed'] and cleanup['guest_resources_released']
- assert result['execution_budget_ms']==(5000 if mode=='extended' else 2000)
+ assert result['execution_budget_ms']==(5000 if mode=='extended' else 0 if mode=='continuous-stop' else 2000)
  assert guest['trace_count']==len(state['ir']), 'Linked game archive has a different trace corpus'
  assert cleanup['opened']==cleanup['closed'] and cleanup['queues_created']==cleanup['queues_deleted']
  assert guest['fault_address']==0 and guest['workers_started']==guest['workers_finished']
@@ -73,8 +73,8 @@ for mode in ('bridge','normal','extended','pre-stop','live-stop'):
  else:
   assert guest['completed_modules']==2 and cleanup['opened']==1 and cleanup['buffers_registered']==3
   assert cleanup['mapped_before_reset'] and cleanup['unmapped_after_reset']
-  if mode=='live-stop':assert result['test_gate_enabled'] and result['test_gate_reached']
-  if mode=='live-stop' and guest['error']!='guest execution interrupted':
+  if mode in ('live-stop','continuous-stop'):assert result['test_gate_enabled'] and result['test_gate_reached']
+  if mode in ('live-stop','continuous-stop') and guest['error']!='guest execution interrupted':
    # Main-thread polling can deliver cancellation after the CPU has already
    # stopped, while the native report/cleanup is still running. Preserve that
    # outcome rather than misreporting it as an instruction interruption.
