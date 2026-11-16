@@ -807,3 +807,24 @@ and publishes: 68,681 available. Next bounded replay requests frame 4,000
 and later timed draw captures. Latest evidence:
 `packed-simd-discovery/checkpoint-owner-68680/`,
 `owner-68680-diagnostics-review.json`, `observed-owner-batches/after-owner-68680/`.
+
+Actual 68,681 replay (`00d0da75`) subsequently reaches `0x1067aba7`: 187.826
+seconds / 3,920 presentations, all 44 workers joined, no fault, cleanup and
+unchanged saves. Late captures now show textured color draws, including 77
+into a display target, but requested frame 4,000 is not reached. This is command
+progress, with no new image or recognizable-scene acceptance. Converted PCM
+contains 1,144,896 nonzero samples, without audible-device acceptance.
+
+The producer now pins the exact observed joined count (14 generation/rejection
+checks on actual 43/44-worker archives and malformed task-owned copies pass).
+129 further original blocks / 450 instructions qualify and publish, old raw
+hashes preserved: 68,810 available. Core `dcd37af` adds bounded repeat screenshots
+to avoid missing late startup transitions: 85 normal plus 85 sanitizer checks,
+six independent PNG decodes per mode and both SDK header compiles pass. Exact
+source transition verifies all 481 captured inputs and changes only two GPU
+diagnostic files; CPU backend/runtime unchanged. Controlled replay
+`odin-packed-simd-owner-68810` requests display frames 1,000..16,750 every 250,
+at most 64 PNGs, plus timed draws/PCM. Real GPU sequence execution is pending.
+Latest evidence: `packed-simd-discovery/checkpoint-owner-68681/`,
+`owner-68681-diagnostics-review.json`, `observed-owner-batches/after-owner-68681/`,
+`owner-worker-count-tests/`, `snapshot-sequence-tests/`, `snapshot-sequence-integration/`.

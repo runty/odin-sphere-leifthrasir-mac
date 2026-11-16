@@ -7,6 +7,39 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
+Latest completed native replay: **68,681 entries** (`00d0da75`), 187.826
+seconds / 3,920 presentations, stopping explicitly at `0x1067aba7`.
+All **44** workers join, no memory fault, cleanup and original/copied saves
+pass. Scripted valid reads 8,761 / active 693; physical input remains unverified.
+Late captures at 150/180 seconds now contain textured color draws: 77 draws
+into the display target in one capture, multiple textured passes in the other.
+This is GPU command progress, not pixel acceptance. Frame 4,000 is not reached;
+no new image exists. Converted PCM contains 1,144,896 nonzero samples over
+187.477 seconds, zero nonfinite; audible-device acceptance remains open.
+Evidence: `packed-simd-discovery/checkpoint-owner-68681/`,
+`owner-68681-diagnostics-review.json` and `owner-68681-draw-capture/`.
+
+The producer now pins the exact joined count from the actual checkpoint rather
+than carrying its template's literal 43. Fourteen generation/rejection checks
+pass using real 43/44-worker archives and task-owned malformed copies; no
+workers or guest errors are suppressed. The new original owner batch qualifies
+129 blocks / 450 instructions with independent XED/Zydis boundaries and
+publishes with prior raw hashes intact: **68,810 available**. Evidence:
+`owner-worker-count-tests/`, `all-owner-cfg-after-packed-68681/`,
+`observed-owner-batches/after-owner-68681/`.
+
+Controlled replay `odin-packed-simd-owner-68810` is running with core
+`dcd37af`: only two captured GPU sources change to add bounded repeat
+screenshots. Source transition `snapshot-sequence-integration/verified.json`
+pins all 481 captured sources, confirms the CPU backend/runtime unchanged,
+and is checked before startup. Snapshot parsing/schedules/paths/PNG output pass
+85 checks normally and under ASan/UBSan, six independent PNG decodes per mode,
+plus iPhoneOS/Simulator header compilation. Real GPU execution is still pending.
+The run requests display frames 1,000..16,750 every 250 frames (at most 64 PNGs),
+timed draw captures and converted PCM. It remains a bounded diagnostic, with no
+new scene, physical-device or performance acceptance. Installed iPad game and
+player saves stay unchanged; the phone is not contacted.
+
 The initial fresh native execution uses **68,656 entries**, corpus `eb947934`, freshly
 lifted with the twenty-two-patch backend: **132.145 seconds / 3,544
 presentations**, 43 joined workers, no memory fault, renderer cleanup and
@@ -82,9 +115,9 @@ Evidence: `packed-simd-discovery/checkpoint-owner-68680/` and
 `owner-68680-diagnostics-review.json`. A new explicit-root inventory and one
 original five-instruction block qualify/publish with old raw hashes preserved:
 **68,681 available**; `all-owner-cfg-after-packed-68680/`,
-`observed-owner-batches/after-owner-68680/`. The next bounded replay,
-`odin-packed-simd-owner-68681`, requests display frame 4,000 and later timed
-draw captures through 540 seconds. Its execution remains unverified.
+`observed-owner-batches/after-owner-68680/`. That bounded replay,
+`odin-packed-simd-owner-68681`, requested display frame 4,000 and later timed
+draw captures. Its completed result is recorded above.
 
 Two original local relative tables in owner `0x106e28d0..0x106e37a8` expose
 four and six cases. Their original/prepared bytes, readonly mapping, signed
