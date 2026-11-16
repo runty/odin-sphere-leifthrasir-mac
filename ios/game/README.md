@@ -7,7 +7,22 @@ explicitly. No placeholder service reports full-game success.
 
 ## Current engineering status — 2026-11-15
 
-Latest completed native replay: **68,681 entries** (`00d0da75`), 187.826
+Latest completed **silent 68,810-entry** replay (`13ee700d`): 337.345
+seconds / 4,532 presentations, explicit missing block `0x10736894`, all
+44 joins, no memory fault, cleanup and unchanged original/copied saves.
+All 10,180 valid pad reads are scripted, 743 active. Fifteen real PNGs decode;
+visually inspected frames 3,750/4,000/4,500 show CRIWARE startup, the title menu
+and copied Data 1 metadata (00:07:54, 11/13/2026, Normal). This proves visible
+startup/title/load-menu output on the native host, not loaded character progress,
+physical controls or iPad gameplay. The frozen automated report stays unchanged;
+`owner-68810-silent-02-visual-review.json` pins the separate visual observations.
+
+The new original five-instruction block independently qualifies and publishes,
+old raw hashes retained: **68,811 available**, execution unverified. Evidence:
+`packed-simd-discovery/checkpoint-owner-68810-silent-02/`,
+`observed-owner-batches/after-silent-68810/`.
+
+Earlier completed native replay: **68,681 entries** (`00d0da75`), 187.826
 seconds / 3,920 presentations, stopping explicitly at `0x1067aba7`.
 All **44** workers join, no memory fault, cleanup and original/copied saves
 pass. Scripted valid reads 8,761 / active 693; physical input remains unverified.
@@ -28,17 +43,39 @@ publishes with prior raw hashes intact: **68,810 available**. Evidence:
 `owner-worker-count-tests/`, `all-owner-cfg-after-packed-68681/`,
 `observed-owner-batches/after-owner-68681/`.
 
-Controlled replay `odin-packed-simd-owner-68810` is running with core
+The first replay `odin-packed-simd-owner-68810` used core
 `dcd37af`: only two captured GPU sources change to add bounded repeat
 screenshots. Source transition `snapshot-sequence-integration/verified.json`
 pins all 481 captured sources, confirms the CPU backend/runtime unchanged,
 and is checked before startup. Snapshot parsing/schedules/paths/PNG output pass
 85 checks normally and under ASan/UBSan, six independent PNG decodes per mode,
-plus iPhoneOS/Simulator header compilation. Real GPU execution is still pending.
+plus iPhoneOS/Simulator header compilation. Actual sequence output is recorded below.
 The run requests display frames 1,000..16,750 every 250 frames (at most 64 PNGs),
 timed draw captures and converted PCM. It remains a bounded diagnostic, with no
 new scene, physical-device or performance acceptance. Installed iPad game and
 player saves stay unchanged; the phone is not contacted.
+
+The first 68,810 run produces **visually verified native title-menu pixels**
+at frames 4,000 and 4,250: Load selected, then a fade. All fourteen real PNGs
+independently decode; the first twelve are black. This does not qualify full
+rendering, gameplay or physical iPad output. The player reports lots of popping
+static, so the owned process is silenced and terminated after preserving partial
+evidence. Its exit is deliberately incomplete; no clean checkpoint/cleanup is
+claimed. Original/copied saves remain unchanged. Evidence:
+`packed-simd-discovery/interrupted-owner-68810-noise/partial-review.json`.
+
+Silent control `odin-packed-simd-owner-68810-silent-02` completed with explicit
+`OSL_AUDIO=none`, the same core/backend/runtime/script, PCM dumps and bounded
+snapshots. Audible engineering playback stays disabled during investigation.
+An isolated, unadopted audio candidate `6346f40` reuses Crown's 256-frame Apple
+SDL hint and adds `OSL_AUDIO=muted` for zero host gain with real device pacing.
+Zero-PCM CoreAudio tests verify baseline 1,024 / candidate 256 / explicit
+1,024 override and muted 256 with zero gain; both SDK runtime compiles pass.
+This is configuration/mute verification, not proof that game pops are fixed.
+Offline use of the exact host downmix on the timer-sink eight-channel PCM
+confirms source gaps persist without device output: `silent-audio-pcm-comparison/`.
+The buffer preference alone cannot establish a fix.
+Evidence: `audio-quantum-muted-tests/`. The current control remains on dcd37af.
 
 The initial fresh native execution uses **68,656 entries**, corpus `eb947934`, freshly
 lifted with the twenty-two-patch backend: **132.145 seconds / 3,544

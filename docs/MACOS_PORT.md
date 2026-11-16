@@ -824,7 +824,23 @@ six independent PNG decodes per mode and both SDK header compiles pass. Exact
 source transition verifies all 481 captured inputs and changes only two GPU
 diagnostic files; CPU backend/runtime unchanged. Controlled replay
 `odin-packed-simd-owner-68810` requests display frames 1,000..16,750 every 250,
-at most 64 PNGs, plus timed draws/PCM. Real GPU sequence execution is pending.
+at most 64 PNGs, plus timed draws/PCM. Sequence output is recorded below.
 Latest evidence: `packed-simd-discovery/checkpoint-owner-68681/`,
 `owner-68681-diagnostics-review.json`, `observed-owner-batches/after-owner-68681/`,
 `owner-worker-count-tests/`, `snapshot-sequence-tests/`, `snapshot-sequence-integration/`.
+
+The 68,810 sequence yields fourteen independently decoded PNGs. Frames
+4,000/4,250 visibly show the native title menu with Load highlighted, then
+a fade. This is native-host pixel evidence, not physical iPad or full gameplay
+acceptance. The player reports lots of popping static. Only the owned process
+is silenced and terminated after retaining partial images/PCM/log/binary;
+original/copied saves remain unchanged. No clean checkpoint or cleanup is
+claimed. Evidence: `packed-simd-discovery/interrupted-owner-68810-noise/`.
+
+Silent timer control `odin-packed-simd-owner-68810-silent-02` retains PCM and
+display captures on unchanged core dcd37af. Separate unadopted audio candidate
+6346f40 reuses Crown's 256-frame Apple SDL preference and adds verified host
+gain zero for real-device pacing tests. Zero-PCM hardware checks verify baseline
+1,024 / candidate 256 / explicit override and mute; both SDK runtime compiles
+pass. Game audio quality remains unverified. No further audible engineering
+playback is needed during this investigation; installed apps/devices are unchanged.
