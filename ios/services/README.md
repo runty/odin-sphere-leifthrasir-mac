@@ -1,5 +1,23 @@
 # Portable startup services
 
+## Local RTC date for save transitions
+
+The checked clock adapter handles `sceRtcGetCurrentClockLocalTime`, observed
+after selecting the copied Data 1 save. It reuses OpenCrown's portable local
+clock calculation and writes the PS4's 16-byte date layout: year/month/day/
+hour/minute/second as six u16 fields, then u32 microseconds. Host local time
+and its time zone supply the values. An aligned temporary and one checked
+copy support unaligned guest buffers without touching neighboring bytes.
+Null returns `0x80b50002`; nonnull unmapped, protected, truncated or overflowing
+spans follow Odin's existing explicit checked-memory fault policy.
+
+`test-rtc-clock.py --output NEW_EXTERNAL_DIRECTORY --remill BACKEND` passes
+158 checks on arm64, x86-64 and arm64 ASan/UBSan. It checks three process-local
+time zones against real wall time, layout, range boundaries, state preservation
+and invalid pointers. Both mobile SDKs compile the fixture. The full runner's
+service checks also exercise RTC dispatch and the return stack; these checks
+do not substitute for a new real-game save transition.
+
 ## CoreAudio output period and quiet diagnosis
 
 On Apple platforms the SDL output requests 256 device frames, matching Odin's

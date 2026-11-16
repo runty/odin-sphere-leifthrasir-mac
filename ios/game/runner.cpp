@@ -1655,6 +1655,16 @@ static bool serviceChecks() {
     require(call("sceKernelClockGettime",3,UINT64_MAX)==0x80020016u && session.memory.fault.empty());
     require(call("sceKernelGettimeofday",0x200004a1)==0 && call("sceKernelGettimeofday",0)==0x80020016u);
     call("sceKernelGettimeofday",0x20000ff1);require(!session.memory.fault.empty());
+    session.memory.fault={};
+    session.stack[0x4c0]=session.stack[0x4d1]=0xab;
+    require(call("sceRtcGetCurrentClockLocalTime",0x200004c1)==0 && session.state.gpr.rsp.qword==0x20001000);
+    uint16_t date[8]{};std::memcpy(date,session.stack.data()+0x4c1,sizeof(date));
+    uint32_t microseconds=0;std::memcpy(&microseconds,date+6,sizeof(microseconds));
+    require(date[0]>=1970 && date[1]>=1 && date[1]<=12 && date[2]>=1 && date[2]<=31);
+    require(date[3]<=23 && date[4]<=59 && date[5]<=60 && microseconds<1000000);
+    require(session.stack[0x4c0]==0xab && session.stack[0x4d1]==0xab);
+    require(call("sceRtcGetCurrentClockLocalTime",0)==0x80b50002u && session.memory.fault.empty());
+    call("sceRtcGetCurrentClockLocalTime",0x20000ff1);require(!session.memory.fault.empty());
     session.workers.reset();session.memory.fault={};
     active = nullptr;
     std::printf("{\"service_checks\":%u,\"failed\":0,\"game_booted\":false}\n", checks);
