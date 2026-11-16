@@ -393,8 +393,8 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
                      * data still receives exactly its original guest period. */
                     while (queued<low && SDL_PutAudioStreamData(p->stream,silence,(int)bytes)) queued+=(int)bytes;
                 } else {
-                    SDL_PutAudioStreamData(p->stream,silence,low-queued<(int)bytes ? low-queued : (int)bytes);
-                    queued=low;
+                    int refill=low-queued<(int)bytes ? low-queued : (int)bytes;
+                    if (SDL_PutAudioStreamData(p->stream,silence,refill)) queued+=refill;
                 }
             }
             if (!p->window_count || queued<p->window_min) p->window_min=queued;
