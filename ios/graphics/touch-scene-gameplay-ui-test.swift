@@ -34,7 +34,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         let right = base.withOffset(CGVector(dx: 3*unit, dy: height-25-1.8*unit))
         let deadline = Date().addingTimeInterval(840)
         var lastFrame: UInt64 = 0, lastObservation: UInt64 = 0
-        var lastAction = Date.distantPast, confirmedRead = false
+        var lastAction = Date.distantPast, confirmedRead = false, titleAdvances = 0
         while Date() < deadline {
             guard app.state == .runningForeground else { XCTFail("Sandbox left foreground at \(lastFrame)"); return }
             let raw = clock.value as? String ?? ""
@@ -60,8 +60,10 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
                         action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.15)
                     } else if scene.contains("story archive") || scene.contains("text archive") {
                         action = "leave archive"; circle.press(forDuration: 0.3)
+                    } else if titleAdvances > 0 && titleAdvances < 4 && Date().timeIntervalSince(lastAction) >= 8 {
+                        action = "advance saved-game sequence"; cross.press(forDuration: 0.3); titleAdvances += 1
                     } else if scene.contains("load") || scene.contains("data 1") || scene.contains("new game") || scene.contains("yourself") || scene.contains("any butto") || (frame >= 4000 && scene.contains("sega all rights reserved")) {
-                        action = "advance load"; cross.press(forDuration: 0.3)
+                        action = "advance load"; cross.press(forDuration: 0.3); titleAdvances = min(4, titleAdvances + 1)
                     }
                     if !action.isEmpty { print("OSL action at \(observed): \(action)"); lastAction = Date() }
                 }
