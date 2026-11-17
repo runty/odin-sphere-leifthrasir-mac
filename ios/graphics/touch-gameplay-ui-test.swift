@@ -12,9 +12,9 @@ final class OdinTouchGameplayUITests: XCTestCase {
         app.launchEnvironment["OSL_TOUCH_FRAME_CLOCK"] = "1"
         app.launchEnvironment["OSL_GUEST_RUN_MS"] = "600000"
         app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "4650"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "3800"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "35"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "80"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "120"
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         let clock = app.otherElements["touch-frame-clock"]
@@ -27,7 +27,8 @@ final class OdinTouchGameplayUITests: XCTestCase {
         let cross = base.withOffset(CGVector(dx: width-2*unit, dy: height-25-0.95*unit))
         let stick = base.withOffset(CGVector(dx: 2*unit, dy: height-25-1.8*unit))
         let right = base.withOffset(CGVector(dx: 3*unit, dy: height-25-1.8*unit))
-        let deadline = Date().addingTimeInterval(570)
+        let navigationStart = Date()
+        let deadline = navigationStart.addingTimeInterval(570)
         var lastFrame: UInt64 = 0, lastCross: UInt64 = 0
         var advanced = false, entered = false, readCount = 0
         var lastCrossTime = Date.distantPast, lastFrameAdvance = Date()
@@ -44,11 +45,12 @@ final class OdinTouchGameplayUITests: XCTestCase {
             if readCount % 10 == 0 { print("OSL frame clock: \(frame)") }
             let stalled = Date().timeIntervalSince(lastFrameAdvance) >= 12
             let crossDue = frame >= lastCross + 100 || Date().timeIntervalSince(lastCrossTime) >= 8
-            if !advanced && (frame >= 4850 || (frame >= 4650 && stalled)) {
+            let elapsed = Date().timeIntervalSince(navigationStart)
+            if !advanced && (frame >= 4850 || (frame >= 4650 && stalled) || (frame >= 3700 && elapsed >= 330)) {
                 print("OSL action: move right at \(frame)")
                 stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 2)
                 advanced = true
-            } else if advanced && (frame >= 5100 || stalled) && crossDue {
+            } else if advanced && (frame >= 5100 || stalled || elapsed >= 370) && crossDue {
                 print("OSL action: cross at \(frame)")
                 cross.press(forDuration: 0.35); lastCross = frame; lastCrossTime = Date(); entered = true
             } else if frame < 4650 && crossDue {
