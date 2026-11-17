@@ -109,3 +109,23 @@ measures short-run throughput for the tested scene. It does not establish
 whole-game headroom, physical scanout timing, or GPU-only time. The installed
 build uses the normal 60 Hz guest clock. Draw counts varied between routes,
 so these rows cannot isolate an fps gain from inline storage.
+
+### Installed game over a longer session
+
+The installed release ran for 36 min 51 s at native 4K and normal game
+speed. A copied save progressed from the attic through two battlefield
+encounters, a story text, the Act 3 save menu and a rest area. It wrote a
+new Data 2 and exited cleanly. The player's original files retained their
+pre-test hashes.
+
+After the first confirmed encounter, every complete reporting window
+following presentation 12,600 through exit was included. Of 398 windows,
+390 averaged at least 59.5 fps and eight averaged below 59 fps. Median
+window fps was 60.0. The slowest window averaged 47.8 fps and the longest
+single frame took 983.3 ms. The median of the per-window median intervals
+was 16.67 ms. The largest per-window p95 and p99 were 31.85 ms and
+56.58 ms. These are guest flip intervals. This route includes menus,
+movement and combat. The largest stall recorded no shader compilation.
+The earlier release's image-upload diagnostic counted whole guest image
+sizes before skipping unchanged mip levels, and its Mach user/kernel
+breakdown sampled one flip behind its total CPU counter.

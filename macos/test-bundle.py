@@ -93,6 +93,26 @@ def main():
     assert log.count("test frame limit reached (300 frames)") == 2
     assert str(app / "Contents/Frameworks/libvulkan_kosmickrisp.dylib") in log
     assert "CPU triangle fan expansion on" in log and "GPU frame lead bound 2" in log
+    # Select 4K in the disposable profile and check the size reported by
+    # the guest video output. The drawable follows the display and window size.
+    settings = data / "user/osl.ini"
+    original_settings = settings.read_bytes() if settings.exists() else None
+    try:
+        settings.write_text("render_resolution=4K\naspect_ratio=16:9\nwindow_width=960\nwindow_height=540\n")
+        bootstrap_log = data / "logs/bootstrap.log"
+        start_offset = bootstrap_log.stat().st_size
+        check("render-4k", ["--osl-skip-launcher", "--timeout", "90"], {"OSL_TEST_PRESENT_LIMIT": "300"})
+        with bootstrap_log.open("rb") as stream:
+            stream.seek(start_offset)
+            run_log = stream.read().decode(errors="replace")
+        for line in ("render resolution 3840x2160 (4K)", "VideoOut source 3840x2160 pitch 3840",
+                     "present source 3840x2160 -> swapchain", "test frame limit reached (300 frames)"):
+            assert line in run_log, f"4K packaged run missing {line!r}"
+    finally:
+        if original_settings is None:
+            settings.unlink(missing_ok=True)
+        else:
+            settings.write_bytes(original_settings)
     after = hashes(data / "user")
     assert all(after.get(k) == v for k, v in saved.items()), "Copied progress changed during bounded startup checks"
     assert original == hashes(app), "The running bundle was modified"

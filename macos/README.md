@@ -47,6 +47,8 @@ sets Rosetta's AVX environment before executing the translated runner. Normal
 launch opens the existing settings/Play window. Upstream binary updates are
 disabled on Mac. A data-folder lock prevents two normal launches sharing state.
 
+Choose **Graphics → Render resolution → 4K — 3840 × 2160** for native 4K game rendering at 16:9. The Display page controls the window or borderless output. A 1920×1080-point window on the reference Retina display produces a 3840×2160 Metal drawable. A smaller drawable scales the rendered image to fit. See the [combat measurements](PERFORMANCE.md#retina-4k-and-frame-time-headroom-on-the-m5-max).
+
 Use the launcher's package installer for a fresh local library, or configure an
 existing prepared game and image before launch:
 
@@ -102,5 +104,5 @@ On the reference Mac, the installed app rendered all seven launcher pages with
 an empty profile. The packaged installer's `--runner --install` path imported
 the original US 1.00 package. The resulting boot image and eboot matched the
 prepared reference. The visible launcher showed Ready to play, and pressing
-Return started a 300-frame render. The mouse Play action and a separate macOS
-login remain unverified. Use disposable profiles for repeat installation tests.
+Return started a 300-frame render. A separately registered copy with the production runner also passed a mouse
+Play test. Launch from a separate macOS login remains unverified. Use disposable profiles for repeat installation tests.
