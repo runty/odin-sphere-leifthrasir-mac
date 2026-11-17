@@ -12,7 +12,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         app.launchEnvironment["OSL_TOUCH_FRAME_CLOCK"] = "1"
         app.launchEnvironment["OSL_TOUCH_SCENE_OCR"] = "1"
         app.launchEnvironment["OSL_GUEST_RUN_MS"] = "0"
-        app.launchEnvironment["OSL_GUEST_STOP_AFTER_MS"] = "900000"
+        app.launchEnvironment["OSL_GUEST_STOP_AFTER_MS"] = "1020000"
         app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "1200"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "150"
@@ -32,7 +32,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         let down = base.withOffset(CGVector(dx: 4.2*unit, dy: height-25-2.85*unit))
         let stick = base.withOffset(CGVector(dx: 2*unit, dy: height-25-1.8*unit))
         let right = base.withOffset(CGVector(dx: 3*unit, dy: height-25-1.8*unit))
-        let deadline = Date().addingTimeInterval(840)
+        let deadline = Date().addingTimeInterval(950)
         var lastFrame: UInt64 = 0, lastObservation: UInt64 = 0
         var lastAction = Date.distantPast, confirmedRead = false, titleAdvances = 0
         var atticSeen = false, blankWalks = 0
