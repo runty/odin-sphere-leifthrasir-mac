@@ -13,8 +13,9 @@ final class OdinTouchGameplayUITests: XCTestCase {
         app.launchEnvironment["OSL_GUEST_RUN_MS"] = "600000"
         app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "3800"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "35"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "120"
+        // The snapshot parser permits at most 64 images per sequence.
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "45"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "64"
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         let clock = app.otherElements["touch-frame-clock"]
