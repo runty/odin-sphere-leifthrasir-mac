@@ -74,6 +74,22 @@ PY
 else
     rm -f "$build_dir/Source/libodin-startup.a" "$build_dir/Source/memory_probe.mm" "$build_dir/Source/memory.h"
 fi
+runtime_study=none
+if [[ -n ${OSL_EXPERIMENTAL_RUNTIME_MANIFEST:-} ]]; then
+    [[ $game_enabled == 1 ]] || { echo 'Runtime study requires a checked game archive' >&2; exit 1; }
+    runtime_study=$(python3 - "$OSL_EXPERIMENTAL_RUNTIME_MANIFEST" "$source_dir" "$4/$archive_platform/manifest.json" "$probe_sdk" "$build_dir/Source" <<'PYSTUDY'
+from pathlib import Path
+import hashlib,json,shutil,sys
+m=json.loads(Path(sys.argv[1]).read_text());repo=Path(sys.argv[2]);game=json.loads(Path(sys.argv[3]).read_text());sdk=sys.argv[4];out=Path(sys.argv[5]);sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+if m.get('scope')!='isolated runtime research; not production' or m.get('sdk')!=sdk:raise SystemExit('Invalid experimental runtime scope or SDK')
+if m['baseline_runtime_sha256']!=game['runtime_sha256']:raise SystemExit('Runtime study baseline differs from game')
+if sha(repo/'ios/cpu/runtime.h')!=m['header_sha256'] or sha(repo/'ios/cpu/runtime.cpp')!=m['candidate_source_sha256']:raise SystemExit('Runtime study source changed')
+archive=Path(m['archive']);
+if sha(archive)!=m['archive_sha256']:raise SystemExit('Runtime study archive changed')
+shutil.copy2(archive,out/'libodin-runtime.a');print(m['archive_sha256'])
+PYSTUDY
+)
+fi
 gpu_enabled=0
 gpu_dependency=""
 gpu_corpus=none
@@ -238,6 +254,7 @@ $entitlements_setting
         CFBundleDisplayName: $display_name
         OSLBuildID: '$revision'
         OSLGameCorpus: '$game_corpus'
+        OSLExperimentalRuntime: '$runtime_study'
         OSLGPUDriver: '$gpu_corpus'
         OSLSDLArchive: '$sdl_corpus'
         OSLRendererArchive: '$renderer_corpus'
