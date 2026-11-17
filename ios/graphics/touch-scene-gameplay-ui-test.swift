@@ -51,7 +51,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
                 print("OSL scene frame \(observed): \(scene)")
                 if !confirmedRead && Date().timeIntervalSince(lastAction) >= 3 {
                     var action = ""
-                    if scene.contains("do you want to read") && scene.contains("yes") {
+                    if scene.contains("do you want to read") && scene.contains("valkyri") && scene.contains("no") {
                         action = "confirm read"; cross.press(forDuration: 0.3); confirmedRead = true
                     } else if scene.contains("put down book") && scene.contains("read") {
                         action = "read"; up.press(forDuration: 0.3)
