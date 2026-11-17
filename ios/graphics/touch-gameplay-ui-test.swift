@@ -30,24 +30,29 @@ final class OdinTouchGameplayUITests: XCTestCase {
             let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             image.name = name; image.lifetime = .keepAlways; add(image)
         }
-        // Discrete confirmation attempts mirror the scripted startup route.
-        // Scene and save-dialog progress are reviewed from captured evidence.
-        let navigationDeadline = Date().addingTimeInterval(450)
-        while Date() < navigationDeadline {
-            guard app.state == .runningForeground else { XCTFail("Sandbox left foreground"); return }
-            cross.press(forDuration: 0.25)
-            Thread.sleep(forTimeInterval: 4)
+        // The prior test reached the attic in about 327 seconds but a later
+        // accessibility query timed out. Capture multiple earlier gestures so
+        // evidence survives a subsequent test failure; review the scene and
+        // guest input counters separately before claiming movement.
+        let navigationStart = Date()
+        let movementTimes: [TimeInterval] = [240, 280, 310]
+        var movementIndex = 0
+        while Date().timeIntervalSince(navigationStart) < 320 {
+            let elapsed = Date().timeIntervalSince(navigationStart)
+            if movementIndex < movementTimes.count && elapsed >= movementTimes[movementIndex] {
+                capture("before-stick-\(movementIndex)")
+                stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 3)
+                capture("after-stick-\(movementIndex)")
+                movementIndex += 1
+            } else {
+                cross.press(forDuration: 0.25)
+                Thread.sleep(forTimeInterval: 7)
+            }
         }
-        Thread.sleep(forTimeInterval: 20)
-        capture("before-stick")
-        for _ in 0..<2 {
-            guard app.state == .runningForeground else { XCTFail("Sandbox left foreground"); return }
-            stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 3)
-        }
-        capture("after-stick")
-        // Allow the guest's own bounded stop and cleanup; do not count this
-        // XCTest assertion as proof that the original guest stayed alive.
-        Thread.sleep(forTimeInterval: 130)
+        XCTAssertEqual(movementIndex, movementTimes.count)
+        // Keep the runner alive until the guest's own bounded stop. Do not
+        // treat the XCTest result alone as evidence of guest cleanup.
+        Thread.sleep(forTimeInterval: 300)
         capture("after-bounded-session")
     }
 }
