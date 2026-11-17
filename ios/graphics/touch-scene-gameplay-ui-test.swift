@@ -59,10 +59,10 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
                         action = "pick up book"; down.press(forDuration: 0.3)
                     } else if scene.contains("bookshelf") || scene.contains("socrates") {
                         atticSeen = true; blankWalks = 0
-                        action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.5)
+                        action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.9)
                     } else if atticSeen && blankWalks < 4 && scene.filter({ $0.isLetter || $0.isNumber }).count <= 2 {
                         action = "walk right through prompt gap"; blankWalks += 1
-                        stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.5)
+                        stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.9)
                     } else if scene.contains("story archive") || scene.contains("text archive") {
                         action = "leave archive"; circle.press(forDuration: 0.3)
                     } else if titleAdvances > 0 && titleAdvances < 4 && Date().timeIntervalSince(lastAction) >= 8 {
@@ -75,7 +75,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
             } else if observed == 0 && frame < 1200 && Date().timeIntervalSince(lastAction) >= 12 {
                 print("OSL action at \(frame): advance intro"); cross.press(forDuration: 0.25); lastAction = Date()
             }
-            Thread.sleep(forTimeInterval: 2)
+            Thread.sleep(forTimeInterval: 4)
         }
         print("OSL last presented \(lastFrame), observed \(lastObservation), read confirmed \(confirmedRead)")
         XCTAssertGreaterThan(lastObservation, 0, "No captured scene was recognized")
