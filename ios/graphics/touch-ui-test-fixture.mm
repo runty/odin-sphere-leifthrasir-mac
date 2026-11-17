@@ -20,6 +20,21 @@ extern "C" void osl_touch_snapshot(PadSample *);
     self.status=[[UILabel alloc] initWithFrame:CGRectMake(20,40,1000,40)];self.status.textColor=UIColor.whiteColor;self.status.accessibilityIdentifier=@"touch-status";self.status.isAccessibilityElement=YES;[vc.view addSubview:self.status];
     [self.window makeKeyAndVisible];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        const char *scene=getenv("OSL_TOUCH_SCENE_OCR");
+        if(scene && !strcmp(scene,"1")) {
+            NSString *prefix=[NSTemporaryDirectory() stringByAppendingPathComponent:@"touch-ocr-fixture.png"];
+            setenv("OSL_FRAME_SNAPSHOT_PATH",prefix.fileSystemRepresentation,1);
+            UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(600,160)];
+            for(NSNumber *index in @[@2,@100]) {
+                UIImage *image=[renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx){
+                    [UIColor.whiteColor setFill];[ctx fillRect:CGRectMake(0,0,600,160)];
+                    NSString *label=index.intValue==100 ? @"Pick up book" : @"Wrong frame";
+                    [label drawAtPoint:CGPointMake(30,45) withAttributes:@{NSFontAttributeName:[UIFont boldSystemFontOfSize:42],NSForegroundColorAttributeName:UIColor.blackColor}];
+                }];
+                NSString *path=[NSString stringWithFormat:@"%@.frame-%@.png",prefix,index];
+                if(![UIImagePNGRepresentation(image) writeToFile:path atomically:YES]){self.status.text=@"fixture-write-failed";return;}
+            }
+        }
         BOOL attached=osl_touch_attach(self.window);
         if(!attached){self.status.text=@"attach-failed";return;}
         self.timer=[NSTimer scheduledTimerWithTimeInterval:.05 repeats:YES block:^(NSTimer *timer){

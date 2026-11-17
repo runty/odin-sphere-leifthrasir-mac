@@ -1,6 +1,19 @@
 import XCTest
 
 final class OdinTouchUITests: XCTestCase {
+    func testSceneOCRIsOptInAndUsesLatestFrame() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["OSL_TOUCH_FRAME_CLOCK"] = "1"
+        app.launchEnvironment["OSL_TOUCH_SCENE_OCR"] = "1"
+        app.launch()
+        let clock = app.otherElements["touch-frame-clock"]
+        XCTAssertTrue(clock.waitForExistence(timeout: 20))
+        let recognized = NSPredicate(format: "value CONTAINS[cd] %@", "Pick up book")
+        let result = XCTWaiter.wait(for: [expectation(for: recognized, evaluatedWith: clock)], timeout: 45)
+        XCTAssertEqual(result, .completed, "Scene clock value: \(String(describing: clock.value))")
+        XCTAssertTrue((clock.value as? String)?.hasPrefix("4321;100;") == true)
+    }
+
     func testFrameClockIsOptIn() throws {
         let app = XCUIApplication()
         app.launch()

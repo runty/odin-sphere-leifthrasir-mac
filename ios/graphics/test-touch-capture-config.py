@@ -4,9 +4,13 @@ import pathlib
 import re
 import subprocess
 import tempfile
+import sys
 
 root = pathlib.Path(__file__).resolve().parents[2]
-source = (root / 'ios/graphics/touch-gameplay-ui-test.swift').read_text()
+filename = sys.argv[1] if len(sys.argv) > 1 else 'touch-gameplay-ui-test.swift'
+if filename not in ('touch-gameplay-ui-test.swift', 'touch-scene-gameplay-ui-test.swift'):
+    raise SystemExit('unsupported gameplay driver')
+source = (root / 'ios/graphics' / filename).read_text()
 values = {}
 for key in ('AT', 'EVERY', 'COUNT'):
     found = re.findall(r'app\.launchEnvironment\["OSL_FRAME_SNAPSHOT_' + key + r'"\] = "([0-9]+)"', source)

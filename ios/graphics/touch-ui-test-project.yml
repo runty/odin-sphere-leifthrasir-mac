@@ -15,6 +15,7 @@ targets:
         UILaunchScreen: {}
     dependencies:
       - sdk: UIKit.framework
+      - sdk: Vision.framework
       - sdk: Foundation.framework
       - sdk: QuartzCore.framework
     settings:

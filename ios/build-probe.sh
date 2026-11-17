@@ -183,7 +183,7 @@ PYGUEST
     for library in oslgpu miniz sirit osl_keys fmt xxhash Zycore Zydis png16; do
         renderer_dependency+=$'      - framework: Source/lib'"$library"$'.a\n        embed: false\n'
     done
-    renderer_dependency+=$'      - sdk: libz.tbd'
+    renderer_dependency+=$'      - sdk: libz.tbd\n      - sdk: Vision.framework'
     renderer_dependency+=$'\n      - framework: Source/libodin-gpu-guest.a\n        embed: false'
     renderer_enabled=1
 else

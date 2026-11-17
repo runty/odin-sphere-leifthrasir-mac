@@ -15,13 +15,15 @@ parser.add_argument('--team',help='Development team, required only for iPhoneOS 
 group=parser.add_mutually_exclusive_group()
 group.add_argument('--continuous-game',action='store_true',help='Build the sandbox background/foreground driver instead of fixture gestures')
 group.add_argument('--gameplay-test',action='store_true',help='Build the sandbox touch-gameplay driver; never launches it')
+group.add_argument('--scene-gameplay-test',action='store_true',help='Build the scene-guided sandbox driver; never launches it')
 args=parser.parse_args()
 root=args.root.resolve();repo=Path(__file__).resolve().parents[2]
 if len(root.parts)<3 or root.parts[1]!='Volumes' or not Path('/Volumes',root.parts[2]).is_mount():parser.error('Use a mounted external build volume')
 if root.exists():parser.error('Output directory must not already exist')
 if args.sdk=='iphoneos' and not args.team:parser.error('--team is required for device signing')
-if args.gameplay_test:
- subprocess.run([sys.executable,str(repo/'ios/graphics/test-touch-capture-config.py')],check=True)
+if args.gameplay_test or args.scene_gameplay_test:
+ source='touch-scene-gameplay-ui-test.swift' if args.scene_gameplay_test else 'touch-gameplay-ui-test.swift'
+ subprocess.run([sys.executable,str(repo/'ios/graphics/test-touch-capture-config.py'), source],check=True)
 files={'ios/graphics/touch-ui-test-fixture.mm':'Source/touch-ui-test-fixture.mm',
        'ios/graphics/touch-overlay.mm':'Source/touch-overlay.mm',
        'ios/services/touch-controls.h':'Source/ios/services/touch-controls.h',
@@ -35,6 +37,9 @@ if args.continuous_game:
 if args.gameplay_test:
  del files['ios/graphics/touch-ui-test.swift']
  files['ios/graphics/touch-gameplay-ui-test.swift']='UITests/TouchGameplayUITests.swift'
+if args.scene_gameplay_test:
+ del files['ios/graphics/touch-ui-test.swift']
+ files['ios/graphics/touch-scene-gameplay-ui-test.swift']='UITests/TouchGameplayUITests.swift'
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 root.mkdir(parents=True)
 for src,dst in files.items():
@@ -48,7 +53,8 @@ command+=['build-for-testing']
 with (root/'build.log').open('w') as log:subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True)
 tests=list((root/'DerivedData/Build/Products').glob('*.xctestrun'));assert len(tests)==1
 assert all(sha(repo/src)==sha(root/dst) for src,dst in files.items())
-scope=('sandbox gameplay UI driver build only' if args.gameplay_test else
+scope=('sandbox scene-guided UI driver build only' if args.scene_gameplay_test else
+       'sandbox gameplay UI driver build only' if args.gameplay_test else
        'sandbox lifecycle UI driver build only' if args.continuous_game else
        'standalone UI fixture build only')
 result={'built':True,'scope':scope+'; no device contact or gameplay','sdk':args.sdk,'xctestrun':str(tests[0]),'sources':{src:sha(repo/src) for src in files},'build_log_sha256':sha(root/'build.log'),'phone_contacted':False,'device_contacted':False}

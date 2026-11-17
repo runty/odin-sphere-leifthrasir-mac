@@ -1,6 +1,8 @@
 // Development overlay adapted from OpenCrown ios/platform/platform.mm (9ca8945).
 // UIKit is main-thread only; the guest samples the mutex-protected value object.
 #import <UIKit/UIKit.h>
+#import <Vision/Vision.h>
+#import <QuartzCore/QuartzCore.h>
 #include "ios/services/touch-controls.h"
 #include <algorithm>
 #include <cmath>
@@ -15,6 +17,13 @@ extern "C" void osl_touch_snapshot(PadSample *out) { if(out)*out=touchModel.samp
 
 @interface OdinTouchOverlay : UIView
 @property(nonatomic) BOOL exposesFrameClock;
+@property(nonatomic) BOOL exposesSceneText;
+@property(nonatomic) BOOL sceneOCRPending;
+@property(nonatomic) CFTimeInterval sceneOCRLastStart;
+@property(nonatomic,copy) NSString *sceneOCRFile;
+@property(nonatomic,copy) NSString *sceneOCRText;
+@property(nonatomic) unsigned long long sceneOCRFrame;
+- (void)scheduleSceneOCR;
 @end
 @implementation OdinTouchOverlay
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -24,6 +33,8 @@ extern "C" void osl_touch_snapshot(PadSample *out) { if(out)*out=touchModel.samp
         self.accessibilityLabel=@"Game touch controls";
         const char *clock=std::getenv("OSL_TOUCH_FRAME_CLOCK");
         self.exposesFrameClock=clock && !std::strcmp(clock,"1");
+        const char *scene=std::getenv("OSL_TOUCH_SCENE_OCR");
+        self.exposesSceneText=self.exposesFrameClock && scene && !std::strcmp(scene,"1");
         if(self.exposesFrameClock){self.isAccessibilityElement=YES;self.accessibilityIdentifier=@"touch-frame-clock";}
     }
     return self;
@@ -31,7 +42,58 @@ extern "C" void osl_touch_snapshot(PadSample *out) { if(out)*out=touchModel.samp
 - (NSString *)accessibilityValue {
     if(!self.exposesFrameClock)return [super accessibilityValue];
     if(!oslgpu_presented_frames)return @"unavailable";
-    return [NSString stringWithFormat:@"%llu",(unsigned long long)oslgpu_presented_frames()];
+    const unsigned long long frame=(unsigned long long)oslgpu_presented_frames();
+    if(!self.exposesSceneText)return [NSString stringWithFormat:@"%llu",frame];
+    [self scheduleSceneOCR];
+    return [NSString stringWithFormat:@"%llu;%llu;%@",frame,self.sceneOCRFrame,self.sceneOCRText ?: @""];
+}
+// Diagnostic only: one bounded background recognition at a time. The path is
+// the renderer's private capture prefix, never a general file picker.
+- (void)scheduleSceneOCR {
+    const CFTimeInterval now=CACurrentMediaTime();
+    if(self.sceneOCRPending || now-self.sceneOCRLastStart<2)return;
+    const char *raw=std::getenv("OSL_FRAME_SNAPSHOT_PATH");
+    if(!raw || !*raw)return;
+    NSString *prefix=[NSString stringWithUTF8String:raw];
+    if(!prefix)return;
+    self.sceneOCRPending=YES;self.sceneOCRLastStart=now;
+    NSString *previous=self.sceneOCRFile;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
+        @autoreleasepool {
+            NSString *dir=prefix.stringByDeletingLastPathComponent;
+            NSString *base=[prefix.lastPathComponent stringByAppendingString:@".frame-"];
+            NSArray<NSString *> *names=[NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:NULL];
+            NSString *latest=nil;unsigned long long best=0;
+            for(NSString *name in names) {
+                if(![name hasPrefix:base] || ![name hasSuffix:@".png"] || name.length<=base.length+4)continue;
+                NSString *number=[name substringWithRange:NSMakeRange(base.length,name.length-base.length-4)];
+                NSScanner *scanner=[NSScanner scannerWithString:number];unsigned long long n=0;
+                if(![scanner scanUnsignedLongLong:&n] || !scanner.isAtEnd || n<=best)continue;
+                best=n;latest=name;
+            }
+            NSString *text=nil;
+            if(latest && ![latest isEqualToString:previous]) {
+                VNRecognizeTextRequest *request=[VNRecognizeTextRequest new];
+                request.recognitionLevel=VNRequestTextRecognitionLevelFast;
+                request.usesLanguageCorrection=NO;
+                NSURL *url=[NSURL fileURLWithPath:[dir stringByAppendingPathComponent:latest]];
+                NSError *error=nil;
+                VNImageRequestHandler *handler=[[VNImageRequestHandler alloc] initWithURL:url options:@{}];
+                if([handler performRequests:@[request] error:&error]) {
+                    NSMutableArray<NSString *> *parts=[NSMutableArray array];
+                    for(VNRecognizedTextObservation *observation in request.results) {
+                        VNRecognizedText *candidate=[observation topCandidates:1].firstObject;
+                        if(candidate.string.length)[parts addObject:candidate.string];
+                    }
+                    text=[parts componentsJoinedByString:@" | "];
+                }
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if(text){self.sceneOCRFile=latest;self.sceneOCRText=text;self.sceneOCRFrame=best;}
+                self.sceneOCRPending=NO;
+            });
+        }
+    });
 }
 - (void)layoutSubviews {
     [super layoutSubviews];UIEdgeInsets s=self.safeAreaInsets;
