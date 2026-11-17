@@ -158,8 +158,7 @@ public:
 
     const ComputePipeline* GetComputePipeline();
 
-    using Result = std::tuple<const Shader::Info*, vk::ShaderModule,
-                              std::optional<Shader::Gcn::FetchShaderData>, u64>;
+    using Result = std::tuple<const Shader::Info*, vk::ShaderModule, u64>;
     Result GetProgram(PipelineSelection& sel, Shader::HwStage stage, Shader::SwStage l_stage,
                       const Shader::ShaderParams& params, Shader::Backend::Bindings& binding);
 

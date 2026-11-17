@@ -315,7 +315,7 @@ int VideoOutDriver::ChangeBufferAttribute(VideoOutPort* port, s32 attributeIndex
     return 0;
 }
 
-void VideoOutDriver::Flip(const Request& req) {
+void VideoOutDriver::Flip(const Request& req, u64 vblank_count) {
     // Update HDR status before presenting, then present the frame on the swap thread.
     RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr] {
         presenter->SetHDR(hdr);
@@ -352,6 +352,9 @@ void VideoOutDriver::Flip(const Request& req) {
         // Every frame over 40 ms after the first, at most 10 per 5 s window.
         static bool primed = false;
         static u32 stalls_shown = 0;
+        static u64 previous_vblank = vblank_count;
+        const u64 elapsed_vblanks = vblank_count - previous_vblank;
+        previous_vblank = vblank_count;
         const bool stall = primed && frame_ms > 40.0 && stalls_shown < 10;
         stalls_shown += stall;
         primed = true;
@@ -372,6 +375,8 @@ void VideoOutDriver::Flip(const Request& req) {
         }
         std::copy(std::begin(wait_now), std::end(wait_now), std::begin(last_wait));
         if (stall) {
+            std::printf("       vblank ticks since prior flip: %llu\n",
+                        static_cast<unsigned long long>(elapsed_vblanks));
             std::printf("       fault handlers: %llu read faults %.1f ms, write faults %.1f ms\n",
                         static_cast<unsigned long long>(rf - last_rf), (trf - last_trf) / 1e6,
                         (twf - last_twf) / 1e6);
@@ -391,8 +396,7 @@ void VideoOutDriver::Flip(const Request& req) {
                               OslStats::t_staging.load(), OslStats::t_host_wait.load()};
         static u64 last_draws, last_dispatches, last_subs, last_sys, last_user, last_invol, last_vol;
         const u64 draws = OslStats::draws.load(), dispatches = OslStats::dispatches.load(),
-                  subs = OslStats::submissions.load(), sys_us = OslStats::gpu_sys_us.load(),
-                  user_us = OslStats::gpu_user_us.load(), invol = OslStats::gpu_invol_switches.load(),
+                  subs = OslStats::submissions.load(), invol = OslStats::gpu_invol_switches.load(),
                   vol = OslStats::gpu_vol_switches.load();
         u64 gpu_ns = 0;
 #ifdef _WIN32
@@ -411,6 +415,7 @@ void VideoOutDriver::Flip(const Request& req) {
             gpu_ns = ns(kernel) + ns(user);
         }
 #elif defined(__APPLE__)
+        gpu_ns = last_gpu_ns; // Retain the last valid sample if the Mach query fails.
         thread_basic_info_data_t info{};
         mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
         const auto thread = static_cast<thread_t>(OslStats::gpu_thread_id.load());
@@ -429,6 +434,7 @@ void VideoOutDriver::Flip(const Request& req) {
             gpu_ns = u64(ts.tv_sec) * 1000000000ull + u64(ts.tv_nsec);
         }
 #endif
+        const u64 user_us = OslStats::gpu_user_us.load(), sys_us = OslStats::gpu_sys_us.load();
         const u64 images = OslStats::images_registered.load();
         const u64 image_bytes = OslStats::image_upload_bytes.load();
         const u64 buffer_bytes = OslStats::buffer_upload_bytes.load();
@@ -744,7 +750,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
                     }
                 }
             } else {
-                Flip(request);
+                Flip(request, vblank_count);
                 FRAME_END;
             }
         }

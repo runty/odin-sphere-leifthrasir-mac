@@ -129,3 +129,19 @@ movement and combat. The largest stall recorded no shader compilation.
 The earlier release's image-upload diagnostic counted whole guest image
 sizes before skipping unchanged mip levels, and its Mach user/kernel
 breakdown sampled one flip behind its total CPU counter.
+
+The cached shader-module lookup now copies fetch metadata directly into the
+owning pipeline selection, including the locked draw-preparation worker
+path. With four attributes, five alternating Rosetta fixture rounds of two
+million selections each had median costs of 21.04 ns through the old tuple
+and 9.30 ns with the direct copy. Both paths returned identical attributes
+at sizes 0, 1, 4, 8, 9 and 32. Whole-frame results were close: before and
+after builds each had median 75.0 fps, a lowest window of 74.6 fps and a
+40.0 ms worst frame on the reloaded Act 3 field. Per-window median command
+CPU costs were 4.19 and 4.17 µs/draw. The 11 and 12 complete five-second
+windows had different draw counts. The fixture establishes the copy-path
+saving. The gameplay data shows no clear frame-rate difference.
+
+For diagnosis, long-frame reports now include elapsed guest vblank ticks.
+The macOS CPU-time breakdown uses the Mach sample for the same flip, and
+the upload counter only includes selected mip-level spans.
