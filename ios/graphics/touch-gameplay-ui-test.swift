@@ -11,9 +11,12 @@ final class OdinTouchGameplayUITests: XCTestCase {
         app.launchEnvironment["OSL_TOUCH_CONTROLS"] = "1"
         app.launchEnvironment["OSL_GUEST_RUN_MS"] = "600000"
         app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "5000"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "200"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "16"
+        // XCTest screenshots omit the Metal surface on this iPad. Save a bounded
+        // renderer sequence around the observed stick gestures and review it
+        // against gesture timestamps; this adds diagnostic GPU waits.
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "4000"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "20"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "64"
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         Thread.sleep(forTimeInterval: 12)
