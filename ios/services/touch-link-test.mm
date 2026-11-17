@@ -2,14 +2,24 @@
 #include "pad.h"
 #include "user.h"
 #import <Foundation/Foundation.h>
+#import <GameController/GameController.h>
+#import <objc/runtime.h>
 #include <cassert>
 #include <cstdio>
 static bool active=true;
+static unsigned enumerations=0;
+static IMP originalControllers=nullptr;
+static NSArray *countControllers(id self,SEL command) {
+    ++enumerations;
+    return ((NSArray *(*)(id,SEL))originalControllers)(self,command);
+}
 extern "C" void osl_touch_snapshot(PadSample *out) {
     if(out){*out={};out->connected=true;out->identity=0x1234;if(active){out->buttons=BTN_CROSS;out->left_x=.9f;}}
 }
 int main() {
     @autoreleasepool {
+        Method method=class_getClassMethod([GCController class],@selector(controllers));
+        assert(method);originalControllers=method_setImplementation(method,(IMP)countControllers);
         osl_aot_user_reset();
         MobilePad merged;assert(merged.initialize()==0);assert(merged.open(1,0,0)==1);
         PadData value{};assert(merged.read(1,&value)==0 && value.connected && (value.buttons&BTN_CROSS));
@@ -18,11 +28,22 @@ int main() {
         assert(merged.readStats().touch==1);
         assert(merged.read(1,&value)==0 && value.connected && !(value.buttons&BTN_CROSS));
         stats=merged.readStats();assert(stats.touch==2 && stats.touch_active==1 && stats.primary==2);
+        // The hook must observe the default GameController path before checking suppression.
+        assert(enumerations>0);
+        // Touch-only retains the overlay, while never enumerating physical controllers.
+        active=true;enumerations=0;MobilePad onlyTouch({}, {}, false);
+        assert(onlyTouch.initialize()==0 && onlyTouch.open(1,0,0)==1);
+        assert(onlyTouch.read(1,&value)==0 && value.connected && (value.buttons&BTN_CROSS));
+        assert(value.left_x>128 && enumerations==0);
+        uint8_t motors[2]={1,1};assert(onlyTouch.vibration(1,motors)==0 && enumerations==0);
+        active=false;assert(onlyTouch.read(1,&value)==0 && !(value.buttons&BTN_CROSS));
+        assert(onlyTouch.readStats().touch==2 && onlyTouch.readStats().touch_active==1 && enumerations==0);
         // An injected/script-only primary must not mix in the overlay.
         MobilePad scripted([](unsigned slot){PadSample p;if(!slot){p.connected=true;p.identity=9;p.buttons=BTN_SQUARE;}return p;});
         assert(scripted.initialize()==0);assert(scripted.open(1,0,0)==1);
         assert(scripted.read(1,&value)==0 && value.connected && value.buttons==BTN_SQUARE);
         stats=scripted.readStats();assert(stats.touch==0 && stats.touch_active==0);
-        std::puts("Strong overlay symbol merged; injected script remains isolated");
+        method_setImplementation(method,originalControllers);
+        std::puts("Strong overlay merged; touch-only skips controller enumeration; script isolated");
     }
 }
