@@ -37,7 +37,8 @@ final class OdinTouchGameplayUITests: XCTestCase {
         }
         // Time these movements around the observed attic transition. Alternate
         // directions without intervening Cross presses, then try Up at the
-        // bookshelf and continue the story. The route is heuristic: images and
+        // bookshelf and continue the story. A short left hold avoids the attic exit
+        // seen after the previous five-second hold. The route is heuristic: images and
         // guest telemetry must be reviewed before claiming any scene or input.
         let navigationStart = Date()
         var didRight = false, didLeft = false, didUp = false
@@ -49,7 +50,7 @@ final class OdinTouchGameplayUITests: XCTestCase {
                 capture("after-right"); didRight = true
             } else if didRight && !didLeft && elapsed >= 300 {
                 capture("before-left")
-                stick.press(forDuration: 0.1, thenDragTo: left, withVelocity: .slow, thenHoldForDuration: 5)
+                stick.press(forDuration: 0.1, thenDragTo: left, withVelocity: .slow, thenHoldForDuration: 0.8)
                 capture("after-left"); didLeft = true
             } else if didLeft && !didUp && elapsed >= 320 {
                 capture("before-up")
