@@ -8,8 +8,34 @@
 #include <limits>
 #include <mutex>
 #include <stdexcept>
+#include <climits>
+#ifdef __APPLE__
+#include <os/lock.h>
+#endif
 
-static std::recursive_mutex guestAtomics;
+#ifdef __APPLE__
+// Isolated performance study: preserve the single global recursive critical
+// section, but keep this one lock's recursion count in thread-local storage.
+// No ownership, mapping, alias or guest atomicity rules are relaxed.
+class GuestAtomicMutex {
+    os_unfair_lock lock_=OS_UNFAIR_LOCK_INIT;
+    static thread_local unsigned depth_;
+public:
+    void lock() {
+        if(depth_==UINT_MAX) std::terminate();
+        if(depth_) ++depth_;
+        else { os_unfair_lock_lock(&lock_); depth_=1; }
+    }
+    void unlock() {
+        if(!depth_) std::terminate();
+        if(--depth_==0) os_unfair_lock_unlock(&lock_);
+    }
+};
+thread_local unsigned GuestAtomicMutex::depth_=0;
+#else
+using GuestAtomicMutex=std::recursive_mutex;
+#endif
+static GuestAtomicMutex guestAtomics;
 namespace {
 // OpenCrown's bounded, strongly-owned descriptor cache, adapted for Odin's
 // removable/protected mappings. Never cache the external direct-memory table:
@@ -73,7 +99,7 @@ Memory *dispatch(State &s, uint64_t pc, Memory *m) {
 void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writable) {
     if (!data || !size || size > std::numeric_limits<uint64_t>::max() - base)
         throw std::runtime_error("invalid guest mapping");
-    std::lock_guard<std::recursive_mutex> access(guestAtomics);
+    std::lock_guard<GuestAtomicMutex> access(guestAtomics);
     std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
     for (const auto &r : m.mappings->regions)
         if (base < r.base + r.size && r.base < base + size)
@@ -82,7 +108,7 @@ void mapRegion(Memory &m, uint64_t base, uint8_t *data, size_t size, bool writab
     m.mappings->generation.fetch_add(1,std::memory_order_release);
 }
 bool unmapRegion(Memory &m,uint64_t base) {
-    std::lock_guard<std::recursive_mutex> access(guestAtomics);
+    std::lock_guard<GuestAtomicMutex> access(guestAtomics);
     std::unique_lock<std::shared_mutex> lock(m.mappings->mutex);
     auto &regions=m.mappings->regions;
     for(auto it=regions.begin();it!=regions.end();++it)if(it->base==base){regions.erase(it);m.mappings->generation.fetch_add(1,std::memory_order_release);return true;}
