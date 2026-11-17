@@ -56,3 +56,12 @@ connected, the latter the subset with a virtual button, quantized stick or
 trigger active. They do not count controller-info queries, and injected primary
 sources do not include the overlay. These counters establish sampled virtual
 input, not that a particular game action occurred or that controls feel good.
+
+The isolated `touch-only` diagnostic input mode requires `OSL_TOUCH_CONTROLS=1`
+and rejects an input script. It keeps the overlay and skips physical controller
+enumeration, sampling and vibration; normal fallback and script-only modes keep
+their existing behavior. The guest report identifies the mode and disabled
+physical source. `ios/services/test-touch-only.py` tests the real `MobilePad`
+with a strong overlay and a controller-enumeration hook; the default path must
+exercise the hook, and touch-only must not. This is a diagnostic for input
+attribution, not an ergonomic or full-game acceptance test.

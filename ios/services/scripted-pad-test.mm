@@ -76,6 +76,10 @@ int main(int argc,char **argv) {
     rejects([&]{ScriptedPad::selectPrimary("script-only",false);},"requires OSL_INPUT_SCRIPT");
     rejects([&]{ScriptedPad::selectPrimary("",true);},"OSL_INPUT_MODE");
     rejects([&]{ScriptedPad::selectPrimary("SCRIPT-ONLY",true);},"OSL_INPUT_MODE");
+    rejects([&]{ScriptedPad::selectPrimary("touch-only",false,false);},"requires touch controls");
+    rejects([&]{ScriptedPad::selectPrimary("touch-only",true,true);},"requires touch controls");
+    auto touchOnly=ScriptedPad::selectPrimary("touch-only",false,true);
+    require(!touchOnly.source && !touchOnly.physical_enabled && std::string(touchOnly.name)=="touch-only");
     auto exclusive=ScriptedPad::selectPrimary("script-only",true);
     require(exclusive.source && !exclusive.physical_enabled && std::string(exclusive.name)=="script-only");
     require(!exclusive.source(0).connected && !exclusive.source(3).connected);

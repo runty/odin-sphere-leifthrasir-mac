@@ -9,6 +9,7 @@ final class OdinTouchGameplayUITests: XCTestCase {
         app.launchEnvironment["OSL_AUDIO"] = "muted"
         app.launchEnvironment["OSL_AUDIO_STATS"] = "1"
         app.launchEnvironment["OSL_TOUCH_CONTROLS"] = "1"
+        app.launchEnvironment["OSL_INPUT_MODE"] = "touch-only"
         app.launchEnvironment["OSL_GUEST_RUN_MS"] = "600000"
         app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
         // XCTest screenshots omit the Metal surface on this iPad. Save a bounded

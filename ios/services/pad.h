@@ -24,7 +24,8 @@ public:
     // uses the default GameController source, without discovering/pairing UI.
     // An explicit startup-test fallback supplies input only without a primary pad.
     explicit MobilePad(std::function<PadSample(unsigned)> source={},
-                       std::function<PadSample(unsigned)> fallback={});
+                       std::function<PadSample(unsigned)> fallback={},
+                       bool physical_enabled=true);
     ~MobilePad();
     int32_t initialize();
     int32_t open(int32_t user,int32_t type,int32_t index);

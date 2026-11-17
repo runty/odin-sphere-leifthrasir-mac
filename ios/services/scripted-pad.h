@@ -32,10 +32,16 @@ public:
     };
     // Explicit engineering mode: suppress physical sampling only for an
     // immutable loaded script. Unset/fallback keeps normal controller priority.
-    static PrimaryMode selectPrimary(const char *mode,bool script_loaded) {
+    static PrimaryMode selectPrimary(const char *mode,bool script_loaded,bool touch_enabled=false) {
         if(!mode || std::string(mode)=="fallback")return {};
+        if(std::string(mode)=="touch-only") {
+            if(script_loaded || !touch_enabled)
+                throw InputScriptError("touch-only requires touch controls and no input script");
+            PrimaryMode result; result.name="touch-only"; result.physical_enabled=false;
+            return result;
+        }
         if(std::string(mode)!="script-only")
-            throw InputScriptError("OSL_INPUT_MODE must be fallback or script-only");
+            throw InputScriptError("OSL_INPUT_MODE must be fallback, script-only or touch-only");
         if(!script_loaded)
             throw InputScriptError("script-only input requires OSL_INPUT_SCRIPT");
         PrimaryMode result;

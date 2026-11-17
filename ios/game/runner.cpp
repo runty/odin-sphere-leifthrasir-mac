@@ -95,8 +95,9 @@ struct Session {
     explicit Session(const MobileGpuServices *renderer=nullptr)
         : scripted_pad(ScriptedPad::load(std::getenv("OSL_INPUT_SCRIPT"),
               renderer && renderer->frame_count ? std::function<uint64_t()>([renderer]{return renderer->frame_count(renderer->context);}) : std::function<uint64_t()>{})),
-          input_mode(ScriptedPad::selectPrimary(std::getenv("OSL_INPUT_MODE"),bool(scripted_pad))),
-          pad(input_mode.source,scripted_pad ? std::function<PadSample(unsigned)>([input=scripted_pad](unsigned slot){return input->sample(slot);}) : std::function<PadSample(unsigned)>{}),
+          input_mode(ScriptedPad::selectPrimary(std::getenv("OSL_INPUT_MODE"),bool(scripted_pad),
+              std::getenv("OSL_TOUCH_CONTROLS") && std::string(std::getenv("OSL_TOUCH_CONTROLS"))=="1")),
+          pad(input_mode.source,scripted_pad ? std::function<PadSample(unsigned)>([input=scripted_pad](unsigned slot){return input->sample(slot);}) : std::function<PadSample(unsigned)>{},input_mode.physical_enabled),
           gpu(renderer), stopping(renderer && renderer->stop_requested ? *renderer->stop_requested : local_stopping) {
         memory.external_pointer = DirectMemory::pointer;
         memory.stop_requested = &stopping;
@@ -1192,7 +1193,7 @@ static std::string bootstrap(const char *path,const MobileGpuServices *gpu=nullp
         << ",\"direct_window_bytes\":" << DirectMemory::windowSize()
         << ",\"direct_backing_view_bytes\":" << DirectMemory::backingViewSize()
         << ",\"offline_users_initialized\":" << (session->users_initialized ? "true" : "false")
-        << ",\"pad_backend\":\"" << (session->input_mode.physical_enabled ? "GameController" : "script-only test source") << "\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
+        << ",\"pad_backend\":\"" << (session->input_mode.physical_enabled ? "GameController" : std::string(session->input_mode.name)=="touch-only" ? "touch-only diagnostic" : "script-only test source") << "\",\"pad_initialized\":" << (session->pad_initialized ? "true" : "false")
         << ",\"input_mode\":\"" << session->input_mode.name << "\""
         << ",\"physical_controller_source_enabled\":" << (session->input_mode.physical_enabled ? "true" : "false")
         << ",\"pad_read_calls\":" << pad_reads.total

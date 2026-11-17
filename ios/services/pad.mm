@@ -57,6 +57,7 @@ struct MobilePad::Impl {
     std::function<PadSample(unsigned)> source;
     std::function<PadSample(unsigned)> fallback;
     bool initialized=false,opened[4]={},connected[4]={};
+    const bool physical_enabled;
     bool used_fallback[4]={};
     bool touch_connected[4]={},touch_active[4]={};
     uint64_t fallback_reads=0,fallback_active_reads=0;
@@ -67,8 +68,8 @@ struct MobilePad::Impl {
     __strong GCController *controllers[4]={};
     __strong CHHapticEngine *engines[4][2]={};
     __strong id<CHHapticPatternPlayer> players[4][2]={};
-    explicit Impl(std::function<PadSample(unsigned)> input,std::function<PadSample(unsigned)> backup)
-        :source(std::move(input)),fallback(std::move(backup)) {}
+    explicit Impl(std::function<PadSample(unsigned)> input,std::function<PadSample(unsigned)> backup,bool physical)
+        :source(std::move(input)),fallback(std::move(backup)),physical_enabled(physical) {}
     void stop(unsigned slot) {
         for (unsigned motor=0;motor<2;++motor) {
             [players[slot][motor] stopAtTime:0 error:nil]; players[slot][motor]=nil;
@@ -96,7 +97,7 @@ struct MobilePad::Impl {
         if (source) result=source(slot);
         else {
             __block PadSample physical;
-            onMain(^{ refresh(); physical=sampleAppleController(controllers[slot]); });
+            if (physical_enabled) onMain(^{ refresh(); physical=sampleAppleController(controllers[slot]); });
             result=physical;
             if(slot==0) {
                 PadSample touch;osl_touch_snapshot(&touch);
@@ -115,12 +116,12 @@ struct MobilePad::Impl {
     }
     bool handle(int32_t value) const { return value>=1 && value<=4 && opened[value-1]; }
 };
-MobilePad::MobilePad(std::function<PadSample(unsigned)> source,std::function<PadSample(unsigned)> fallback)
-    :impl(std::make_unique<Impl>(std::move(source),std::move(fallback))) {}
+MobilePad::MobilePad(std::function<PadSample(unsigned)> source,std::function<PadSample(unsigned)> fallback,bool physical_enabled)
+    :impl(std::make_unique<Impl>(std::move(source),std::move(fallback),physical_enabled)) {}
 MobilePad::~MobilePad()=default;
 int32_t MobilePad::initialize() {
     std::lock_guard<std::mutex> lock(impl->mutex);
-    if (!impl->source) onMain(^{ impl->refresh(); });
+    if (!impl->source && impl->physical_enabled) onMain(^{ impl->refresh(); });
     impl->initialized=true; return 0;
 }
 int32_t MobilePad::open(int32_t user,int32_t type,int32_t index) {
@@ -200,7 +201,7 @@ int32_t MobilePad::vibration(int32_t handle,const uint8_t *motors) {
     std::lock_guard<std::mutex> lock(impl->mutex);
     if (!impl->handle(handle)) return invalid_handle;
     if (!motors) return invalid;
-    if (impl->source) return 0; // Deterministic tests never vibrate attached hardware.
+    if (impl->source || !impl->physical_enabled) return 0; // Diagnostic input never vibrates attached hardware.
     onMain(^{
         impl->refresh(); unsigned slot=handle-1;
         GCDeviceHaptics *haptics=impl->controllers[slot].haptics;
