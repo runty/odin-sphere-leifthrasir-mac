@@ -209,3 +209,25 @@ record the log byte offset. Exercise the game with screen capture disabled.
 Record the ending offset before capturing the final scene. Count complete
 five-second windows between those offsets. Keep diagnostic captures and the
 whole-session results when reporting observed stalls.
+
+### Act 3 release pacing and accelerated boss test
+
+The installed `d3709f6` app ran for 31 minutes after loading Gwendolyn's
+Chapter 1 Act 3 save. It presented a 3840×2160 game image to a 3840×2160
+Metal drawable using the normal 60 Hz game clock and muted CoreAudio. A
+481-second interval started in a level-2 boss fight and ended back on the
+field. With live capture and profiling disabled, all 95 complete five-second
+windows averaged 59.8–60.0 fps. The highest window p99 was 16.70 ms and the
+longest frame was 33.3 ms. There were no pipeline compiles, pending draws or
+audio starvation reports in those windows. The full diagnostic session,
+including the live-capture experiment, had a median of 60.0 fps, a minimum
+five-second average of 42.6 fps and a longest frame of 1,018.3 ms.
+
+A separate build of the same revision raised vblank to 75 Hz. At native 4K,
+91 seconds from the mid-boss stage announcement into the level-2 fight
+yielded 17 complete windows. Median throughput reached 75.0 fps, 14 windows
+averaged at least 74.5 fps, and the slowest averaged 68.4 fps. The two
+106.7 ms frames each recorded 66.8 MB of image uploads, 30.1 ms waiting on
+host copies and zero compiles. Those counters account for only part of the
+delay. The run demonstrates throughput above 60 fps in this encounter, with
+occasional long frames during the transition into combat.
