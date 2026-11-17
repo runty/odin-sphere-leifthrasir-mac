@@ -163,3 +163,21 @@ for 9.72–10.87 ms/frame. The median across windows of the remaining labelled
 intervals was 5.91 ms/frame. These measurements include synchronization,
 barriers and the profiling instructions. Throughput headroom is measured
 independently by the accelerated guest clock test.
+
+### First use of battlefield graphics pipelines
+
+In a native 4K Act 3 test on the M5 Max, opening the skill menu incurred a
+216.7 ms frame, including 210.9 ms compiling one graphics pipeline. A boss
+encounter incurred a 150 ms frame with 138.1 ms spent compiling three pipelines.
+
+When the background cache loader finds an earlier matching pipeline, it now
+prepares the skill-menu blend state and two battlefield effect variants using
+the player's cached shader modules. Both shader fingerprints and the source
+fixed-function state must match. The variants use the normal pipeline lookup
+and draw path. A fresh cache must first acquire the source pipelines during
+play. No game shaders or compiled cache entries ship in the app.
+
+To reproduce the skill-menu check, copy an Act 3 profile and populated cache,
+omit the target skill-menu key from the copy, cold-launch the game, load the
+field, and open the skills screen. With frame diagnostics enabled, check both
+the longest frame and whether the first menu draw compiles a graphics pipeline.

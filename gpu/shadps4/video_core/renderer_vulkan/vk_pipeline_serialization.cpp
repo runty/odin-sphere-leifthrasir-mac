@@ -1311,6 +1311,42 @@ struct PipelineCache::BackgroundWarmup {
     std::unique_ptr<WarmupPool> pool; ///< last: its jobs use the members above
 };
 
+#if defined(__APPLE__) && defined(__x86_64__)
+// Three first-use graphics pipelines in the Storming Battlefields caused 138–313 ms of
+// synchronous driver compilation. Each differs from an earlier pipeline only in fixed
+// function state. Reuse its verified local modules, vertex input and sample configuration.
+static std::optional<GraphicsPipelineKey> BattlefieldWarmupVariant(
+    GraphicsPipelineKey key, const std::array<u64, MaxShaderStages>& prints) {
+    using Stage = Shader::SwStage;
+    using Blend = AmdGpu::BlendControl;
+    const auto fragment = prints[u32(Stage::Fragment)];
+    const auto vertex = prints[u32(Stage::Vertex)];
+    const bool subtract = vertex == 0xb69faf44ae7e4570ULL &&
+        (fragment == 0xccd74057255b29deULL || fragment == 0x3fde666ed00ccdb1ULL);
+    const bool skill_menu = vertex == 0x67da297cbe356a7dULL && fragment == 0x8e26b3ab82dfef6cULL;
+    if (!subtract && !skill_menu) {
+        return std::nullopt;
+    }
+
+    // The fixed-function fingerprint omits stage IDs. The same shader permutation can
+    // have a different index in another player's cache. Keep those local IDs on the result.
+    const auto stages = key.stage_hashes;
+    key.stage_hashes = {};
+    const auto state = std::hash<GraphicsPipelineKey>{}(key);
+    key.stage_hashes = stages;
+    if (subtract && state == 0x2cf1c0549e54587aULL) {
+        key.blend_controls[0].color_func = Blend::BlendFunc::ReverseSubtract;
+        key.blend_controls[0].alpha_func = Blend::BlendFunc::ReverseSubtract;
+    } else if (skill_menu && state == 0x9534a5e5d0beebc2ULL) {
+        key.blend_controls[0].color_dst_factor = Blend::BlendFactor::One;
+        key.prim_type = AmdGpu::PrimitiveType::TriangleStrip;
+    } else {
+        return std::nullopt;
+    }
+    return key;
+}
+#endif
+
 bool PipelineCache::StartBackgroundWarmUp() {
     if (!Storage::DataBase::Instance().ConcurrentReads()) {
         return false;
@@ -1409,6 +1445,24 @@ void PipelineCache::ReadWarmEntry(BackgroundWarmup& warm, std::vector<u8>&& data
         entry.stages[i] = stage;
     }
     entry.queued = std::chrono::steady_clock::now();
+#if defined(__APPLE__) && defined(__x86_64__)
+    if (!entry.compute) {
+        if (const auto variant = BattlefieldWarmupVariant(entry.graphics_key, key.prints)) {
+            // Background preload uses the unarchived store. A recorded target already has
+            // its own queue entry. Hints stay in memory and never modify the player's cache.
+            const auto hash = std::hash<GraphicsPipelineKey>{}(*variant);
+            const auto filename = fmt::format("g_{:#018x}.key", hash);
+            std::error_code error;
+            const auto path = Storage::DataBase::Instance().Folder() / filename;
+            if (!std::filesystem::exists(path, error) && !error) {
+                auto extra = entry;
+                extra.graphics_key = *variant;
+                warm.total.fetch_add(1, std::memory_order_relaxed);
+                warm.read.Push(std::move(extra));
+            }
+        }
+    }
+#endif
     warm.read.Push(std::move(entry));
 }
 
