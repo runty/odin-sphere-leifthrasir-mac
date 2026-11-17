@@ -74,6 +74,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         }
         print("OSL last presented \(lastFrame), observed \(lastObservation), read confirmed \(confirmedRead)")
         XCTAssertGreaterThan(lastObservation, 0, "No captured scene was recognized")
+        XCTAssertTrue(confirmedRead, "The Valkyrie read confirmation was not reached")
         Thread.sleep(forTimeInterval: 100)
     }
 }
