@@ -93,21 +93,30 @@ def main():
     assert log.count("test frame limit reached (300 frames)") == 2
     assert str(app / "Contents/Frameworks/libvulkan_kosmickrisp.dylib") in log
     assert "CPU triangle fan expansion on" in log and "GPU frame lead bound 2" in log
-    # Select 4K in the disposable profile and check the size reported by
-    # the guest video output. The drawable follows the display and window size.
+    # Switch the same profile back to native resolution after the 4K launch.
+    # Verify VideoOut so a launcher setting that never reaches the guest fails the check.
     settings = data / "user/osl.ini"
     original_settings = settings.read_bytes() if settings.exists() else None
+    bootstrap_log = data / "logs/bootstrap.log"
     try:
-        settings.write_text("render_resolution=4K\naspect_ratio=16:9\nwindow_width=960\nwindow_height=540\n")
-        bootstrap_log = data / "logs/bootstrap.log"
-        start_offset = bootstrap_log.stat().st_size
-        check("render-4k", ["--osl-skip-launcher", "--timeout", "90"], {"OSL_TEST_PRESENT_LIMIT": "300"})
-        with bootstrap_log.open("rb") as stream:
-            stream.seek(start_offset)
-            run_log = stream.read().decode(errors="replace")
-        for line in ("render resolution 3840x2160 (4K)", "VideoOut source 3840x2160 pitch 3840",
-                     "present source 3840x2160 -> swapchain", "test frame limit reached (300 frames)"):
-            assert line in run_log, f"4K packaged run missing {line!r}"
+        for key, width, height in (("4K", 3840, 2160), ("native", 1920, 1080)):
+            size = f"{width}x{height}"
+            settings.write_text(f"render_resolution={key}\naspect_ratio=16:9\nwindow_width=960\nwindow_height=540\n")
+            start_offset = bootstrap_log.stat().st_size
+            check(f"render-{key.lower()}", ["--osl-skip-launcher", "--timeout", "90"],
+                  {"OSL_TEST_PRESENT_LIMIT": "300"})
+            with bootstrap_log.open("rb") as stream:
+                stream.seek(start_offset)
+                run_log = stream.read().decode(errors="replace")
+            expected = [
+                f"render resolution {size} ({key})",
+                f"VideoOut source {size} pitch {width}",
+                "test frame limit reached (300 frames)",
+            ]
+            if key == "4K":
+                expected.append(f"present source {size} -> swapchain")
+            for line in expected:
+                assert line in run_log, f"{key} packaged run missing {line!r}"
     finally:
         if original_settings is None:
             settings.unlink(missing_ok=True)
