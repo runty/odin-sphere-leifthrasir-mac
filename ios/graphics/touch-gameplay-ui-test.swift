@@ -14,8 +14,8 @@ final class OdinTouchGameplayUITests: XCTestCase {
         // XCTest screenshots omit the Metal surface on this iPad. Save a bounded
         // renderer sequence around the observed stick gestures and review it
         // against gesture timestamps; this adds diagnostic GPU waits.
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "4000"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "20"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "4400"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "35"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "64"
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
@@ -29,33 +29,42 @@ final class OdinTouchGameplayUITests: XCTestCase {
         let cross = base.withOffset(CGVector(dx: width-2*unit, dy: height-25-0.95*unit))
         let stick = base.withOffset(CGVector(dx: 2*unit, dy: height-25-1.8*unit))
         let right = base.withOffset(CGVector(dx: 3*unit, dy: height-25-1.8*unit))
+        let left = base.withOffset(CGVector(dx: unit, dy: height-25-1.8*unit))
+        let dpadUp = base.withOffset(CGVector(dx: 4.2*unit, dy: height-25-3.9*unit))
         func capture(_ name: String) {
             let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             image.name = name; image.lifetime = .keepAlways; add(image)
         }
-        // The prior test reached the attic in about 327 seconds but a later
-        // accessibility query timed out. Capture multiple earlier gestures so
-        // evidence survives a subsequent test failure; review the scene and
-        // guest input counters separately before claiming movement.
+        // Time these movements around the observed attic transition. Alternate
+        // directions without intervening Cross presses, then try Up at the
+        // bookshelf and continue the story. The route is heuristic: images and
+        // guest telemetry must be reviewed before claiming any scene or input.
         let navigationStart = Date()
-        let movementTimes: [TimeInterval] = [240, 280, 310]
-        var movementIndex = 0
-        while Date().timeIntervalSince(navigationStart) < 320 {
+        var didRight = false, didLeft = false, didUp = false
+        while Date().timeIntervalSince(navigationStart) < 430 {
             let elapsed = Date().timeIntervalSince(navigationStart)
-            if movementIndex < movementTimes.count && elapsed >= movementTimes[movementIndex] {
-                capture("before-stick-\(movementIndex)")
-                stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 3)
-                capture("after-stick-\(movementIndex)")
-                movementIndex += 1
-            } else {
+            if !didRight && elapsed >= 280 {
+                capture("before-right")
+                stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 5)
+                capture("after-right"); didRight = true
+            } else if didRight && !didLeft && elapsed >= 300 {
+                capture("before-left")
+                stick.press(forDuration: 0.1, thenDragTo: left, withVelocity: .slow, thenHoldForDuration: 5)
+                capture("after-left"); didLeft = true
+            } else if didLeft && !didUp && elapsed >= 320 {
+                capture("before-up")
+                dpadUp.press(forDuration: 1)
+                capture("after-up"); didUp = true
+            } else if elapsed < 270 || (didUp && elapsed >= 330) {
                 cross.press(forDuration: 0.25)
                 Thread.sleep(forTimeInterval: 7)
+            } else {
+                Thread.sleep(forTimeInterval: 1)
             }
         }
-        XCTAssertEqual(movementIndex, movementTimes.count)
-        // Keep the runner alive until the guest's own bounded stop. Do not
-        // treat the XCTest result alone as evidence of guest cleanup.
-        Thread.sleep(forTimeInterval: 300)
+        XCTAssertTrue(didRight && didLeft && didUp)
+        // Guest has its own 600-second bound; results do not establish teardown.
+        Thread.sleep(forTimeInterval: 200)
         capture("after-bounded-session")
     }
 }
