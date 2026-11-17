@@ -30,6 +30,7 @@ final class OdinTouchGameplayUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(570)
         var lastFrame: UInt64 = 0, lastCross: UInt64 = 0
         var advanced = false, entered = false, readCount = 0
+        var lastCrossTime = Date.distantPast, lastFrameAdvance = Date()
         while Date() < deadline {
             guard app.state == .runningForeground else {
                 XCTFail("Sandbox left foreground at frame \(lastFrame)"); return
@@ -38,18 +39,21 @@ final class OdinTouchGameplayUITests: XCTestCase {
                 XCTFail("Invalid frame clock value: \(String(describing: clock.value))"); return
             }
             XCTAssertGreaterThanOrEqual(frame, lastFrame, "Frame clock moved backwards")
+            if frame > lastFrame { lastFrameAdvance = Date() }
             lastFrame = frame; readCount += 1
             if readCount % 10 == 0 { print("OSL frame clock: \(frame)") }
-            if frame >= 4850 && !advanced {
+            let stalled = Date().timeIntervalSince(lastFrameAdvance) >= 12
+            let crossDue = frame >= lastCross + 100 || Date().timeIntervalSince(lastCrossTime) >= 8
+            if !advanced && (frame >= 4850 || (frame >= 4650 && stalled)) {
                 print("OSL action: move right at \(frame)")
                 stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 2)
                 advanced = true
-            } else if frame >= 5100 && advanced && frame >= lastCross + 100 {
+            } else if advanced && (frame >= 5100 || stalled) && crossDue {
                 print("OSL action: cross at \(frame)")
-                cross.press(forDuration: 0.35); lastCross = frame; entered = true
-            } else if frame < 4650 && (lastCross == 0 || frame >= lastCross + 100) {
+                cross.press(forDuration: 0.35); lastCross = frame; lastCrossTime = Date(); entered = true
+            } else if frame < 4650 && crossDue {
                 print("OSL action: advance intro at \(frame)")
-                cross.press(forDuration: 0.25); lastCross = frame
+                cross.press(forDuration: 0.25); lastCross = frame; lastCrossTime = Date()
             }
             if frame >= 7200 { break }
             Thread.sleep(forTimeInterval: 2)
