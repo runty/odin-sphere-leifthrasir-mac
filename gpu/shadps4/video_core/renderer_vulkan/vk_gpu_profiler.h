@@ -67,7 +67,8 @@ private:
 
     vk::Device device;
     Scheduler& scheduler;
-    vk::UniqueQueryPool pool;
+    std::array<vk::UniqueQueryPool, NumSlices> pools;
+    u64 timestamp_mask = ~u64{0};
     double period_ns = 1.0;
     u32 slice = 0;
     std::array<std::vector<u64>, NumSlices> keys; ///< label of each timestamp but the last
@@ -81,6 +82,7 @@ private:
     };
     std::unordered_map<u64, Total> totals;
     u64 frames = 0;
+    u64 invalid_frames = 0;
     u64 current = 0;
     std::chrono::steady_clock::time_point window = std::chrono::steady_clock::now();
 };

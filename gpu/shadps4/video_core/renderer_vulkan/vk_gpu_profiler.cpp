@@ -14,17 +14,38 @@ void GpuProfiler::Init(const Instance& instance, Scheduler& scheduler) {
     if (!env || env[0] != '1' || instance_ptr) {
         return;
     }
-    instance_ptr = new GpuProfiler(instance, scheduler);
+    const auto families = instance.GetPhysicalDevice().getQueueFamilyProperties();
+    const u32 bits = families[instance.GetGraphicsQueueFamilyIndex()].timestampValidBits;
+    if (bits == 0) {
+        std::printf("GPU profile: graphics queue has no timestamps; profiling disabled\n");
+        return;
+    }
+    auto profiler = new GpuProfiler(instance, scheduler);
+    if (!profiler->pools.back()) {
+        delete profiler;
+        return;
+    }
+    profiler->timestamp_mask = ~u64{0} >> (64 - bits);
+    instance_ptr = profiler;
 }
 
 GpuProfiler::GpuProfiler(const Instance& instance, Scheduler& scheduler_)
     : device{instance.GetDevice()}, scheduler{scheduler_} {
     const vk::QueryPoolCreateInfo info = {
         .queryType = vk::QueryType::eTimestamp,
-        .queryCount = NumSlices * SliceQueries,
+        .queryCount = SliceQueries,
     };
-    pool = Check<"create timestamp query pool">(device.createQueryPoolUnique(info));
-    device.resetQueryPool(*pool, 0, NumSlices * SliceQueries);
+    // Metal limits an individual timestamp heap to 4096 entries on the reference Mac.
+    for (auto& pool : pools) {
+        auto [result, created] = device.createQueryPoolUnique(info);
+        if (result != vk::Result::eSuccess) {
+            std::printf("GPU profile: timestamp allocation failed (%d); profiling disabled\n",
+                        static_cast<int>(result));
+            return;
+        }
+        pool = std::move(created);
+        device.resetQueryPool(*pool, 0, SliceQueries);
+    }
     period_ns = instance.GetPhysicalDevice().getProperties().limits.timestampPeriod;
     for (auto& k : keys) {
         k.reserve(SliceQueries);
@@ -39,10 +60,10 @@ void GpuProfiler::WriteTimestamp(u64 key) {
     // Outside render passes: radv_CmdWriteTimestamp2 crashed inside some. Marks sit where a
     // pass, dispatch or submission ends anyway.
     scheduler.EndRendering();
-    const u32 query = slice * SliceQueries + used[slice]++;
+    const u32 query = used[slice]++;
     keys[slice].push_back(key);
     current = key;
-    scheduler.Record([pool = *pool, query](vk::CommandBuffer cmdbuf) {
+    scheduler.Record([pool = *pools[slice], query](vk::CommandBuffer cmdbuf) {
         cmdbuf.writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, pool, query);
     });
 }
@@ -51,8 +72,8 @@ void GpuProfiler::BeginFrame() {
     // Close the frame: one more timestamp without a label.
     if (used[slice] > 0 && used[slice] < SliceQueries) {
         scheduler.EndRendering();
-        const u32 query = slice * SliceQueries + used[slice]++;
-        scheduler.Record([pool = *pool, query](vk::CommandBuffer cmdbuf) {
+        const u32 query = used[slice]++;
+        scheduler.Record([pool = *pools[slice], query](vk::CommandBuffer cmdbuf) {
             cmdbuf.writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, pool, query);
         });
         pending[slice] = true;
@@ -64,7 +85,7 @@ void GpuProfiler::BeginFrame() {
         Collect(slice);
     }
     if (used[slice]) {
-        device.resetQueryPool(*pool, slice * SliceQueries, used[slice]);
+        device.resetQueryPool(*pools[slice], 0, used[slice]);
     }
     used[slice] = 0;
     keys[slice].clear();
@@ -79,13 +100,22 @@ void GpuProfiler::Collect(u32 which) {
     // submitted yet and a query wait would never return. Waiting for the tick submits them.
     scheduler.Wait(ticks[which]);
     const auto result = device.getQueryPoolResults(
-        *pool, which * SliceQueries, count, count * sizeof(u64), stamps.data(), sizeof(u64),
+        *pools[which], 0, count, count * sizeof(u64), stamps.data(), sizeof(u64),
         vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait);
-    if (result != vk::Result::eSuccess) {
+    if (result != vk::Result::eSuccess || stamps.front() == stamps.back()) {
+        ++invalid_frames;
         return;
     }
+    // A backward timestamp gives an almost-full-range unsigned delta. Reject the
+    // whole frame before charging any segments; a genuine wrap has a small delta.
+    for (u32 i = 1; i < count; ++i) {
+        if (((stamps[i] - stamps[i - 1]) & timestamp_mask) > timestamp_mask / 2) {
+            ++invalid_frames;
+            return;
+        }
+    }
     for (u32 i = 0; i + 1 < count; ++i) {
-        const double ms = double(stamps[i + 1] - stamps[i]) * period_ns / 1e6;
+        const double ms = double((stamps[i + 1] - stamps[i]) & timestamp_mask) * period_ns / 1e6;
         auto& total = totals[keys[which][i]];
         total.ms += ms;
         ++total.segments;
@@ -95,10 +125,18 @@ void GpuProfiler::Collect(u32 which) {
 
 void GpuProfiler::Print() {
     const auto now = std::chrono::steady_clock::now();
-    if (now - window < std::chrono::seconds(5) || frames == 0) {
+    if (now - window < std::chrono::seconds(5) || (frames == 0 && invalid_frames == 0)) {
         return;
     }
     window = now;
+    if (invalid_frames != 0) {
+        std::printf("GPU profile: rejected %llu frames with invalid timestamps\n",
+                    static_cast<unsigned long long>(invalid_frames));
+        invalid_frames = 0;
+    }
+    if (frames == 0) {
+        return;
+    }
     std::vector<std::pair<u64, Total>> sorted(totals.begin(), totals.end());
     std::ranges::sort(sorted, [](const auto& a, const auto& b) { return a.second.ms > b.second.ms; });
     double sum = 0;

@@ -17,6 +17,7 @@
 #include "osl_graphics.h"
 #include "osl_png.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
+#include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/texture_cache/image.h"
 
@@ -424,6 +425,11 @@ static vk::Format GetFrameViewFormat(const Libraries::VideoOut::PixelFormat form
 
 Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& attribute,
                                VAddr cpu_address) {
+    if (auto* profiler = GpuProfiler::Get()) {
+        // A guest can draw hundreds of sprites directly into a display buffer before one flip.
+        rasterizer->DrainDrawPipe();
+        profiler->BeginFrame();
+    }
     auto desc = VideoCore::TextureCache::ImageDesc{attribute, cpu_address};
     const auto image_id = texture_cache.FindImage(desc);
     texture_cache.UpdateImage(image_id);

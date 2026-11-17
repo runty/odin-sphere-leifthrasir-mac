@@ -145,3 +145,21 @@ saving. The gameplay data shows no clear frame-rate difference.
 For diagnosis, long-frame reports now include elapsed guest vblank ticks.
 The macOS CPU-time breakdown uses the Mach sample for the same flip, and
 the upload counter only includes selected mip-level spans.
+
+### Reading GPU timestamps on Metal
+
+Enable `OSL_GPU_PROFILE=1` during an isolated run to time the intervals
+between render passes, dispatches and transfers. The reference M5 Max
+graphics queue reports 64 timestamp bits with a 41.67 ns period. Its Metal
+counter heap accepts 4,096 samples per pool. The profiler uses a pool for
+each of four in-flight frames and closes a frame once per guest video
+submission. It reports rejected timestamp sequences separately.
+
+A warmed run of the reloaded Act 3 field at native 4K produced 11 complete
+five-second windows, with 300–301 valid GPU frame samples per window and zero
+rejected samples in that interval. The measured timeline averaged
+16.29–16.44 ms/frame per window. The interval between submissions accounted
+for 9.72–10.87 ms/frame. The median across windows of the remaining labelled
+intervals was 5.91 ms/frame. These measurements include synchronization,
+barriers and the profiling instructions. Throughput headroom is measured
+independently by the accelerated guest clock test.

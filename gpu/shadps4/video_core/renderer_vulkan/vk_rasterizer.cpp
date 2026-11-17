@@ -1079,11 +1079,6 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (OslStats::enabled) {
         OslStats::primitive_draws[u32(regs.primitive_type) & 31].fetch_add(1, std::memory_order_relaxed);
     }
-    // The pass copying a finished frame to a display buffer starts the profiler's next frame.
-    if (auto* profiler = GpuProfiler::Get(); profiler && regs.color_buffers[0] &&
-        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
-        profiler->BeginFrame();
-    }
     bind_prepared = used_prepared;
 
     PrepareRenderState(pipeline);
