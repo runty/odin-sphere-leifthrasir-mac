@@ -70,3 +70,42 @@ The suite passes 16,376 coverage, winding, provoking-vertex and output-bounds
 cases for 16/32-bit indices. The runtime synchronization suite, 1,584 tiling
 checks and real import check also pass. A final run with both performance
 overrides unset logs the Mac defaults, presents 1,800 frames and exits zero.
+
+## Retina 4K and frame-time headroom on the M5 Max
+
+In **Graphics → Render resolution**, select **4K — 3840 × 2160** with the
+original 16:9 aspect ratio. Set the window or borderless display on the Display
+page. Build `1eab85f` requests a Retina drawable on macOS. On the reference
+display, a 1920×1080-point window produced a 3840×2160 guest VideoOut surface
+and a 3840×2160 Metal swapchain. A window-only capture confirmed the rendered
+battle after the game's diagnostic readbacks ended.
+
+A native sample attributed heap allocations during pipeline selection to
+copies of the parsed vertex-fetch attributes. The renderer now keeps eight
+attributes inline and grows the list for larger shaders. A Rosetta fixture
+copied lists containing 1, 4, 8, 9 and 32 attributes. Across 100,000 copies
+of each size, the first three cases each went from 100,000 allocations to
+zero. The larger cases round-tripped through the cache serializer, and the
+encoded attribute lists matched the old representation byte for byte.
+
+The test loaded a copied Data 1, read the Valkyrie book, crossed the castle
+and entered the Elf Knight encounter on the Storming Battlefields. All runs
+used SDL's silent dummy device with a 48 kHz stereo stream. Each row includes
+every complete five-second flip-statistics window inside its frame range.
+The initial window spanning the lower boundary was excluded. In-renderer
+PNG capture had already stopped at presentation 16,620. The 75 Hz run used
+an isolated build with only the guest vblank frequency changed from the
+release source; window captures verified the encounter at its boundaries.
+
+| Target and guest clock | Presentations | Windows | Window fps | Highest window p99 | Worst single frame |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1080p reference, 60 Hz | 16,800–21,500 | 15 | 59.6–60.0 | 16.70 ms | 50.0 ms |
+| Native 4K, 60 Hz | 16,800–21,500 | 15 | 59.8–60.0 | 16.69 ms | 33.3 ms |
+| Native 4K, 75 Hz stress | 17,400–21,000 | 8 | 75.0 | 13.36 ms | 13.4 ms |
+
+The stress run sustained 25% more flips per second in this encounter. Its
+13.33 ms interval is 3.33 ms shorter than the normal 60 Hz budget. This
+measures short-run throughput for the tested scene. It does not establish
+whole-game headroom, physical scanout timing, or GPU-only time. The installed
+build uses the normal 60 Hz guest clock. Draw counts varied between routes,
+so these rows cannot isolate an fps gain from inline storage.
