@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <vector>
+#include <boost/container/small_vector.hpp>
 #include "common/types.h"
 #include "shader_recompiler/info.h"
 
@@ -43,7 +44,8 @@ struct VertexAttribute {
 
 struct FetchShaderData {
     u32 size = 0;
-    std::vector<VertexAttribute> attributes;
+    // Sprite draws repeatedly copy the cached attribute list during pipeline selection.
+    boost::container::small_vector<VertexAttribute, 8> attributes;
     s8 vertex_offset_sgpr = -1;   ///< SGPR of vertex offset from VADDR
     s8 instance_offset_sgpr = -1; ///< SGPR of instance offset from VADDR
 
