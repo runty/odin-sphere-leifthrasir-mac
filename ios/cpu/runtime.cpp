@@ -9,6 +9,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <climits>
+#include <exception>
 #ifdef __APPLE__
 #include <os/lock.h>
 #endif
