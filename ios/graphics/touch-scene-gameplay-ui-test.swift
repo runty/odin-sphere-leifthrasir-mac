@@ -35,6 +35,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(840)
         var lastFrame: UInt64 = 0, lastObservation: UInt64 = 0
         var lastAction = Date.distantPast, confirmedRead = false, titleAdvances = 0
+        var atticSeen = false, blankWalks = 0
         while Date() < deadline {
             guard app.state == .runningForeground else { XCTFail("Sandbox left foreground at \(lastFrame)"); return }
             let raw = clock.value as? String ?? ""
@@ -57,7 +58,11 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
                     } else if scene.contains("pick up book") {
                         action = "pick up book"; down.press(forDuration: 0.3)
                     } else if scene.contains("bookshelf") || scene.contains("socrates") {
+                        atticSeen = true; blankWalks = 0
                         action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.5)
+                    } else if atticSeen && blankWalks < 4 && scene.filter({ $0.isLetter || $0.isNumber }).count <= 2 {
+                        action = "walk right through prompt gap"; blankWalks += 1
+                        stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.5)
                     } else if scene.contains("story archive") || scene.contains("text archive") {
                         action = "leave archive"; circle.press(forDuration: 0.3)
                     } else if titleAdvances > 0 && titleAdvances < 4 && Date().timeIntervalSince(lastAction) >= 8 {
