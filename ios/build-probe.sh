@@ -173,6 +173,7 @@ PYGUEST
 )
     cp "$source_dir/ios/graphics/renderer-session.mm" "$build_dir/Source/renderer_session.mm"
     cp "$source_dir/ios/graphics/idle-timer-lease.h" "$build_dir/Source/idle-timer-lease.h"
+    cp "$source_dir/ios/graphics/diagnostic-stop.h" "$build_dir/Source/diagnostic-stop.h"
     cp "$source_dir/ios/graphics/touch-overlay.mm" "$build_dir/Source/touch_overlay.mm"
     mkdir -p "$build_dir/Source/ios/services" "$build_dir/Source/src"
     cp "$source_dir/ios/services/touch-controls.h" "$source_dir/ios/services/pad.h" "$build_dir/Source/ios/services/"

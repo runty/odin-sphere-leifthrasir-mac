@@ -8,6 +8,7 @@
 #include "clock.h"
 #include "guest-session.h"
 #include "idle-timer-lease.h"
+#include "diagnostic-stop.h"
 #include <memory>
 #include <charconv>
 #include <cstdio>
@@ -45,6 +46,8 @@ extern "C" [[noreturn]] void runtime_exit_clean(){runtime_log_flush();std::abort
 @property(nonatomic) unsigned polls;
 @property(nonatomic) uint32_t sdk;
 @property(nonatomic) uint32_t guestBudgetMs;
+@property(nonatomic) uint32_t diagnosticStopMs;
+@property(nonatomic) double diagnosticStartTime;
 @property(nonatomic) BOOL initialized;
 @property(nonatomic) BOOL idleTimerAcquired;
 @property(nonatomic) BOOL idleTimerPrevious;
@@ -145,6 +148,7 @@ static OdinRendererSession *activeSession;
         @"diagnostic_stop_requested":@(self.diagnosticStopRequested),
         @"diagnostic_gate_requested":@(self.testGate),
         @"guest_budget_ms":@(self.guestBudgetMs),
+        @"diagnostic_stop_ms":@(self.diagnosticStopMs),
         @"game_executed":@(executed),@"game_frames":@NO,@"stage":@"stopped"} mutableCopy];
     if(self.snapshotPath) {
         report[@"frame_snapshot_name"]=self.snapshotPath.lastPathComponent;
@@ -164,6 +168,10 @@ static OdinRendererSession *activeSession;
     if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){[self finish:@"App left foreground during bounded renderer session"];return;}
     if(oslgpu_poll_main_thread()!=1){[self finish:@"Renderer window closed during polling"];return;}
     ++self.polls;
+    if(self.image && osl_diagnostic_stop_due(self.diagnosticStartTime,self.diagnosticStopMs,CACurrentMediaTime())) {
+        self.diagnosticStopRequested=YES;
+        [self finish:@"Requested timed diagnostic guest stop"];return;
+    }
     if(self.image && self.testGate && !self.testGateReported && osl_guest_session_gpu_calls(guestContext)>=7){
         self.testGateReported=YES;
         [self persist:@{@"stage":@"guest buffers registered; diagnostic cancellation gate",@"game_frames":@NO}];
@@ -213,6 +221,13 @@ static OdinRendererSession *activeSession;
         const auto parsed=std::from_chars(value,end,budget);
         if(parsed.ec!=std::errc{} || parsed.ptr!=end || (budget==0 && std::strcmp(value,"0")) || (budget!=0 && (budget<100 || budget>600000))){[self finish:@"OSL_GUEST_RUN_MS must be 0 or an integer from 100 to 600000"];return;}
         self.guestBudgetMs=budget;
+    }
+    if(self.image)if(const char *value=getenv("OSL_GUEST_STOP_AFTER_MS")) {
+        uint32_t stop=0;
+        if(self.guestBudgetMs!=0 || !osl_diagnostic_stop_parse(value,stop)) {
+            [self finish:@"OSL_GUEST_STOP_AFTER_MS requires continuous mode and 100 to 1800000 milliseconds"];return;
+        }
+        self.diagnosticStopMs=stop;
     }
     // A portable developer script path is relative to this app's Documents,
     // independent of its installation UUID. The script itself is loaded and
@@ -305,7 +320,7 @@ static OdinRendererSession *activeSession;
     self.displayLink=[CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
     self.displayLink.preferredFramesPerSecond=60;
     [self.displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-    if(self.image)[self startGuest];
+    if(self.image){self.diagnosticStartTime=CACurrentMediaTime();[self startGuest];}
 }
 @end
 extern "C" void osl_mobile_renderer_begin(UIWindowScene *scene,NSString *profile,NSString *image,void (^completion)(NSDictionary *)) {
