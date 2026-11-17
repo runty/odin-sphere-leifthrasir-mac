@@ -56,3 +56,10 @@ connected, the latter the subset with a virtual button, quantized stick or
 trigger active. They do not count controller-info queries, and injected primary
 sources do not include the overlay. These counters establish sampled virtual
 input, not that a particular game action occurred or that controls feel good.
+
+`OSL_TOUCH_FRAME_CLOCK=1` exposes the renderer's atomic presented-frame count
+as the touch overlay's `touch-frame-clock` accessibility value, for automation
+only. Without the opt-in it adds no accessibility element. If a standalone
+fixture has no renderer symbol, its value is `unavailable`. This is a presentation
+heartbeat, not evidence of a particular scene or game action; automation must
+still inspect game frames and guest diagnostics.

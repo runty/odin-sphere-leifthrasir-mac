@@ -1,6 +1,8 @@
 // Isolated XCUITest host; no game code or assets.
 #import <UIKit/UIKit.h>
 #include "ios/services/pad.h"
+// Deterministic stand-in for the optional renderer heartbeat.
+extern "C" uint64_t oslgpu_presented_frames(void) { return 4321; }
 extern "C" bool osl_touch_attach(UIWindow *);
 extern "C" void osl_touch_detach(void);
 extern "C" void osl_touch_snapshot(PadSample *);

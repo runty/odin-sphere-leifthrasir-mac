@@ -1,9 +1,24 @@
 import XCTest
 
 final class OdinTouchUITests: XCTestCase {
-    func testActualTouchEvents() throws {
+    func testFrameClockIsOptIn() throws {
         let app = XCUIApplication()
         app.launch()
+        let status = app.staticTexts["touch-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 20))
+        let ready = NSPredicate(format: "label BEGINSWITH 'ready;'")
+        expectation(for: ready, evaluatedWith: status)
+        waitForExpectations(timeout: 20)
+        XCTAssertFalse(app.otherElements["touch-frame-clock"].exists)
+    }
+
+    func testActualTouchEvents() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["OSL_TOUCH_FRAME_CLOCK"] = "1"
+        app.launch()
+        let frameClock = app.otherElements["touch-frame-clock"]
+        XCTAssertTrue(frameClock.waitForExistence(timeout: 20))
+        XCTAssertEqual(frameClock.value as? String, "4321")
         let status = app.staticTexts["touch-status"]
         XCTAssertTrue(status.waitForExistence(timeout: 20))
         let ready = NSPredicate(format: "label BEGINSWITH 'ready;'")
@@ -23,9 +38,11 @@ final class OdinTouchUITests: XCTestCase {
         cross.press(forDuration: 0.6)
         let move = base.withOffset(CGVector(dx: left+2*unit, dy: height-bottom-1.8*unit))
         let moved = base.withOffset(CGVector(dx: left+3*unit, dy: height-bottom-1.8*unit))
-        move.press(forDuration: 0.2, thenDragTo: moved)
+        // Hold at the destination so the fixture's periodic sampler observes
+        // the stick even when the simulator is under load.
+        move.press(forDuration: 0.2, thenDragTo: moved, withVelocity: .default, thenHoldForDuration: 0.8)
         let observed = NSPredicate(format: "label ENDSWITH ';1;1'")
-        expectation(for: observed, evaluatedWith: status)
-        waitForExpectations(timeout: 10)
+        let result = XCTWaiter.wait(for: [expectation(for: observed, evaluatedWith: status)], timeout: 10)
+        XCTAssertEqual(result, .completed, "Touch fixture status: \(status.label)")
     }
 }

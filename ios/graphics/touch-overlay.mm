@@ -4,11 +4,17 @@
 #include "ios/services/touch-controls.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
+
+// Optional automation-only heartbeat; standalone fixtures may omit the renderer.
+extern "C" uint64_t oslgpu_presented_frames(void) __attribute__((weak_import));
 
 static OdinTouchControls touchModel;
 extern "C" void osl_touch_snapshot(PadSample *out) { if(out)*out=touchModel.sample(); }
 
 @interface OdinTouchOverlay : UIView
+@property(nonatomic) BOOL exposesFrameClock;
 @end
 @implementation OdinTouchOverlay
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -16,8 +22,16 @@ extern "C" void osl_touch_snapshot(PadSample *out) { if(out)*out=touchModel.samp
         self.multipleTouchEnabled=YES;self.opaque=NO;self.backgroundColor=UIColor.clearColor;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
         self.accessibilityLabel=@"Game touch controls";
+        const char *clock=std::getenv("OSL_TOUCH_FRAME_CLOCK");
+        self.exposesFrameClock=clock && !std::strcmp(clock,"1");
+        if(self.exposesFrameClock){self.isAccessibilityElement=YES;self.accessibilityIdentifier=@"touch-frame-clock";}
     }
     return self;
+}
+- (NSString *)accessibilityValue {
+    if(!self.exposesFrameClock)return [super accessibilityValue];
+    if(!oslgpu_presented_frames)return @"unavailable";
+    return [NSString stringWithFormat:@"%llu",(unsigned long long)oslgpu_presented_frames()];
 }
 - (void)layoutSubviews {
     [super layoutSubviews];UIEdgeInsets s=self.safeAreaInsets;
