@@ -57,7 +57,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
                     } else if scene.contains("pick up book") {
                         action = "pick up book"; down.press(forDuration: 0.3)
                     } else if scene.contains("bookshelf") || scene.contains("socrates") {
-                        action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.15)
+                        action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.5)
                     } else if scene.contains("story archive") || scene.contains("text archive") {
                         action = "leave archive"; circle.press(forDuration: 0.3)
                     } else if titleAdvances > 0 && titleAdvances < 4 && Date().timeIntervalSince(lastAction) >= 8 {
