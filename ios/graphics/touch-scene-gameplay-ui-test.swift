@@ -60,7 +60,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
                         action = "walk right"; stick.press(forDuration: 0.1, thenDragTo: right, withVelocity: .slow, thenHoldForDuration: 0.15)
                     } else if scene.contains("story archive") || scene.contains("text archive") {
                         action = "leave archive"; circle.press(forDuration: 0.3)
-                    } else if scene.contains("load") || scene.contains("data 1") || scene.contains("yourself") {
+                    } else if scene.contains("load") || scene.contains("data 1") || scene.contains("new game") || scene.contains("yourself") {
                         action = "advance load"; cross.press(forDuration: 0.3)
                     }
                     if !action.isEmpty { print("OSL action at \(observed): \(action)"); lastAction = Date() }
