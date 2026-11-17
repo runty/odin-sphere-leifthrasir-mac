@@ -59,6 +59,10 @@ struct GraphicsPipelineKey {
         u32 depth_clip_enable : 1;
     };
 
+    // The complete key is hashed and serialized. Name the final alignment word so
+    // memberwise copies through the background compiler retain its zero value.
+    u32 reserved = 0;
+
     GraphicsPipelineKey() {
         std::memset(this, 0, sizeof(*this));
     }
@@ -70,6 +74,8 @@ struct GraphicsPipelineKey {
     void Serialize(Serialization::Archive& ar) const;
     bool Deserialize(Serialization::Archive& ar);
 };
+
+static_assert(offsetof(GraphicsPipelineKey, reserved) + sizeof(u32) == sizeof(GraphicsPipelineKey));
 
 class GraphicsPipeline : public Pipeline {
 public:

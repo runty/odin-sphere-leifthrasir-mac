@@ -1015,6 +1015,7 @@ bool GraphicsPipelineKey::Deserialize(Serialization::Archive& ar) {
     Serialization::Reader key{ar};
 
     key.Read(this, sizeof(*this));
+    reserved = 0; // Older caches stored compiler padding here.
     return true;
 }
 
