@@ -181,3 +181,31 @@ To reproduce the skill-menu check, copy an Act 3 profile and populated cache,
 omit the target skill-menu key from the copy, cold-launch the game, load the
 field, and open the skills screen. With frame diagnostics enabled, check both
 the longest frame and whether the first menu draw compiles a graphics pipeline.
+
+### Measuring combat without disturbing Metal presentation
+
+The Mac window capture command can stall presentation on the reference M5 Max.
+During an Act 3 boss fight, Instruments recorded the graphics command thread
+waiting for the draw recorder in two long frames. Concurrent stack samples
+showed the recorder waiting for a free presentation frame and the presenter
+waiting in `CAMetalLayer nextDrawable`. The game reported zero shader or
+pipeline compiles in those frames.
+
+On build `d3709f6`, a native 4K test rotated four conditions through three
+24-second blocks each. Every block ran the same movement and attack sequence.
+The capture and recognition conditions each invoked their diagnostic four
+times per block. The game continued through field and boss scenes.
+
+| Observation during gameplay | Frames ≥800 ms | Longest observed frame |
+| --- | ---: | ---: |
+| Gameplay alone | 0 | 33.3 ms |
+| Recognition of an existing screenshot | 0 | 33.3 ms |
+| Live window capture with `screencapture -l` | 4 | 1,000.0 ms |
+| Live capture followed by recognition | 3 | 1,000.0 ms |
+
+Record the native source and swapchain sizes before measuring. For a pacing
+measurement, capture the starting scene, allow presentation to settle, then
+record the log byte offset. Exercise the game with screen capture disabled.
+Record the ending offset before capturing the final scene. Count complete
+five-second windows between those offsets. Keep diagnostic captures and the
+whole-session results when reporting observed stalls.
