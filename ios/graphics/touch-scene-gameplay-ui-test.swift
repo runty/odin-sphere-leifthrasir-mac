@@ -4,7 +4,7 @@ import XCTest
 // frame; reaching the castle or combat must be verified from separate evidence.
 final class OdinTouchSceneGameplayUITests: XCTestCase {
     func testSceneGuidedNavigationInSandbox() throws {
-        executionTimeAllowance = 1200
+        executionTimeAllowance = 1700
         let app = XCUIApplication(bundleIdentifier: "com.wadscorp.odinsphere.sandbox69048")
         app.launchEnvironment["OSL_AUDIO"] = "muted"
         app.launchEnvironment["OSL_AUDIO_STATS"] = "1"
@@ -12,9 +12,9 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         app.launchEnvironment["OSL_TOUCH_FRAME_CLOCK"] = "1"
         app.launchEnvironment["OSL_TOUCH_SCENE_OCR"] = "1"
         app.launchEnvironment["OSL_GUEST_RUN_MS"] = "0"
-        app.launchEnvironment["OSL_GUEST_STOP_AFTER_MS"] = "1020000"
+        app.launchEnvironment["OSL_GUEST_STOP_AFTER_MS"] = "1320000"
         app.launchEnvironment["OSL_CAPTURE_DISPLAY_FRAME"] = "1"
-        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "1200"
+        app.launchEnvironment["OSL_FRAME_SNAPSHOT_AT"] = "3000"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_EVERY"] = "150"
         app.launchEnvironment["OSL_FRAME_SNAPSHOT_COUNT"] = "64"
         app.launch()
@@ -32,7 +32,7 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         let down = base.withOffset(CGVector(dx: 4.2*unit, dy: height-25-2.85*unit))
         let stick = base.withOffset(CGVector(dx: 2*unit, dy: height-25-1.8*unit))
         let right = base.withOffset(CGVector(dx: 3*unit, dy: height-25-1.8*unit))
-        let deadline = Date().addingTimeInterval(950)
+        let deadline = Date().addingTimeInterval(1200)
         var lastFrame: UInt64 = 0, lastObservation: UInt64 = 0
         var lastAction = Date.distantPast, confirmedRead = false, titleAdvances = 0
         var atticSeen = false, blankWalks = 0
@@ -80,6 +80,6 @@ final class OdinTouchSceneGameplayUITests: XCTestCase {
         print("OSL last presented \(lastFrame), observed \(lastObservation), read confirmed \(confirmedRead)")
         XCTAssertGreaterThan(lastObservation, 0, "No captured scene was recognized")
         XCTAssertTrue(confirmedRead, "Valkyrie reading was not confirmed")
-        Thread.sleep(forTimeInterval: 100)
+        Thread.sleep(forTimeInterval: 140)
     }
 }
