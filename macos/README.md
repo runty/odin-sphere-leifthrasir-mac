@@ -83,11 +83,12 @@ python3 macos/test-bundle.py --app "$APP" --app0 "$APP0" \
 The suite relocates the app to a space/Unicode path, uses a minimal PATH and
 disposable copied profile, rejects bad configuration and an unmounted volume,
 checks actual imports, renders all seven launcher pages, rejects concurrent
-profile use, and starts/quits/restarts bounded game runs. It checks bundled
-driver loading, default performance toggles, immutable bundle contents and
-unchanged saved progress bytes. It does not claim to have visibly loaded a
-save slot or played 30 minutes of combat. Live gameplay, audio and save reload
-have separate player-confirmed evidence in the port plan.
+profile use, and starts/quits/restarts bounded game runs. It selects 4K and
+then Native (1080p) in the same disposable profile and checks the guest
+VideoOut width, height and pitch after each launch. Each run presents 300
+frames. It also checks bundled driver loading, default performance toggles,
+immutable bundle contents and unchanged saved progress bytes. The port plan
+records the separate live gameplay, audio and in-game save reload checks.
 
 
 ## Installed library and Finder launch
