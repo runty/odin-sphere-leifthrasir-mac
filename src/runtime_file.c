@@ -12,6 +12,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -36,8 +39,14 @@ typedef struct stat HostStat;
 #include "runtime_file_types.h"
 
 typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Listing;
-typedef struct { int used, host, writable; Listing *dir; size_t position; char path[512]; } File;
-typedef struct { char guest[64]; char host[512]; int readonly; } Mount;
+typedef struct {
+    int used, host, writable; Listing *dir; size_t position; char path[512];
+#if defined(__APPLE__) && TARGET_OS_OSX
+    int write_error;
+    int64_t missing_begin, missing_end;
+#endif
+} File;
+typedef struct { char guest[64]; char host[1024]; int readonly, write_error; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
 static size_t mount_count, opens, reads, writes, missing;
@@ -45,17 +54,18 @@ static uint64_t bytes_read;
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 
 int runtime_file_mount_mode(const char *guest,const char *host,int readonly) {
-    if (!guest || !host || strlen(guest)>=64 || strlen(host)>=512) return -1;
+    if (!guest || !host || strlen(guest)>=64 || strlen(host)>=sizeof(mounts[0].host)) return -1;
     pthread_mutex_lock(&lock);
     for (size_t i=0;i<mount_count;++i) if (!strcmp(mounts[i].guest,guest)) {
         snprintf(mounts[i].host,sizeof(mounts[i].host),"%s",host);
-        mounts[i].readonly=readonly;
+        mounts[i].readonly=readonly; mounts[i].write_error=0;
         pthread_mutex_unlock(&lock); return 0;
     }
-    if (mount_count==MAX_MOUNTS || strlen(guest)>=64 || strlen(host)>=512) { pthread_mutex_unlock(&lock); return -1; }
+    if (mount_count==MAX_MOUNTS || strlen(guest)>=64 || strlen(host)>=sizeof(mounts[0].host)) { pthread_mutex_unlock(&lock); return -1; }
     snprintf(mounts[mount_count].guest,64,"%s",guest);
-    snprintf(mounts[mount_count].host,512,"%s",host);
+    snprintf(mounts[mount_count].host,sizeof(mounts[mount_count].host),"%s",host);
     mounts[mount_count].readonly=readonly;
+    mounts[mount_count].write_error=0;
     ++mount_count;
     pthread_mutex_unlock(&lock);
     return 0;
@@ -299,6 +309,35 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     pthread_mutex_unlock(&lock);
     return fd;
 }
+#if defined(__APPLE__) && TARGET_OS_OSX
+/* A failed or short save write remains provisional. The caller can supply the
+ * missing bytes on the same descriptor, or retry the entire save after umount. */
+static void save_write_result(File *file, uint64_t requested, ssize_t written, int error, int64_t offset) {
+    if (!file || !file->writable || (!file->write_error && written >= 0 && (uint64_t)written == requested)) return;
+    if (strncmp(file->path, "/savedata", 9) || file->path[9] < '0' || file->path[9] > '9') return;
+    if (written < 0 && (error == EINTR || error == EAGAIN)) return;
+    int64_t count = written > 0 ? written : 0;
+    if (offset < 0) offset = lseek(file->host, 0, SEEK_CUR) - count;
+    if (offset < 0 || requested > (uint64_t)(INT64_MAX - offset)) {
+        file->write_error = error ? error : EIO;
+        file->missing_begin = 0;
+        file->missing_end = INT64_MAX;
+        return;
+    }
+    int64_t end = offset + count;
+    if (file->write_error && offset <= file->missing_begin && end > file->missing_begin) {
+        file->missing_begin = end;
+        if (end >= file->missing_end) file->write_error = 0;
+    }
+    if (written < 0 || (uint64_t)written < requested) {
+        int64_t expected = offset + (int64_t)requested;
+        if (!file->write_error || end < file->missing_begin) file->missing_begin = end;
+        if (!file->write_error || expected > file->missing_end) file->missing_end = expected;
+        file->write_error = error ? error : EIO;
+    }
+}
+#endif
+
 static int64_t do_close(int fd) {
     if (fd>=0 && fd<3) return 0;
     pthread_mutex_lock(&lock);
@@ -309,6 +348,15 @@ static int64_t do_close(int fd) {
         if (f->writable && !f->dir && fsync(f->host)) error=errno;
         if (close(f->host) && !error) error=errno;
     }
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (f->write_error || error) {
+        for (size_t i=0; i<mount_count; ++i) {
+            size_t n=strlen(mounts[i].guest);
+            if (!strncmp(f->path,mounts[i].guest,n) && f->path[n]=='/')
+                mounts[i].write_error=f->write_error ? f->write_error : error;
+        }
+    }
+#endif
     free_listing(f->dir);
     *f=(File){0};
     pthread_mutex_unlock(&lock);
@@ -317,10 +365,16 @@ static int64_t do_close(int fd) {
 int runtime_file_sync_mount(const char *guest) {
     size_t n=strlen(guest); int error=0;
     pthread_mutex_lock(&lock);
+    for (size_t i=0; i<mount_count; ++i)
+        if (!strcmp(mounts[i].guest,guest)) error=mounts[i].write_error;
     for (unsigned i=3;i<MAX_FILES;++i)
         if (files[i].used && files[i].writable && files[i].host>=0 && !files[i].dir &&
-            !strncmp(files[i].path,guest,n) && (!files[i].path[n] || files[i].path[n]=='/'))
+            !strncmp(files[i].path,guest,n) && (!files[i].path[n] || files[i].path[n]=='/')) {
+#if defined(__APPLE__) && TARGET_OS_OSX
+            if (files[i].write_error && !error) error=files[i].write_error;
+#endif
             if (fsync(files[i].host) && !error) error=errno;
+        }
     pthread_mutex_unlock(&lock);
     return error ? -error : 0;
 }
@@ -370,7 +424,11 @@ static int64_t do_write(int fd,const void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
     ssize_t n=host_write(h,buffer,size);
-    if (n<0) return -errno;
+    int error=n<0 ? errno : 0;
+#if defined(__APPLE__) && TARGET_OS_OSX
+    save_write_result(get(fd),size,n,error,-1);
+#endif
+    if (n<0) return -error;
     __atomic_add_fetch(&writes,1,__ATOMIC_RELAXED);
     return n;
 }
@@ -378,7 +436,11 @@ static int64_t do_pwrite(int fd,const void *buffer,uint64_t size,int64_t offset)
     int h=host_fd(fd);
     if (h<0) return -EBADF;
     ssize_t n=pwrite(h,buffer,size,offset);
-    return n<0 ? -errno : n;
+    int error=n<0 ? errno : 0;
+#if defined(__APPLE__) && TARGET_OS_OSX
+    save_write_result(get(fd),size,n,error,offset);
+#endif
+    return n<0 ? -error : n;
 }
 static int64_t do_lseek(int fd,int64_t offset,int whence) {
     File *f=get(fd);

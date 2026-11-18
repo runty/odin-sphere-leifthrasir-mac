@@ -208,6 +208,12 @@ endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_executable(osl-audio-pause-tests EXCLUDE_FROM_ALL tests/audio_pause_tests.c)
     target_link_libraries(osl-audio-pause-tests PRIVATE SDL3::SDL3 Threads::Threads)
+
+    add_executable(osl-save-transaction-tests EXCLUDE_FROM_ALL
+        tests/mac_save_transaction_tests.c src/runtime_file.c src/runtime_savedata.c
+        src/runtime_errno.c ios/services/memory_shim.c)
+    target_compile_options(osl-save-transaction-tests PRIVATE -include ${CMAKE_SOURCE_DIR}/src/host_darwin.h)
+    target_link_libraries(osl-save-transaction-tests PRIVATE Threads::Threads)
 endif()
 
 # Focused tests of the MOVBE and BMI1 emulation and the LZCNT rewrite used when the host CPU lacks the instructions, on

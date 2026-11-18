@@ -17,6 +17,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 #ifndef _WIN32
 #include <ftw.h>
 #endif
@@ -123,6 +126,17 @@ static int remove_entry(const char *path, const struct stat *st, int flag, struc
 static int remove_tree(const char *path) { return nftw(path,remove_entry,16,FTW_DEPTH|FTW_PHYS); }
 #endif
 
+#if defined(__APPLE__) && TARGET_OS_OSX
+#include "runtime_savedata_mac.h"
+#endif
+
+static const char *payload_path(int slot) {
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (drafts[slot].pending[0]) return drafts[slot].pending;
+#endif
+    return slots[slot].host;
+}
+
 /* A save's param (title, subtitle, date) for the save dialog; 0 when it exists. */
 int runtime_savedata_param(int32_t user, const char *dir, void *param) {
     if (!valid_name(dir,32)) return -1;
@@ -154,6 +168,9 @@ static int32_t mount(int32_t user, const char *title, const OslSaveDirName *dir,
     snprintf(host,sizeof(host),"%s/%s",base,dir->data);
     snprintf(meta,sizeof(meta),"%s/%s.sce_sys",base,dir->data);
     struct stat st;
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (recover_draft(base, dir->data)) return ERR_INTERNAL;
+#endif
     int exists=!stat(host,&st) && S_ISDIR(st.st_mode);
     if ((mode & MODE_CREATE) && exists) return ERR_EXISTS;
     if (!(mode & (MODE_CREATE|MODE_CREATE2)) && !exists) return ERR_NOT_FOUND;
@@ -181,7 +198,18 @@ static int32_t mount(int32_t user, const char *title, const OslSaveDirName *dir,
     snprintf(point,sizeof(point),"/savedata%d",slot&15);
     memcpy(result->point.data,point,strlen(point)+1);
     result->status=exists ? 0 : 1; /* CREATED */
-    if (runtime_file_mount_mode(result->point.data,host,!!(mode&MODE_RDONLY))) {
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (!(mode & MODE_RDONLY)) {
+        int error = begin_draft(&drafts[slot], base, dir->data, host);
+        if (error) {
+            slots[slot].used=0; pthread_mutex_unlock(&lock); return error;
+        }
+    }
+#endif
+    if (runtime_file_mount_mode(result->point.data,payload_path(slot),!!(mode&MODE_RDONLY))) {
+#if defined(__APPLE__) && TARGET_OS_OSX
+        close_draft(&drafts[slot]);
+#endif
         slots[slot].used=0; pthread_mutex_unlock(&lock); return ERR_INTERNAL;
     }
     ++mounts_done;
@@ -212,7 +240,21 @@ static ABI int32_t save_umount(const OslSaveMountPoint *point) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     pthread_mutex_lock(&lock);
     int slot=slot_of(point);
-    if (slot>=0 && runtime_file_sync_mount(point->data)) { pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
+    if (slot>=0 && runtime_file_sync_mount(point->data)) {
+#if defined(__APPLE__) && TARGET_OS_OSX
+        if (drafts[slot].pending[0]) {
+            runtime_file_unmount(point->data);
+            close_draft(&drafts[slot]);
+            slots[slot].used=0;
+        }
+#endif
+        pthread_mutex_unlock(&lock); return ERR_INTERNAL;
+    }
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (slot >= 0 && drafts[slot].pending[0] && publish_draft(&drafts[slot], slots[slot].host)) {
+        pthread_mutex_unlock(&lock); return ERR_INTERNAL;
+    }
+#endif
     if (slot>=0) { runtime_file_unmount(point->data); slots[slot].used=0; }
     pthread_mutex_unlock(&lock);
     return slot>=0 ? 0 : ERR_NOT_FOUND;
@@ -236,7 +278,7 @@ static ABI int32_t save_get_mount_info(const OslSaveMountPoint *point, OslSaveSe
     pthread_mutex_lock(&lock);
     int slot=slot_of(point);
     if (slot<0) { pthread_mutex_unlock(&lock); return ERR_NOT_MOUNTED; }
-    uint64_t used=used_blocks(slots[slot].host), total=slots[slot].blocks>used ? slots[slot].blocks : used;
+    uint64_t used=used_blocks(payload_path(slot)), total=slots[slot].blocks>used ? slots[slot].blocks : used;
     pthread_mutex_unlock(&lock);
     memset(info,0,sizeof(*info));
     info->blocks=total; info->free_blocks=total-used;
@@ -289,13 +331,32 @@ static ABI int32_t save_delete(const OslSaveDelete *d) {
     snprintf(host,sizeof(host),"%s/%s",base,d->dir->data);
     snprintf(meta,sizeof(meta),"%s/%s.sce_sys",base,d->dir->data);
     struct stat st;
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (recover_draft(base, d->dir->data)) return ERR_INTERNAL;
+#endif
     if (stat(host,&st)) return ERR_NOT_FOUND;
     pthread_mutex_lock(&lock);
     for (unsigned i=0;i<SLOTS;++i) if (slots[i].used && !strcmp(slots[i].host,host)) {
         pthread_mutex_unlock(&lock); return ERR_BAD_MOUNTED;
     }
-    int failed=remove_tree(host);
+#if defined(__APPLE__) && TARGET_OS_OSX
+    char draft_dir[700]; int owner;
+    snprintf(draft_dir, sizeof(draft_dir), "%s/%s%s", base, OSL_DRAFT_PREFIX, d->dir->data);
+    int error = lock_draft(draft_dir, &owner);
+    if (error) { pthread_mutex_unlock(&lock); return error; }
+#endif
+    int failed=0;
+#if defined(__APPLE__) && TARGET_OS_OSX
+    char old[800], pending[800];
+    snprintf(old, sizeof(old), "%s/previous", draft_dir);
+    snprintf(pending, sizeof(pending), "%s/pending", draft_dir);
+    failed = discard_path(old) || discard_path(pending);
+#endif
+    if (!failed) failed=remove_tree(host);
     if (!failed && !stat(meta,&st)) failed=remove_tree(meta);
+#if defined(__APPLE__) && TARGET_OS_OSX
+    close(owner);
+#endif
     pthread_mutex_unlock(&lock);
     if (failed) return ERR_INTERNAL;
     printf("Runtime: save data '%s' deleted\n",d->dir->data);
@@ -334,6 +395,9 @@ static ABI int32_t save_search(const OslSaveSearchCond *cond, OslSaveSearchResul
     Entry *entries=NULL; size_t count=0, capacity=0;
     DIR *d=opendir(base);
     if (!d && errno!=ENOENT) { pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
+#if defined(__APPLE__) && TARGET_OS_OSX
+    if (d && recover_listed_drafts(d,base)) { closedir(d); pthread_mutex_unlock(&lock); return ERR_INTERNAL; }
+#endif
     for (struct dirent *e; d && (e=readdir(d));) {
         size_t n=strlen(e->d_name);
         if (e->d_name[0]=='.' || n>=32 || (n>8 && !strcmp(e->d_name+n-8,".sce_sys"))) continue;
@@ -427,6 +491,9 @@ void osl_aot_savedata_reset(void) {
     for (unsigned i=0;i<SLOTS;++i) if (slots[i].used) {
         char point[32]; snprintf(point,sizeof(point),"/savedata%u",i);
         runtime_file_unmount(point);
+#if defined(__APPLE__) && TARGET_OS_OSX
+        close_draft(&drafts[i]);
+#endif
     }
     memset(slots,0,sizeof(slots)); initialized=0; memory_size=0; memory_path[0]=0;
     pthread_mutex_unlock(&lock);
