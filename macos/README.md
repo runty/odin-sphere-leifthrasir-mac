@@ -91,6 +91,15 @@ immutable bundle contents and unchanged saved progress bytes. The port plan
 records the separate live gameplay, audio and in-game save reload checks.
 
 
+The Mac audio pause test feeds the game’s normal 256-frame buffers through a
+muted SDL stream, pauses and resumes that stream, and checks queue depth.
+Run it against CoreAudio from a configured Mac build directory:
+
+```sh
+cmake --build "$BUILD" --target osl-audio-pause-tests
+SDL_AUDIO_DRIVER=coreaudio "$BUILD/bin/osl-audio-pause-tests"
+```
+
 ## Installed library and Finder launch
 
 The private console pipeline now copies verified runtime files to

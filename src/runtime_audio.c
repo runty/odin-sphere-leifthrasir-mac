@@ -16,6 +16,9 @@
 #include <pthread.h>
 #include <time.h>
 #include <SDL3/SDL.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 #define PORTS 25
 #define ERR_NOT_OPENED ((int32_t)0x80260001)
@@ -258,6 +261,17 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
         }
         if (p->downmix) bytes=downmix_stereo(converted,(size_t)p->frames,p->is_float);
         if (p->dump) fwrite(converted,1,bytes,p->dump);
+        SDL_AudioStream *output = p->stream;
+#if defined(__APPLE__) && TARGET_OS_OSX
+        /* A paused CoreAudio stream cannot drain. Keep the guest mixer clock
+           running and restart output at the current play position on resume. */
+        if (output && SDL_AudioStreamDevicePaused(output)) {
+            if (SDL_GetAudioStreamQueued(output) > 0) SDL_ClearAudioStream(output);
+            p->window_count = 0;
+            p->adjust_ns = 0;
+            output = NULL;
+        }
+#endif
         if (p->stats) {
             uint64_t now=now_ns();
             if (!p->stat_start_ns) { p->stat_start_ns=now; p->stat_min_queued=1<<30; }
@@ -266,7 +280,7 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
             if (p->stream) {
                 int queued=SDL_GetAudioStreamQueued(p->stream);
                 if (queued<p->stat_min_queued) p->stat_min_queued=queued;
-                if (queued==0) ++p->stat_starved;
+                if (output && queued==0) ++p->stat_starved;
             }
             if (now-p->stat_start_ns>=5000000000u) {
                 printf("Audio stats port %d: %u buffers/5s (expected %u), max gap %.2f ms, min queued %d bytes, starved %u\n",
@@ -291,13 +305,13 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
             }
             p->next_deadline_ns+=period;
         }
-        if (p->stream) {
+        if (output) {
             /* The device drains the queue in quanta (21 ms on PipeWire), so the level
                is a sawtooth: its minimum over ~32 buffers is what gets controlled. */
-            int low=2*(int)bytes, queued=SDL_GetAudioStreamQueued(p->stream);
+            int low=2*(int)bytes, queued=SDL_GetAudioStreamQueued(output);
             if (queued<(int)bytes) {
                 static const unsigned char silence[2048*8*4];
-                SDL_PutAudioStreamData(p->stream,silence,low-queued<(int)bytes ? low-queued : (int)bytes);
+                SDL_PutAudioStreamData(output,silence,low-queued<(int)bytes ? low-queued : (int)bytes);
                 queued=low;
             }
             if (!p->window_count || queued<p->window_min) p->window_min=queued;
@@ -306,7 +320,7 @@ static int32_t output_port(int32_t handle, const void *data, int pace, const Osl
                 p->window_count=0;
             }
             p->next_deadline_ns+=(uint64_t)p->adjust_ns;
-            SDL_PutAudioStreamData(p->stream,converted,(int)bytes);
+            SDL_PutAudioStreamData(output,converted,(int)bytes);
         }
         ++buffers_out;
     }
