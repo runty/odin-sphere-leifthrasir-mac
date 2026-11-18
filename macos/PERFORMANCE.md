@@ -44,7 +44,7 @@ or a whole-session percentile. Routes and workloads vary. Optimized selected
 windows range from 42.7 to 60.0 fps; instrumentation and occasional hitches
 remain visible. Their median window p95 is 16.67 ms. This establishes an early
 combat improvement, not a locked 60 fps result throughout the game or the M4
-30-minute acceptance test. Classic mode and other profiles remain untested.
+30-minute acceptance test. That early measurement covered Refined mode on the US profile.
 
 ## Repeating the check
 
@@ -231,3 +231,14 @@ averaged at least 74.5 fps, and the slowest averaged 68.4 fps. The two
 host copies and zero compiles. Those counters account for only part of the
 delay. The run demonstrates throughput above 60 fps in this encounter, with
 occasional long frames during the transition into combat.
+
+### Classic opening tutorial on the installed app
+
+Build `d3709f6` saved Classic Data 00, quit, and loaded the slot in a new
+process. Reading Valkyrie resumed Gwendolyn in Prelude Act 2 on the Storming
+Battlefields. At native 1080p, 76 seconds of movement, jumps and spear attacks
+with screen capture disabled produced 14 complete five-second reports. Median
+throughput was 60.0 fps. The lowest window averaged 58.8 fps, the highest
+window p99 was 33.32 ms, and the longest frame was 83.3 ms. There were no
+shader or pipeline compilations. The initial and final images show the opening
+combat tutorial. Later Classic stages need separate measurements.
