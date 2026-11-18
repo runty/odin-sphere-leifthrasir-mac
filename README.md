@@ -1,3 +1,23 @@
+# Odin Sphere Leifthrasir for macOS
+
+This fork of [saulob/odin-sphere-leifthrasir-pc](https://github.com/saulob/odin-sphere-leifthrasir-pc) adds an Apple Silicon Mac port. The PS4 game's x86-64 code runs under Rosetta 2, while a native arm64 process translates graphics to Metal. You must supply your own legally obtained game files. No game files are included.
+
+## macOS status
+
+The Mac app has a launcher with selectable rendering resolutions up to native 4K. Combat, controller input, audio, and saving and reloading progress have been exercised. On an M5 Max, a 30-minute 4K gameplay run had a median of 60 fps, with occasional frame-time spikes of 100–117 ms. The port has been tested with the US CUSA05083 base 1.00 game. See the [Mac guide](macos/README.md) and [performance notes](macos/PERFORMANCE.md) for setup and verification details.
+
+The source includes protection against an interrupted save overwrite. The locally installed build tested before this change predates that protection. Package and verify a fresh build to use it.
+
+## iPhone and iPad status
+
+iOS development is paused and remains experimental. An iPad test loaded a copied save and reached the attic, with scripted movement. Combat, saving new progress, physical controls, and audible audio remain unverified on iPad. A test reported popping and static. iPhone playability remains unverified. The test apps have been removed from both devices. See the [iOS documentation](ios/) for the development work.
+
+## Upstream PC project
+
+The following documentation describes the upstream Windows and experimental Linux project. Its release badges and supported game versions refer to upstream releases.
+
+---
+
 <div align="center">
 
 # Odin Sphere Leifthrasir - PC Port
