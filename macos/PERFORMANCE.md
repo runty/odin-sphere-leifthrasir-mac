@@ -232,6 +232,25 @@ host copies and zero compiles. Those counters account for only part of the
 delay. The run demonstrates throughput above 60 fps in this encounter, with
 occasional long frames during the transition into combat.
 
+### Thirty minutes of capture-free 4K play
+
+A second installed `d3709f6` run used the normal 60 Hz clock, a warmed
+Act 3 profile and muted CoreAudio. At 3840×2160 for both source and drawable,
+Gwendolyn began in a level-2 Elf Hunter encounter. Movement, jumps and spear
+attacks continued for 1,801.76 seconds between log offsets. The final image
+shows her back on the field, at 51/122 HP. The route includes combat and
+field traversal. Screenshots were taken outside the timed interval.
+
+Of 359 complete five-second reports, 327 averaged at least 59.5 fps. The
+median was 60.0 fps and the lowest average was 55.4 fps. The highest
+five-second p99 was 116.66 ms. The flip log recorded 74 intervals over
+40 ms, including 22 at 100.0–116.7 ms. There were zero pipeline compiles
+and zero reported audio starvation events during the measurement. All 22
+longest intervals occurred within the first seven minutes. Many included
+about 30 ms waiting for the graphics recorder’s host copies or deferred
+signals. Those counters cover only part of the delay. The game exited
+cleanly and both the live profile and the copied game slot kept their hashes.
+
 ### Classic opening tutorial on the installed app
 
 Build `d3709f6` saved Classic Data 00, quit, and loaded the slot in a new
