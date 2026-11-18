@@ -251,6 +251,34 @@ about 30 ms waiting for the graphics recorder’s host copies or deferred
 signals. Those counters cover only part of the delay. The game exited
 cleanly and both the live profile and the copied game slot kept their hashes.
 
+### Recording-thread waits in the Elf Hunter encounter
+
+Three private 75 Hz builds started from the same warmed profile. Each
+entered a level-2 Elf Hunter encounter at 4K, then accepted three minutes
+of movement and attacks without window capture. Core counts below
+are average CPU time per elapsed second for the runner process. Enemy
+movement, draw counts and page-ins varied. All three had a median of
+75.0 fps, zero pipeline compiles and zero reported audio starvation events.
+
+| Recording behavior | Complete 5 s windows | Lowest window fps | Longest frame | Average CPU cores |
+| --- | ---: | ---: | ---: | ---: |
+| Release waits, accelerated clock only | 35 | 74.6 | 40.0 ms | 0.834 |
+| Park the producer during a full draw-queue drain | 36 | 74.6 | 40.0 ms | 0.807 |
+| Park while waiting for recorder host copies | 35 | 74.2 | 66.7 ms | 0.827 |
+
+The full-drain change left the slowest window and longest frame unchanged.
+The host-copy change added a longer frame. These measurements support
+keeping the release renderer waits.
+
+A separate 60 Hz diagnostic run recorded overlapping time intervals on
+the Vulkan recorder, presenter, swapchain and guest submission paths.
+Of its two frames over 40 ms, a 50.0 ms frame had no measured renderer
+span above 3.5 ms. A 66.7 ms frame contained two waits for recorder host
+copies totaling 17.1 ms. The guest issued successive flip submissions
+64.9 ms apart. Neither frame included shader compilation. The trace
+identified where part of the time went. It did not reproduce the
+100–116.7 ms intervals from the longer installed run.
+
 ### Classic opening tutorial on the installed app
 
 Build `d3709f6` saved Classic Data 00, quit, and loaded the slot in a new
